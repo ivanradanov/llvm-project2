@@ -101,6 +101,7 @@ protected:
                            ::llvm::cl::desc("Target architecture")};
   Option<std::string> features{*this, "features",
                                ::llvm::cl::desc("Target features")};
+  Option<int> optLevel{*this, "opt-level", llvm::cl::desc("Optimization level")};
   Option<std::string> gpuBinaryAnnotation{
       *this, "gpu-binary-annotation",
       llvm::cl::desc("Annotation attribute string for GPU binary"),
@@ -124,7 +125,8 @@ void registerGpuSerializeToHsacoPass();
 /// pass.
 std::unique_ptr<Pass> createGpuSerializeToCubinPass(StringRef triple,
                                                     StringRef chip,
-                                                    StringRef features);
+                                                    StringRef features,
+                                                    int optLevel);
 
 /// Create an instance of the GPU kernel function to HSAco binary serialization
 /// pass.

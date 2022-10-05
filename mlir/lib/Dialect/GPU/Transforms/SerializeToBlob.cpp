@@ -12,7 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Linker/Linker.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
+#include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -42,6 +48,11 @@ gpu::SerializeToBlobPass::translateToISA(llvm::Module &llvmModule,
 
   if (failed(optimizeLlvm(llvmModule, targetMachine)))
     return llvm::None;
+  #ifndef NDEBUG
+  llvm::errs() << "OPTGPULLVM\n";
+  llvmModule.dump();
+  llvm::errs() << "OPTGPULLVM\n";
+  #endif
 
   std::string targetISA;
   llvm::raw_string_ostream stream(targetISA);
@@ -64,8 +75,32 @@ void gpu::SerializeToBlobPass::runOnOperation() {
   // multi-threaded processing.
   llvm::LLVMContext llvmContext;
   std::unique_ptr<llvm::Module> llvmModule = translateToLLVMIR(llvmContext);
+  #ifndef NDEBUG
+  llvm::errs() << "GPULLVM\n";
+  llvmModule->dump();
+  llvm::errs() << "GPULLVM\n";
+  #endif
   if (!llvmModule)
     return signalPassFailure();
+
+  // TODO get libdevice path
+  std::string libDeviceFile = "/usr/local/cuda/nvvm/libdevice/libdevice.10.bc";
+  llvm::SMDiagnostic err;
+  std::unique_ptr<llvm::Module> libDevice = llvm::parseIRFile(libDeviceFile, err, llvmContext);
+  if (!libDevice || llvm::verifyModule(*libDevice, &llvm::errs())) {
+    err.print("in serialize-to-blob", llvm::errs());
+    // TODO what should the
+    //unsigned diagID = ci.getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Error, "Could not parse IR");
+    //ci.getDiagnostics().Report(diagID);
+    return signalPassFailure();
+  }
+  // TODO do we need any flags?
+  llvm::Linker::linkModules(*llvmModule, std::move(libDevice));
+  #ifndef NDEBUG
+  llvm::errs() << "GPULLVM\n";
+  llvmModule->dump();
+  llvm::errs() << "GPULLVM\n";
+  #endif
 
   // Lower the LLVM IR module to target ISA.
   std::unique_ptr<llvm::TargetMachine> targetMachine = createTargetMachine();
@@ -100,8 +135,25 @@ void gpu::SerializeToBlobPass::runOnOperation() {
 LogicalResult
 gpu::SerializeToBlobPass::optimizeLlvm(llvm::Module &llvmModule,
                                        llvm::TargetMachine &targetMachine) {
-  // TODO: If serializeToCubin ends up defining optimizations, factor them
-  // into here from SerializeToHsaco
+  int optLevel = this->optLevel.getValue();
+  // TODO check cuda opt levels
+  if (optLevel < 0 || optLevel > 3)
+    return getOperation().emitError()
+           << "Invalid serizalize to gpu blob optimization level" << optLevel << "\n";
+
+  targetMachine.setOptLevel(static_cast<llvm::CodeGenOpt::Level>(optLevel));
+
+  auto transformer =
+      makeOptimizingTransformer(optLevel, /*sizeLevel=*/0, &targetMachine);
+  auto error = transformer(&llvmModule);
+  if (error) {
+    InFlightDiagnostic mlirError = getOperation()->emitError();
+    llvm::handleAllErrors(
+        std::move(error), [&mlirError](const llvm::ErrorInfoBase &ei) {
+          mlirError << "Could not optimize LLVM IR: " << ei.message() << "\n";
+        });
+    return mlirError;
+  }
   return success();
 }
 
