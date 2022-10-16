@@ -505,7 +505,7 @@ SmallVector<Value, 4> LLVMTypeConverter::promoteOperands(Location loc,
       } else if (operand.getType().isa<UnrankedMemRefType>()) {
         llvm_unreachable("Unranked memrefs are not supported");
       }
-    } else {
+    } else if (! /*CStyleMemRef*/  true){
       if (operand.getType().isa<UnrankedMemRefType>()) {
         UnrankedMemRefDescriptor::unpack(builder, loc, llvmOperand,
                                          promotedOperands);
