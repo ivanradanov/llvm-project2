@@ -45,6 +45,7 @@ namespace mlir {
 using namespace mlir;
 
 static constexpr const char *kGpuBinaryStorageSuffix = "_gpubin_cst";
+static constexpr const char *kGpuModuleCtorSuffix = "_gpubin_ctor";
 
 namespace {
 
@@ -766,28 +767,69 @@ LogicalResult ConvertLaunchFuncOpToGpuRuntimeCallPattern::matchAndRewrite(
       launchOp, launchOp.getKernelModuleName());
   assert(kernelModule && "expected a kernel module");
 
-  auto binaryAttr =
-      kernelModule->getAttrOfType<StringAttr>(gpuBinaryAnnotation);
-  if (!binaryAttr) {
-    kernelModule.emitOpError()
-        << "missing " << gpuBinaryAnnotation << " attribute";
-    return failure();
+  auto getFuncGlobalName = [] (StringRef moduleName, StringRef name) {
+    return std::string(llvm::formatv("{0}_{1}_fun_ptr", moduleName, name));
+  };
+
+
+  // Build module constructor
+  ModuleOp moduleOp = launchOp->getParentOfType<ModuleOp>();
+  {
+    auto loc = moduleOp.getLoc();
+    OpBuilder moduleBuilder(moduleOp.getBodyRegion());
+    SmallString<128> ctorNameBuffer(kernelModule.getName());
+    ctorNameBuffer.append(kGpuModuleCtorSuffix);
+    LLVM::LLVMFuncOp ctor = dyn_cast_or_null<LLVM::LLVMFuncOp>(SymbolTable::lookupSymbolIn(moduleOp, ctorNameBuffer));
+    if (!ctor) {
+      ctor = moduleBuilder.create<LLVM::LLVMFuncOp>(loc, ctorNameBuffer,
+                                                    LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(moduleOp.getContext()), {}));
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(ctor.addEntryBlock());
+
+      auto binaryAttr =
+        kernelModule->getAttrOfType<StringAttr>(gpuBinaryAnnotation);
+      if (!binaryAttr) {
+        kernelModule.emitOpError()
+          << "missing " << gpuBinaryAnnotation << " attribute";
+        return failure();
+      }
+      SmallString<128> nameBuffer(kernelModule.getName());
+      nameBuffer.append(kGpuBinaryStorageSuffix);
+      Value data =
+        LLVM::createGlobalString(loc, rewriter, nameBuffer.str(),
+                                 binaryAttr.getValue(), LLVM::Linkage::Internal);
+      auto module = moduleLoadCallBuilder.create(loc, rewriter, data);
+
+      //kernelModule->walk([&](LLVM::LLVMFuncOp f) {
+      for (Operation &op : kernelModule->getRegion(0).front()) {
+        LLVM::LLVMFuncOp f = dyn_cast<LLVM::LLVMFuncOp>(op);
+        if (!f)
+          continue;
+        if (!f->getAttr("gpu.kernel"))
+          continue;
+        auto moduleName = launchOp.getKernelModuleName().getValue();
+        auto kernelName = generateKernelNameConstant(launchOp.getKernelModuleName().getValue(),
+                                                     f.getName(), loc, rewriter);
+        auto function = moduleGetFunctionCallBuilder.create(loc, rewriter, {module.getResult(), kernelName});
+        std::string funcGlobalName = getFuncGlobalName(moduleName, f.getName());
+        auto funcGlobal = moduleBuilder.create<LLVM::GlobalOp>(loc, llvmPointerType, /* isConstant */ false, LLVM::Linkage::Internal, funcGlobalName, mlir::Attribute(),
+                                                    /* alignment */ 0, /* addrSpace */ 0);
+        auto aoo = rewriter.create<LLVM::AddressOfOp>(loc, funcGlobal);
+        rewriter.create<LLVM::StoreOp>(loc, function->getResult(0), aoo->getResult(0));
+      }
+      //});
+      rewriter.create<LLVM::ReturnOp>(loc, ValueRange());
+      ArrayRef<Attribute> ctors = {FlatSymbolRefAttr::get(ctor)};
+      moduleBuilder.create<LLVM::GlobalCtorsOp>(loc, moduleBuilder.getArrayAttr(ctors), moduleBuilder.getI32ArrayAttr({100}));
+    }
   }
 
-  SmallString<128> nameBuffer(kernelModule.getName());
-  nameBuffer.append(kGpuBinaryStorageSuffix);
-  Value data =
-      LLVM::createGlobalString(loc, rewriter, nameBuffer.str(),
-                               binaryAttr.getValue(), LLVM::Linkage::Internal);
+  std::string funcGlobalName = getFuncGlobalName(launchOp.getKernelModuleName().getValue(), launchOp.getKernelName().getValue());
+  auto funcGlobal = dyn_cast_or_null<LLVM::GlobalOp>(SymbolTable::lookupSymbolIn(moduleOp, funcGlobalName));
+  assert(!!funcGlobal);
+  auto aoo = rewriter.create<LLVM::AddressOfOp>(loc, funcGlobal);
+  auto function = rewriter.create<LLVM::LoadOp>(loc, aoo);
 
-  auto module = moduleLoadCallBuilder.create(loc, rewriter, data);
-  // Get the function from the module. The name corresponds to the name of
-  // the kernel function.
-  auto kernelName = generateKernelNameConstant(
-      launchOp.getKernelModuleName().getValue(),
-      launchOp.getKernelName().getValue(), loc, rewriter);
-  auto function = moduleGetFunctionCallBuilder.create(
-      loc, rewriter, {module.getResult(), kernelName});
   Value zero = rewriter.create<LLVM::ConstantOp>(loc, llvmInt32Type, 0);
   Value stream =
       adaptor.getAsyncDependencies().empty()
@@ -817,7 +859,8 @@ LogicalResult ConvertLaunchFuncOpToGpuRuntimeCallPattern::matchAndRewrite(
     streamDestroyCallBuilder.create(loc, rewriter, stream);
     rewriter.eraseOp(launchOp);
   }
-  moduleUnloadCallBuilder.create(loc, rewriter, module.getResult());
+  // TODO make a destructor too
+  //moduleUnloadCallBuilder.create(loc, rewriter, module.getResult());
 
   return success();
 }
