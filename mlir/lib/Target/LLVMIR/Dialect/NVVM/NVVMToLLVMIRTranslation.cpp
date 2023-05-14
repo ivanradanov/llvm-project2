@@ -13,6 +13,7 @@
 
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
@@ -116,6 +117,25 @@ public:
   LogicalResult
   amendOperation(Operation *op, NamedAttribute attribute,
                  LLVM::ModuleTranslation &moduleTranslation) const final {
+    // TODO refactor
+    if (attribute.getName() == "nvvm.maxntidx") {
+      auto func = dyn_cast<LLVM::LLVMFuncOp>(op);
+      if (!func)
+        return failure();
+
+      llvm::LLVMContext &llvmContext = moduleTranslation.getLLVMContext();
+      llvm::Function *llvmFunc =
+          moduleTranslation.lookupFunction(func.getName());
+      llvm::Metadata *llvmMetadata[] = {
+          llvm::ValueAsMetadata::get(llvmFunc),
+          llvm::MDString::get(llvmContext, "maxntidx"),
+          llvm::ValueAsMetadata::get(
+              llvm::ConstantInt::get(llvm::Type::getInt32Ty(llvmContext), attribute.getValue().dyn_cast<IntegerAttr>().getInt()))};
+      llvm::MDNode *llvmMetadataNode =
+          llvm::MDNode::get(llvmContext, llvmMetadata);
+      moduleTranslation.getOrInsertNamedModuleMetadata("nvvm.annotations")
+          ->addOperand(llvmMetadataNode);
+    }
     if (attribute.getName() == NVVM::NVVMDialect::getKernelFuncAttrName()) {
       auto func = dyn_cast<LLVM::LLVMFuncOp>(op);
       if (!func)
