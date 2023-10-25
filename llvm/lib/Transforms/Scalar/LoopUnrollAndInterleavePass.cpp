@@ -128,7 +128,14 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
             if (Function *CF = CI->getCalledFunction()) {
               if (CF->getName() == "__kmpc_for_static_init_8u") {
                 unsigned ChunkSizeOperandNum = 8;
-                CI->setOperand(ChunkSizeOperandNum, ConstantInt::get(CI->getOperand(ChunkSizeOperandNum)->getType(), UnrollFactor));
+                ConstantInt *ConstInt = dyn_cast<ConstantInt>(
+                        CI->getOperand(ChunkSizeOperandNum));
+                assert(ConstInt);
+                CI->setOperand(
+                    ChunkSizeOperandNum,
+                    ConstantInt::get(
+                        CI->getOperand(ChunkSizeOperandNum)->getType(),
+                        UnrollFactor * ConstInt->getValue()));
                 Found = true;
                 return;
               }
