@@ -87,38 +87,15 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   LLVM_DEBUG(dbgs() << "Loop Unroll And Interleave: F["
                     << L->getHeader()->getParent()->getName() << "] Loop %"
                     << L->getHeader()->getName() << "\n");
+  LLVM_DEBUG(dbgs() << "Parallel? " << L->isAnnotatedParallel() << "\n");
   // TODO Encode unroll and interleave info in the loop
 
-  //if (!L->getExitBlock()->getParent()->getName().ends_with("omp_outlined"))
-  if (L->getLoopPreheader()->getName() != "omp.inner.for.cond.preheader") {
+  // if (L->getLoopPreheader()->getName() != "omp.inner.for.cond.preheader") {
+  if (!L->getExitBlock()->getParent()->getName().ends_with("omp_outlined") || !L->isInnermost()) {
     LLVM_DEBUG(dbgs() << "Ignoring\n");
     return LoopUnrollResult::Unmodified;
   }
-
-  // Find the smallest exact trip count for any exit. This is an upper bound
-  // on the loop trip count, but an exit at an earlier iteration is still
-  // possible. An unroll by the smallest exact trip count guarantees that all
-  // branches relating to at least one exit can be eliminated. This is unlike
-  // the max trip count, which only guarantees that the backedge can be broken.
-  unsigned TripCount = 0;
-  unsigned TripMultiple = 1;
-  SmallVector<BasicBlock *, 8> ExitingBlocks;
-  L->getExitingBlocks(ExitingBlocks);
-  for (BasicBlock *ExitingBlock : ExitingBlocks)
-    if (unsigned TC = SE.getSmallConstantTripCount(L, ExitingBlock))
-      if (!TripCount || TC < TripCount)
-        TripCount = TripMultiple = TC;
-
-  if (!TripCount) {
-    // If no exact trip count is known, determine the trip multiple of either
-    // the loop latch or the single exiting block.
-    // TODO: Relax for multiple exits.
-    BasicBlock *ExitingBlock = L->getLoopLatch();
-    if (!ExitingBlock || !L->isLoopExiting(ExitingBlock))
-      ExitingBlock = L->getExitingBlock();
-    if (ExitingBlock)
-      TripMultiple = SE.getSmallConstantTripMultiple(L, ExitingBlock);
-  }
+  LLVM_DEBUG(dbgs() << "Unrolling\n");
 
   // TODO generate epilogue, while making sure to handle convergent insts
   // properly (e.g. __syncthreads())
@@ -135,6 +112,33 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
 
   unsigned UnrollFactor = 4;
+  if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
+    StringRef(env).getAsInteger(10, UnrollFactor);
+
+  bool Chunkify = true;
+
+  // Change the kmpc_call chunk size
+  if (Chunkify) {
+    Function *F = L->getHeader()->getParent();
+    bool Found = false;
+    [&]() {
+      for (BasicBlock &BB : *F) {
+        for (Instruction &I : BB) {
+          if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+            if (Function *CF = CI->getCalledFunction()) {
+              if (CF->getName() == "__kmpc_for_static_init_8u") {
+                unsigned ChunkSizeOperandNum = 8;
+                CI->setOperand(ChunkSizeOperandNum, ConstantInt::get(CI->getOperand(ChunkSizeOperandNum)->getType(), UnrollFactor));
+                Found = true;
+                return;
+              }
+            }
+          }
+        }
+      }
+    }();
+    assert(Found && "Did not find kmpc call");
+  }
 
   // TODO abort if trip countis not divisible by the factor (or use the original
   // non coarsened loop) we expect the runtime to call us with the appropriate
@@ -156,11 +160,13 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   // The new Step is UnrollFactor * OriginalStep
   Value *IVStepVal = LoopBounds->getStepValue();
   if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
-    Value *NewStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor));
-    IVStepInst->replaceUsesWithIf(NewStep, [NewStep](Use &U) -> bool {
-      return U.getUser() != NewStep;
-    });
+    if (!Chunkify) {
+      Value *NewStep = PreheaderBuilder.CreateMul(
+          IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor));
+      IVStepInst->replaceUsesWithIf(NewStep, [NewStep](Use &U) -> bool {
+        return U.getUser() != NewStep;
+      });
+    }
   } else {
     // If the step is a constant
     auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
@@ -181,10 +187,16 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     return LoopUnrollResult::Unmodified;
   }
   for (unsigned I = 1; I < UnrollFactor; I++) {
-    Value *MultipliedStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
-    Value *CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
-        InitialIVVal, MultipliedStep);
+    Value *CoarsenedInitialIV;
+    if (Chunkify) {
+      CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
+          InitialIVVal, ConstantInt::get(IVStepVal->getType(), I));
+    } else {
+      Value *MultipliedStep = PreheaderBuilder.CreateMul(
+          IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
+      CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
+          InitialIVVal, MultipliedStep);
+    }
     (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
   }
 
