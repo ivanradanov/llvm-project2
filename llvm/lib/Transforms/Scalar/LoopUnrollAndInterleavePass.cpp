@@ -162,8 +162,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   // The new Step is UnrollFactor * Step
   Value *NewStep = PreheaderBuilder.CreateMul(
       IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor));
-  IVStepInst->replaceUsesWithIf(NewStep, [IVStepVal](Use &U) -> bool {
-    return U.getUser() != IVStepVal;
+  IVStepInst->replaceUsesWithIf(NewStep, [NewStep](Use &U) -> bool {
+    return U.getUser() != NewStep;
   });
 
   // Set up new initial IV values, for now we do initial + stride, initial + 2 * stride, ...,
