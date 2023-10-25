@@ -115,7 +115,12 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
     StringRef(env).getAsInteger(10, UnrollFactor);
 
-  bool Chunkify = true;
+  bool Chunkify = false;
+  if (char *env = getenv("UNROLL_AND_INTERLEAVE_CHUNKIFY")) {
+    unsigned Int = 0;
+    StringRef(env).getAsInteger(10, Int);
+    Chunkify = Int;
+  }
 
   // Change the kmpc_call chunk size
   if (Chunkify) {
