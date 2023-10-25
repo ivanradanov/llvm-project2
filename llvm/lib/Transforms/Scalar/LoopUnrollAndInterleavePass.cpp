@@ -1,4 +1,5 @@
-//===- LoopUnrollAndInterleavePass.cpp - Loop unroller pass --------------------------------===//
+//===- LoopUnrollAndInterleavePass.cpp - Loop unroller pass
+//--------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,10 +14,6 @@
 
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm-c/Core.h"
-#include "llvm/Analysis/ScalarEvolutionExpressions.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/InstrTypes.h"
-#include "llvm/Transforms/Scalar/LoopUnrollPass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/DenseSet.h"
@@ -35,6 +32,7 @@
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
@@ -43,6 +41,8 @@
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -57,6 +57,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
+#include "llvm/Transforms/Scalar/LoopUnrollPass.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/LoopPeel.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
@@ -146,8 +147,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
             if (Function *CF = CI->getCalledFunction()) {
               if (CF->getName() == "__kmpc_for_static_init_8u") {
                 unsigned ChunkSizeOperandNum = 8;
-                ConstantInt *ConstInt = dyn_cast<ConstantInt>(
-                        CI->getOperand(ChunkSizeOperandNum));
+                ConstantInt *ConstInt =
+                    dyn_cast<ConstantInt>(CI->getOperand(ChunkSizeOperandNum));
                 assert(ConstInt);
                 CI->setOperand(
                     ChunkSizeOperandNum,
@@ -176,7 +177,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   auto LoopBounds = L->getBounds(SE);
   if (LoopBounds == std::nullopt) {
-    LLVM_DEBUG(dbgs() << "Unable to find loop bounds of the omp workshare loop, not coarsening\n");
+    LLVM_DEBUG(dbgs() << "Unable to find loop bounds of the omp workshare "
+                         "loop, not coarsening\n");
     return LoopUnrollResult::Unmodified;
   }
 
@@ -196,19 +198,22 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     // If the step is a constant
     auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
     assert(IVStepConst);
-    Value *NewStep = ConstantInt::getIntegerValue(IntegerType::getInt32Ty(IVStepVal->getContext()), UnrollFactor * IVStepConst->getValue());
+    Value *NewStep = ConstantInt::getIntegerValue(
+        IntegerType::getInt32Ty(IVStepVal->getContext()),
+        UnrollFactor * IVStepConst->getValue());
     Instruction *StepInst = &LoopBounds->getStepInst();
     for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
       if (StepInst->getOperand(It) == IVStepVal)
         StepInst->setOperand(It, NewStep);
   }
 
-  // Set up new initial IV values, for now we do initial + stride, initial + 2 * stride, ...,
-  // initial + (UnrollFactor - 1) * stride
+  // Set up new initial IV values, for now we do initial + stride, initial + 2 *
+  // stride, ..., initial + (UnrollFactor - 1) * stride
   Value *InitialIVVal = &LoopBounds->getInitialIVValue();
-  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal) ;
+  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
   if (!InitialIVInst) {
-    LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal << "\n");
+    LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal
+                      << "\n");
     return LoopUnrollResult::Unmodified;
   }
   for (unsigned I = 1; I < UnrollFactor; I++) {
@@ -219,8 +224,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     } else {
       Value *MultipliedStep = PreheaderBuilder.CreateMul(
           IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
-      CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
-          InitialIVVal, MultipliedStep);
+      CoarsenedInitialIV =
+          PreheaderBuilder.CreateAdd(InitialIVVal, MultipliedStep);
     }
     (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
   }
@@ -255,7 +260,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
         (*VMaps[It])[I] = Cloned;
         LastI = Cloned;
 
-        if (I->isTerminator() ) {
+        if (I->isTerminator()) {
           assert(IsLastClone);
           assert(isa<BranchInst>(I) && "Unhandled case");
           // Remove the original terminator, we will be using the one cloned
@@ -268,14 +273,15 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   for (unsigned It = 1; It < UnrollFactor; It++)
     for (Instruction *I : ClonedInsts[It])
-        RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
+      RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
 
   return LoopUnrollResult::PartiallyUnrolled;
 }
 
-PreservedAnalyses LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
-                                          LoopStandardAnalysisResults &AR,
-                                          LPMUpdater &Updater) {
+PreservedAnalyses
+LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
+                                 LoopStandardAnalysisResults &AR,
+                                 LPMUpdater &Updater) {
   // For the new PM, we can't use OptimizationRemarkEmitter as an analysis
   // pass. Function analyses need to be preserved across loop transformations
   // but ORE cannot be preserved (see comment before the pass definition).
@@ -292,14 +298,13 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager 
 
   std::string LoopName = std::string(L.getName());
 
-  bool Changed =
-      tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, ORE,
-                      /*BFI*/ nullptr, /*PSI*/ nullptr) !=
-      LoopUnrollResult::Unmodified;
+  bool Changed = tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, ORE,
+                                 /*BFI*/ nullptr, /*PSI*/ nullptr) !=
+                 LoopUnrollResult::Unmodified;
   if (!Changed)
     return PreservedAnalyses::all();
 
-  // The parent must not be damaged by unrolling!
+    // The parent must not be damaged by unrolling!
 #ifndef NDEBUG
   if (ParentL)
     ParentL->verifyLoop();
