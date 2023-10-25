@@ -68,6 +68,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -88,8 +89,11 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                     << L->getHeader()->getName() << "\n");
   // TODO Encode unroll and interleave info in the loop
 
-  if (!L->getExitBlock()->getParent()->getName().ends_with("omp_outlined"))
+  //if (!L->getExitBlock()->getParent()->getName().ends_with("omp_outlined"))
+  if (L->getLoopPreheader()->getName() != "omp.inner.for.cond.preheader") {
+    LLVM_DEBUG(dbgs() << "Ignoring\n");
     return LoopUnrollResult::Unmodified;
+  }
 
   // Find the smallest exact trip count for any exit. This is an upper bound
   // on the loop trip count, but an exit at an earlier iteration is still
@@ -149,22 +153,24 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
+  // The new Step is UnrollFactor * OriginalStep
   Value *IVStepVal = LoopBounds->getStepValue();
-  Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal);
-  if (!IVStepInst) {
-    LLVM_DEBUG(dbgs() << "Unexpected step definition");
-    if (IVStepVal)
-      LLVM_DEBUG(dbgs() << *IVStepVal);
-    LLVM_DEBUG(dbgs() << "\n");
-    return LoopUnrollResult::Unmodified;
+  if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
+    Value *NewStep = PreheaderBuilder.CreateMul(
+        IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor));
+    IVStepInst->replaceUsesWithIf(NewStep, [NewStep](Use &U) -> bool {
+      return U.getUser() != NewStep;
+    });
+  } else {
+    // If the step is a constant
+    auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
+    assert(IVStepConst);
+    Value *NewStep = ConstantInt::getIntegerValue(IntegerType::getInt32Ty(IVStepVal->getContext()), UnrollFactor * IVStepConst->getValue());
+    Instruction *StepInst = &LoopBounds->getStepInst();
+    for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
+      if (StepInst->getOperand(It) == IVStepVal)
+        StepInst->setOperand(It, NewStep);
   }
-
-  // The new Step is UnrollFactor * Step
-  Value *NewStep = PreheaderBuilder.CreateMul(
-      IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor));
-  IVStepInst->replaceUsesWithIf(NewStep, [NewStep](Use &U) -> bool {
-    return U.getUser() != NewStep;
-  });
 
   // Set up new initial IV values, for now we do initial + stride, initial + 2 * stride, ...,
   // initial + (UnrollFactor - 1) * stride
@@ -184,6 +190,11 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Interleave instructions
 
+  SmallVector<SmallVector<Instruction *>> ClonedInsts;
+  ClonedInsts.reserve(UnrollFactor);
+  for (unsigned I = 0; I < UnrollFactor; I++)
+    ClonedInsts.push_back({});
+
   // TODO Currently we do not check whether the control flow may be divergent
   // between the interleaved original "iterations" - we need to duplicate
   // instead of interleave divergent flow
@@ -196,14 +207,14 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
       Instruction *LastI = I;
       for (unsigned It = 1; It < UnrollFactor; It++) {
         bool IsLastClone = It + 1 == UnrollFactor;
-        // Only clone the last of the cloned terminators
+        // Only clone the last interleaved iteration's terminator
         if (I->isTerminator() && !IsLastClone) {
           continue;
         }
 
         Instruction *Cloned = I->clone();
         Cloned->insertAfter(LastI);
-        RemapInstruction(Cloned, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
+        ClonedInsts[It].push_back(Cloned);
         (*VMaps[It])[I] = Cloned;
         LastI = Cloned;
 
@@ -217,6 +228,10 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
       }
     }
   }
+
+  for (unsigned It = 1; It < UnrollFactor; It++)
+    for (Instruction *I : ClonedInsts[It])
+        RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
 
   return LoopUnrollResult::PartiallyUnrolled;
 }
