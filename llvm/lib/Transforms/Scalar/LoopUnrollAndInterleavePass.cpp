@@ -78,6 +78,21 @@ using namespace llvm;
 
 #define DEBUG_TYPE "loop-unroll-and-interleave"
 
+static bool isWorkShareLoop(Loop *L) {
+  if (!L->isOutermost())
+    return false;
+
+  Function *F = L->getHeader()->getParent();
+  for (BasicBlock &BB : *F)
+    for (Instruction &I : BB)
+      if (CallInst *CI = dyn_cast<CallInst>(&I))
+        if (Function *CF = CI->getCalledFunction())
+          if (CF->getName().starts_with("__kmpc_for_static_init"))
+            return true;
+
+  return false;
+}
+
 static LoopUnrollResult
 tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                 const TargetTransformInfo &TTI, AssumptionCache &AC,
@@ -86,12 +101,10 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   LLVM_DEBUG(dbgs() << "Loop Unroll And Interleave: F["
                     << L->getHeader()->getParent()->getName() << "] Loop %"
-                    << L->getHeader()->getName() << "\n");
-  LLVM_DEBUG(dbgs() << "Parallel? " << L->isAnnotatedParallel() << "\n");
-  // TODO Encode unroll and interleave info in the loop
+                    << L->getHeader()->getName() << " "
+                    << "Parallel? " << L->isAnnotatedParallel() << " ");
 
-  // if (L->getLoopPreheader()->getName() != "omp.inner.for.cond.preheader") {
-  if (!L->getExitBlock()->getParent()->getName().ends_with("omp_outlined") || !L->isInnermost()) {
+  if (!isWorkShareLoop(L)) {
     LLVM_DEBUG(dbgs() << "Ignoring\n");
     return LoopUnrollResult::Unmodified;
   }
