@@ -130,11 +130,17 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   assert(LatchBlock);
   SmallVector<BasicBlock *, 4> ExitBlocks;
   L->getExitBlocks(ExitBlocks);
+  BasicBlock *ExitBlock = L->getExitBlock();
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
 
   unsigned UnrollFactor = 4;
   if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
     StringRef(env).getAsInteger(10, UnrollFactor);
+  assert(UnrollFactor > 0);
+  if (UnrollFactor == 1) {
+    LLVM_DEBUG(dbgs() << "Unroll factor of 1 - ignoring\n");
+    return LoopUnrollResult::Unmodified;
+  }
 
   bool Chunkify = false;
   if (char *env = getenv("UNROLL_AND_INTERLEAVE_CHUNKIFY")) {
@@ -310,8 +316,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
 
   // Calc the start value for the epilogue loop, should be:
-  // (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor * Stride
-  // i.e. when we are done with our iterations of the coarsened loop
+  // Start + (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor *
+  // Stride.
+  // I.e. when we are done with our iterations of the coarsened loop
   Value *EpilogueStart;
   Value *Start = &LoopBounds->getInitialIVValue();
   Value *End = &LoopBounds->getFinalIVValue();
@@ -325,13 +332,13 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
             PreheaderBuilder.CreateAdd(Diff, LoopBounds->getStepValue()), One),
         Stride);
     Value *FloorDiv = PreheaderBuilder.CreateUDiv(CeilDiv, UnrollFactorCst);
-    EpilogueStart = PreheaderBuilder.CreateNSWMul(
-        PreheaderBuilder.CreateNSWMul(FloorDiv, UnrollFactorCst), Stride,
-        "epilogue.start.iv");
+    Value *Offset = PreheaderBuilder.CreateNSWMul(
+        PreheaderBuilder.CreateNSWMul(FloorDiv, UnrollFactorCst), Stride);
+    EpilogueStart =
+        PreheaderBuilder.CreateAdd(Offset, Start, "epilogue.start.iv");
   }
 
-  // Jump to epilogue immediately if not enough iterations available (less than
-  // UnrollFactor)
+  // Jump to epilogue from preheader if we are already at its start
   {
     BranchInst *Incoming = dyn_cast<BranchInst>(Preheader->getTerminator());
     assert(Incoming && !Incoming->isConditional());
@@ -346,8 +353,11 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     Incoming->eraseFromParent();
   }
 
-  // Jump to epilogue if there are not enough remaining iterations
+  // Jump to epilogue from coarsened latch if we are at its start
   {
+    // Note we need to check for the loop end first and exit the loop
+    // alltogether if we are at the end because if all iterations are handled by
+    // the coarsened loop the final IV will be equal to the epilogue start IV
     BranchInst *BackEdge = dyn_cast<BranchInst>(LatchBlock->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
     BasicBlock *PrevBB = LatchBlock->splitBasicBlockBefore(BackEdge);
@@ -356,10 +366,21 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     Value *IsAtEpilogueStart = Builder.CreateCmp(
         CmpInst::Predicate::ICMP_EQ, &LoopBounds->getStepInst(), EpilogueStart,
         "is.epilogue.start");
-    Builder.CreateCondBr(IsAtEpilogueStart, EpilogueLoop->getHeader(),
-                         LatchBlock);
+    Value *EpilogueBranch = Builder.CreateCondBr(
+        IsAtEpilogueStart, EpilogueLoop->getHeader(), LatchBlock);
     BI->eraseFromParent();
     EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, PrevBB);
+
+    // TODO Instead of introducing this redundant branch and bb we can redirect
+    // the original branch instead so that if it doesnt jump to the exit to do a
+    // check for the epilogue loop start first
+    BasicBlock *EndCheckBB =
+        PrevBB->splitBasicBlockBefore(cast<Instruction>(EpilogueBranch));
+    Instruction *EndCheckBI = EndCheckBB->getTerminator();
+    IRBuilder<> EpilogueCheckBuilder(EndCheckBI);
+    EpilogueCheckBuilder.CreateCondBr(BackEdge->getCondition(), PrevBB,
+                                      ExitBlock);
+    EndCheckBI->eraseFromParent();
   }
 
   // Start the epilogue loop from the iteration the coarsened version ended with
