@@ -277,9 +277,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     for (Instruction *I : ToClone) {
       Instruction *LastI = I;
       for (unsigned It = 1; It < UnrollFactor; It++) {
-        bool IsLastClone = It + 1 == UnrollFactor;
-        // Only clone the last interleaved iteration's terminator
-        if (I->isTerminator() && !IsLastClone) {
+        // Do not clone terminators - we use the contrl flow of the existing
+        // iteration (we assume all iterations follow the same control flow)
+        if (I->isTerminator()) {
           continue;
         }
 
@@ -290,14 +290,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
         ClonedInsts[It].push_back(Cloned);
         (*VMaps[It])[I] = Cloned;
         LastI = Cloned;
-
-        if (I->isTerminator()) {
-          assert(IsLastClone);
-          assert(isa<BranchInst>(I) && "Unhandled case");
-          // Remove the original terminator, we will be using the one cloned
-          // last
-          I->eraseFromParent();
-        }
       }
     }
   }
