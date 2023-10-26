@@ -107,29 +107,30 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   LLVM_DEBUG(dbgs() << "Loop Unroll And Interleave: F["
                     << L->getHeader()->getParent()->getName() << "] Loop %"
                     << L->getHeader()->getName() << " "
-                    << "Parallel? " << L->isAnnotatedParallel() << " ");
+                    << "Parallel=" << L->isAnnotatedParallel() << " ");
 
   if (!isWorkShareLoop(L)) {
-    LLVM_DEBUG(dbgs() << "Ignoring\n");
+    LLVM_DEBUG(dbgs() << "Not work share loop\n");
     return LoopUnrollResult::Unmodified;
   }
-  LLVM_DEBUG(dbgs() << "Unrolling\n");
 
   // TODO generate epilogue, while making sure to handle convergent insts
   // properly (e.g. __syncthreads())
 
   // Save loop properties before it is transformed.
-  MDNode *OrigLoopID = L->getLoopID();
-
   BasicBlock *Preheader = L->getLoopPreheader();
-  assert(Preheader && "Expected a loop preheader");
-  BasicBlock *Header = L->getHeader();
+  if (!Preheader) {
+    // We delete the preheader of the epilogue loop so this is currently how we
+    // detect that this may be the epilogue loop, because all other loops should
+    // have a preheader after being simplified before this pass
+    LLVM_DEBUG(dbgs() << "No preheader\n");
+    return LoopUnrollResult::Unmodified;
+  }
   BasicBlock *LatchBlock = L->getLoopLatch();
   assert(LatchBlock);
   SmallVector<BasicBlock *, 4> ExitBlocks;
   L->getExitBlocks(ExitBlocks);
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
-  PHINode *OriginalIV = L->getInductionVariable(SE);
 
   unsigned UnrollFactor = 4;
   if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
@@ -191,58 +192,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   Loop *EpilogueLoop =
       cloneLoopWithPreheader(LatchBlock->getNextNode(), Preheader, L, VMap,
                              ".epilogue", LI, &DT, EpilogueLoopBlocks);
-  remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
-
-  // Jump to epilogue immediately if not enough iterations available (less than
-  // UnrollFactor)
-  {
-    BranchInst *Incoming = dyn_cast<BranchInst>(Preheader->getTerminator());
-    assert(Incoming && !Incoming->isConditional());
-    IRBuilder<> Builder(Incoming);
-
-    assert(LoopBounds->getDirection() !=
-           Loop::LoopBounds::Direction::Decreasing);
-    Value *TripCount = Builder.CreateSub(&LoopBounds->getFinalIVValue(),
-                                         &LoopBounds->getInitialIVValue());
-    Value *LessThanTripCount =
-        Builder.CreateCmp(CmpInst::Predicate::ICMP_SLT, TripCount,
-                          ConstantInt::get(TripCount->getType(), UnrollFactor));
-    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
-                         Incoming->getSuccessor(0));
-    Incoming->eraseFromParent();
-  }
-
-  // Jump to epilogue if there are not enough remaining iterations
-  {
-    BranchInst *BackEdge = dyn_cast<BranchInst>(LatchBlock->getTerminator());
-    assert(BackEdge && BackEdge->isConditional());
-    BasicBlock *PrevBB = LatchBlock->splitBasicBlockBefore(BackEdge);
-    Instruction *BI = PrevBB->getTerminator();
-    IRBuilder<> Builder(BI);
-    Value *RemainingTripCount = Builder.CreateSub(
-        &LoopBounds->getFinalIVValue(), &LoopBounds->getStepInst());
-    Value *LessThanTripCount = Builder.CreateCmp(
-        CmpInst::Predicate::ICMP_SLT, RemainingTripCount,
-        ConstantInt::get(RemainingTripCount->getType(), UnrollFactor));
-    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
-                         LatchBlock);
-    BI->eraseFromParent();
-  }
-
-  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
-  assert(isa<Instruction>(InitialIVVal));
-  InitialIVVal->replaceUsesWithIf(
-      &LoopBounds->getStepInst(), [&](Use &U) -> bool {
-        if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
-          if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
-                        I->getParent()) != EpilogueLoopBlocks.end())
-            return true;
-          else
-            return false;
-        } else {
-          assert(0);
-        }
-      });
 
   // VMaps for the separate interleaved iterations
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
@@ -277,6 +226,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Set up new initial IV values, for now we do initial + stride, initial + 2 *
   // stride, ..., initial + (UnrollFactor - 1) * stride
+  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
   Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
   if (!InitialIVInst) {
     LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal
@@ -341,6 +291,92 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   for (unsigned It = 1; It < UnrollFactor; It++)
     for (Instruction *I : ClonedInsts[It])
       RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
+
+  // Plumbing around the coarsened and epilogue loops
+
+  BasicBlock *EpiloguePH = cast<BasicBlock>(VMap[Preheader]);
+  EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
+                                     EpilogueLoopBlocks.end(), EpiloguePH));
+  for (Instruction &I : *Preheader) {
+    VMap.erase(&I);
+  }
+  VMap.erase(Preheader);
+  remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
+
+  // Jump to epilogue immediately if not enough iterations available (less than
+  // UnrollFactor)
+  {
+    BranchInst *Incoming = dyn_cast<BranchInst>(Preheader->getTerminator());
+    assert(Incoming && !Incoming->isConditional());
+    IRBuilder<> Builder(Incoming);
+
+    assert(LoopBounds->getDirection() !=
+           Loop::LoopBounds::Direction::Decreasing);
+    Value *TripCount = Builder.CreateSub(&LoopBounds->getFinalIVValue(),
+                                         &LoopBounds->getInitialIVValue());
+    Value *LessThanTripCount =
+        Builder.CreateCmp(CmpInst::Predicate::ICMP_SLT, TripCount,
+                          ConstantInt::get(TripCount->getType(), UnrollFactor));
+    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
+                         Incoming->getSuccessor(0));
+    Incoming->eraseFromParent();
+  }
+
+  // Jump to epilogue if there are not enough remaining iterations
+  {
+    BranchInst *BackEdge = dyn_cast<BranchInst>(LatchBlock->getTerminator());
+    assert(BackEdge && BackEdge->isConditional());
+    BasicBlock *PrevBB = LatchBlock->splitBasicBlockBefore(BackEdge);
+    Instruction *BI = PrevBB->getTerminator();
+    IRBuilder<> Builder(BI);
+    // TODO we should precompute the upper bound for the coarsened loop and
+    // compare the next IV to that instead of computing the remaining trip count
+    // each time
+    Value *RemainingTripCount = Builder.CreateSub(
+        &LoopBounds->getFinalIVValue(), &LoopBounds->getStepInst());
+    Value *LessThanTripCount = Builder.CreateCmp(
+        CmpInst::Predicate::ICMP_SLT, RemainingTripCount,
+        ConstantInt::get(RemainingTripCount->getType(), UnrollFactor));
+    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
+                         LatchBlock);
+    BI->eraseFromParent();
+    EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, PrevBB);
+  }
+
+  // Start the epilogue loop from the iteration the coarsened version ended with
+  // instead of the original lb
+  auto IsInEpilogue = [&](Use &U) -> bool {
+    if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
+      if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
+                    I->getParent()) != EpilogueLoopBlocks.end())
+        return true;
+      return false;
+    }
+    llvm_unreachable("Uses of lb should only be instructions");
+  };
+
+  {
+    SmallVector<std::pair<PHINode *, unsigned>> ToHandle;
+    for (Use &U : InitialIVVal->uses()) {
+      if (!IsInEpilogue(U))
+        continue;
+      if (PHINode *PN = dyn_cast<PHINode>(U.getUser())) {
+        ToHandle.push_back(std::make_pair(PN, U.getOperandNo()));
+      } else {
+        llvm_unreachable("Non PHI use of lb");
+      }
+    }
+    for (auto &Pair : ToHandle) {
+      PHINode *PN = Pair.first;
+      unsigned OpNo = Pair.second;
+      PN->addIncoming(InitialIVVal, Preheader);
+      PN->setOperand(OpNo, &LoopBounds->getStepInst());
+    }
+  }
+
+  EpiloguePH->eraseFromParent();
+
+  LLVM_DEBUG(llvm::dbgs() << "After unroll and interleave:\n" << *F);
 
   return LoopUnrollResult::PartiallyUnrolled;
 }
