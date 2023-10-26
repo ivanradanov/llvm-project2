@@ -34,6 +34,7 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
@@ -59,6 +60,8 @@
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include "llvm/Transforms/Scalar/LoopUnrollPass.h"
 #include "llvm/Transforms/Utils.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/LoopPeel.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
@@ -100,6 +103,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                 OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
                 ProfileSummaryInfo *PSI) {
 
+  Function *F = L->getHeader()->getParent();
   LLVM_DEBUG(dbgs() << "Loop Unroll And Interleave: F["
                     << L->getHeader()->getParent()->getName() << "] Loop %"
                     << L->getHeader()->getName() << " "
@@ -121,9 +125,11 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   assert(Preheader && "Expected a loop preheader");
   BasicBlock *Header = L->getHeader();
   BasicBlock *LatchBlock = L->getLoopLatch();
+  assert(LatchBlock);
   SmallVector<BasicBlock *, 4> ExitBlocks;
   L->getExitBlocks(ExitBlocks);
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
+  PHINode *OriginalIV = L->getInductionVariable(SE);
 
   unsigned UnrollFactor = 4;
   if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
@@ -170,17 +176,79 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   // non coarsened loop) we expect the runtime to call us with the appropriate
   // trip count
 
-  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
-  VMaps.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++)
-    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
-
   auto LoopBounds = L->getBounds(SE);
   if (LoopBounds == std::nullopt) {
     LLVM_DEBUG(dbgs() << "Unable to find loop bounds of the omp workshare "
                          "loop, not coarsening\n");
     return LoopUnrollResult::Unmodified;
   }
+
+  // Clone the loop to use as an epilogue, the original one will be coarsened
+  // in-place
+  ValueToValueMapTy VMap;
+  SmallVector<BasicBlock *> EpilogueLoopBlocks;
+  // TODO insert after the last block of the loop
+  Loop *EpilogueLoop =
+      cloneLoopWithPreheader(LatchBlock->getNextNode(), Preheader, L, VMap,
+                             ".epilogue", LI, &DT, EpilogueLoopBlocks);
+  remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
+
+  // Jump to epilogue immediately if not enough iterations available (less than
+  // UnrollFactor)
+  {
+    BranchInst *Incoming = dyn_cast<BranchInst>(Preheader->getTerminator());
+    assert(Incoming && !Incoming->isConditional());
+    IRBuilder<> Builder(Incoming);
+
+    assert(LoopBounds->getDirection() !=
+           Loop::LoopBounds::Direction::Decreasing);
+    Value *TripCount = Builder.CreateSub(&LoopBounds->getFinalIVValue(),
+                                         &LoopBounds->getInitialIVValue());
+    Value *LessThanTripCount =
+        Builder.CreateCmp(CmpInst::Predicate::ICMP_SLT, TripCount,
+                          ConstantInt::get(TripCount->getType(), UnrollFactor));
+    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
+                         Incoming->getSuccessor(0));
+    Incoming->eraseFromParent();
+  }
+
+  // Jump to epilogue if there are not enough remaining iterations
+  {
+    BranchInst *BackEdge = dyn_cast<BranchInst>(LatchBlock->getTerminator());
+    assert(BackEdge && BackEdge->isConditional());
+    BasicBlock *PrevBB = LatchBlock->splitBasicBlockBefore(BackEdge);
+    Instruction *BI = PrevBB->getTerminator();
+    IRBuilder<> Builder(BI);
+    Value *RemainingTripCount = Builder.CreateSub(
+        &LoopBounds->getFinalIVValue(), &LoopBounds->getStepInst());
+    Value *LessThanTripCount = Builder.CreateCmp(
+        CmpInst::Predicate::ICMP_SLT, RemainingTripCount,
+        ConstantInt::get(RemainingTripCount->getType(), UnrollFactor));
+    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
+                         LatchBlock);
+    BI->eraseFromParent();
+  }
+
+  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
+  assert(isa<Instruction>(InitialIVVal));
+  InitialIVVal->replaceUsesWithIf(
+      &LoopBounds->getStepInst(), [&](Use &U) -> bool {
+        if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
+          if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
+                        I->getParent()) != EpilogueLoopBlocks.end())
+            return true;
+          else
+            return false;
+        } else {
+          assert(0);
+        }
+      });
+
+  // VMaps for the separate interleaved iterations
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
+  VMaps.reserve(UnrollFactor);
+  for (unsigned I = 0; I < UnrollFactor; I++)
+    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
 
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
@@ -209,7 +277,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Set up new initial IV values, for now we do initial + stride, initial + 2 *
   // stride, ..., initial + (UnrollFactor - 1) * stride
-  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
   Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
   if (!InitialIVInst) {
     LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal
