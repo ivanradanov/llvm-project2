@@ -97,11 +97,37 @@ static bool isWorkShareLoop(Loop *L) {
   return false;
 }
 
+static void setLoopAlreadyCoarsened(Loop *L) {
+  LLVMContext &Context = L->getHeader()->getContext();
+
+  MDNode *DisableUnrollMD =
+      MDNode::get(Context, MDString::get(Context, "llvm.loop.coarsen.disable"));
+  MDNode *LoopID = L->getLoopID();
+  MDNode *NewLoopID = makePostTransformationMetadata(
+      Context, LoopID, {"llvm.loop.coarsen."}, {DisableUnrollMD});
+  L->setLoopID(NewLoopID);
+}
+
+static MDNode *getUnrollMetadataForLoop(const Loop *L, StringRef Name) {
+  if (MDNode *LoopID = L->getLoopID())
+    return GetUnrollMetadata(LoopID, Name);
+  return nullptr;
+}
+
+static bool getLoopAlreadyCoarsened(Loop *L) {
+  return getUnrollMetadataForLoop(L, "llvm.loop.coarsen.disable");
+}
+
 static LoopUnrollResult
 tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                 const TargetTransformInfo &TTI, AssumptionCache &AC,
                 OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
                 ProfileSummaryInfo *PSI) {
+
+  if (getLoopAlreadyCoarsened(L)) {
+    LLVM_DEBUG(dbgs() << "Already coarsened\n");
+    return LoopUnrollResult::Unmodified;
+  }
 
   Function *F = L->getHeader()->getParent();
   LLVM_DEBUG(dbgs() << "Loop Unroll And Interleave: F["
@@ -410,6 +436,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   LLVM_DEBUG(llvm::dbgs() << "After unroll and interleave:\n" << *F);
 
+  setLoopAlreadyCoarsened(L);
+
   return LoopUnrollResult::PartiallyUnrolled;
 }
 
@@ -439,47 +467,5 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
   if (!Changed)
     return PreservedAnalyses::all();
 
-    // The parent must not be damaged by unrolling!
-#ifndef NDEBUG
-  if (ParentL)
-    ParentL->verifyLoop();
-#endif
-
-  // Unrolling can do several things to introduce new loops into a loop nest:
-  // - Full unrolling clones child loops within the current loop but then
-  //   removes the current loop making all of the children appear to be new
-  //   sibling loops.
-  //
-  // When a new loop appears as a sibling loop after fully unrolling,
-  // its nesting structure has fundamentally changed and we want to revisit
-  // it to reflect that.
-  //
-  // When unrolling has removed the current loop, we need to tell the
-  // infrastructure that it is gone.
-  //
-  // Finally, we support a debugging/testing mode where we revisit child loops
-  // as well. These are not expected to require further optimizations as either
-  // they or the loop they were cloned from have been directly visited already.
-  // But the debugging mode allows us to check this assumption.
-  bool IsCurrentLoopValid = false;
-  SmallVector<Loop *, 4> SibLoops;
-  if (ParentL)
-    SibLoops.append(ParentL->begin(), ParentL->end());
-  else
-    SibLoops.append(AR.LI.begin(), AR.LI.end());
-  erase_if(SibLoops, [&](Loop *SibLoop) {
-    if (SibLoop == &L) {
-      IsCurrentLoopValid = true;
-      return true;
-    }
-
-    // Otherwise erase the loop from the list if it was in the old loops.
-    return OldLoops.contains(SibLoop);
-  });
-  Updater.addSiblingLoops(SibLoops);
-
-  if (!IsCurrentLoopValid) {
-    Updater.markLoopAsDeleted(L, LoopName);
-  }
-  return getLoopPassPreservedAnalyses();
+  return PreservedAnalyses::none();
 }
