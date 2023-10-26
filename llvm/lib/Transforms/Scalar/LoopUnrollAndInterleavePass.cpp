@@ -192,6 +192,15 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   Loop *EpilogueLoop =
       cloneLoopWithPreheader(LatchBlock->getNextNode(), Preheader, L, VMap,
                              ".epilogue", LI, &DT, EpilogueLoopBlocks);
+  auto IsInEpilogue = [&](Use &U) -> bool {
+    if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
+      if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
+                    I->getParent()) != EpilogueLoopBlocks.end())
+        return true;
+      return false;
+    }
+    llvm_unreachable("Uses of lb should only be instructions");
+  };
 
   // VMaps for the separate interleaved iterations
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
@@ -206,10 +215,12 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
     if (!Chunkify) {
       Value *NewStep = PreheaderBuilder.CreateMul(
-          IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor));
-      IVStepInst->replaceUsesWithIf(NewStep, [NewStep](Use &U) -> bool {
-        return U.getUser() != NewStep;
-      });
+          IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
+          "coarsened.step");
+      IVStepInst->replaceUsesWithIf(
+          NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
+            return U.getUser() != NewStep && !IsInEpilogue(U);
+          });
     }
   } else {
     // If the step is a constant
@@ -241,8 +252,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     } else {
       Value *MultipliedStep = PreheaderBuilder.CreateMul(
           IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
-      CoarsenedInitialIV =
-          PreheaderBuilder.CreateAdd(InitialIVVal, MultipliedStep);
+      CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
+          InitialIVVal, MultipliedStep,
+          "initial.iv.coarsened." + std::to_string(I));
     }
     (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
   }
@@ -273,6 +285,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
         Instruction *Cloned = I->clone();
         Cloned->insertAfter(LastI);
+        if (!Cloned->getType()->isVoidTy())
+          Cloned->setName(I->getName() + ".coarsened." + std::to_string(It));
         ClonedInsts[It].push_back(Cloned);
         (*VMaps[It])[I] = Cloned;
         LastI = Cloned;
@@ -303,6 +317,27 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   VMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
 
+  // Calc the start value for the epilogue loop, should be:
+  // (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor * Stride
+  // i.e. when we are done with our iterations of the coarsened loop
+  Value *EpilogueStart;
+  Value *Start = &LoopBounds->getInitialIVValue();
+  Value *End = &LoopBounds->getFinalIVValue();
+  Value *Stride = LoopBounds->getStepValue();
+  Value *One = ConstantInt::get(Start->getType(), 1);
+  Value *UnrollFactorCst = ConstantInt::get(Start->getType(), UnrollFactor);
+  {
+    Value *Diff = PreheaderBuilder.CreateSub(End, Start);
+    Value *CeilDiv = PreheaderBuilder.CreateUDiv(
+        PreheaderBuilder.CreateSub(
+            PreheaderBuilder.CreateAdd(Diff, LoopBounds->getStepValue()), One),
+        Stride);
+    Value *FloorDiv = PreheaderBuilder.CreateUDiv(CeilDiv, UnrollFactorCst);
+    EpilogueStart = PreheaderBuilder.CreateNSWMul(
+        PreheaderBuilder.CreateNSWMul(FloorDiv, UnrollFactorCst), Stride,
+        "epilogue.start.iv");
+  }
+
   // Jump to epilogue immediately if not enough iterations available (less than
   // UnrollFactor)
   {
@@ -312,12 +347,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
     assert(LoopBounds->getDirection() !=
            Loop::LoopBounds::Direction::Decreasing);
-    Value *TripCount = Builder.CreateSub(&LoopBounds->getFinalIVValue(),
-                                         &LoopBounds->getInitialIVValue());
-    Value *LessThanTripCount =
-        Builder.CreateCmp(CmpInst::Predicate::ICMP_SLT, TripCount,
-                          ConstantInt::get(TripCount->getType(), UnrollFactor));
-    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
+    Value *IsAtEpilogueStart = Builder.CreateCmp(
+        CmpInst::Predicate::ICMP_EQ, Start, EpilogueStart, "is.epilogue.start");
+    Builder.CreateCondBr(IsAtEpilogueStart, EpilogueLoop->getHeader(),
                          Incoming->getSuccessor(0));
     Incoming->eraseFromParent();
   }
@@ -329,15 +361,10 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     BasicBlock *PrevBB = LatchBlock->splitBasicBlockBefore(BackEdge);
     Instruction *BI = PrevBB->getTerminator();
     IRBuilder<> Builder(BI);
-    // TODO we should precompute the upper bound for the coarsened loop and
-    // compare the next IV to that instead of computing the remaining trip count
-    // each time
-    Value *RemainingTripCount = Builder.CreateSub(
-        &LoopBounds->getFinalIVValue(), &LoopBounds->getStepInst());
-    Value *LessThanTripCount = Builder.CreateCmp(
-        CmpInst::Predicate::ICMP_SLT, RemainingTripCount,
-        ConstantInt::get(RemainingTripCount->getType(), UnrollFactor));
-    Builder.CreateCondBr(LessThanTripCount, EpilogueLoop->getHeader(),
+    Value *IsAtEpilogueStart = Builder.CreateCmp(
+        CmpInst::Predicate::ICMP_EQ, &LoopBounds->getStepInst(), EpilogueStart,
+        "is.epilogue.start");
+    Builder.CreateCondBr(IsAtEpilogueStart, EpilogueLoop->getHeader(),
                          LatchBlock);
     BI->eraseFromParent();
     EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, PrevBB);
@@ -345,17 +372,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Start the epilogue loop from the iteration the coarsened version ended with
   // instead of the original lb
-  auto IsInEpilogue = [&](Use &U) -> bool {
-    if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
-      if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
-                    I->getParent()) != EpilogueLoopBlocks.end())
-        return true;
-      return false;
-    }
-    llvm_unreachable("Uses of lb should only be instructions");
-  };
-
   {
+    // TODO should we give it EpilogueStart instead of the StepInst? (they
+    // should be equal)
     SmallVector<std::pair<PHINode *, unsigned>> ToHandle;
     for (Use &U : InitialIVVal->uses()) {
       if (!IsInEpilogue(U))
