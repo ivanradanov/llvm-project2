@@ -117,11 +117,8 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
   return getUnrollMetadataForLoop(L, "llvm.loop.coarsen.disable");
 }
 
-static LoopUnrollResult
-tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
-                const TargetTransformInfo &TTI, AssumptionCache &AC,
-                OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
-                ProfileSummaryInfo *PSI) {
+static LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT,
+                                        LoopInfo *LI, ScalarEvolution &SE) {
 
   if (getLoopAlreadyCoarsened(L)) {
     LLVM_DEBUG(dbgs() << "Already coarsened\n");
@@ -139,8 +136,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     return LoopUnrollResult::Unmodified;
   }
 
-  // TODO generate epilogue, while making sure to handle convergent insts
-  // properly (e.g. __syncthreads())
+  simplifyLoop(L, &DT, LI, &SE, nullptr, nullptr, false);
+
+  // TODO handle convergent insts properly (e.g. __syncthreads())
 
   // Save loop properties before it is transformed.
   BasicBlock *Preheader = L->getLoopPreheader();
@@ -441,28 +439,23 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 }
 
 PreservedAnalyses
-LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
-                                 LoopStandardAnalysisResults &AR,
-                                 LPMUpdater &Updater) {
-  // For the new PM, we can't use OptimizationRemarkEmitter as an analysis
-  // pass. Function analyses need to be preserved across loop transformations
-  // but ORE cannot be preserved (see comment before the pass definition).
-  OptimizationRemarkEmitter ORE(L.getHeader()->getParent());
+LoopUnrollAndInterleavePass::run(Function &F, FunctionAnalysisManager &AM) {
+  auto &LI = AM.getResult<LoopAnalysis>(F);
+  auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
+  auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+  auto &ORE = AM.getResult<OptimizationRemarkEmitterAnalysis>(F);
 
-  // Keep track of the previous loop structure so we can identify new loops
-  // created by unrolling.
-  Loop *ParentL = L.getParentLoop();
-  SmallPtrSet<Loop *, 4> OldLoops;
-  if (ParentL)
-    OldLoops.insert(ParentL->begin(), ParentL->end());
-  else
-    OldLoops.insert(AR.LI.begin(), AR.LI.end());
+  // across the loops.
+  SmallVector<Loop *, 8> Worklist;
 
-  std::string LoopName = std::string(L.getName());
+  for (Loop *TopLevelLoop : LI)
+    Worklist.push_back(TopLevelLoop);
 
-  bool Changed = tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, ORE,
-                                 /*BFI*/ nullptr, /*PSI*/ nullptr) !=
-                 LoopUnrollResult::Unmodified;
+  // Now walk the identified inner loops.
+  bool Changed = false;
+  for (Loop *L : Worklist)
+    Changed |= tryToUnrollLoop(L, DT, &LI, SE) != LoopUnrollResult::Unmodified;
+
   if (!Changed)
     return PreservedAnalyses::all();
 
