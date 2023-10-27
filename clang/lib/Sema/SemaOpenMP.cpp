@@ -10243,6 +10243,15 @@ checkOpenMPLoop(OpenMPDirectiveKind DKind, Expr *CollapseLoopCountExpr,
           SemaRef.ActOnFinishFullExpr(BoundPrevUB, /*DiscardedValue*/ false)
               .get();
     }
+    if (IV.get()->getType() != BoundPrevUB->getType()) {
+      BoundPrevUB =
+          SemaRef
+              .BuildCStyleCastExpr(
+                  CondLoc,
+                  SemaRef.Context.getTrivialTypeSourceInfo(IV.get()->getType()),
+                  CondLoc, BoundPrevUB)
+              .get();
+    }
     ParForInDistCond =
         SemaRef.BuildBinOp(CurScope, CondLoc, UseStrictCompare ? BO_LT : BO_LE,
                            IV.get(), BoundPrevUB);
