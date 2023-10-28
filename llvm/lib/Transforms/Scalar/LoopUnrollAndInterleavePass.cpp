@@ -338,13 +338,35 @@ static LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT,
   VMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
 
+  auto HoistEnd = [&](Value *End) -> Value * {
+    Instruction *I = dyn_cast<Instruction>(End);
+    if (!I)
+      return End;
+
+    BasicBlock *BB = I->getParent();
+    if (BB == Preheader ||
+        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) !=
+            OriginalLoopBlocks.end())
+      return End;
+
+    if (Instruction *I = dyn_cast<Instruction>(End)) {
+      // TODO need to make sure this is legal - it should be the case for an omp
+      // workshare loop (why didnt we licm it?)
+      Instruction *Cloned = I->clone();
+      Cloned->insertBefore(Preheader->getTerminator());
+      Cloned->setName(I->getName() + ".hoisted.ub");
+      return Cloned;
+    }
+    return End;
+  };
+
   // Calc the start value for the epilogue loop, should be:
   // Start + (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor *
   // Stride.
   // I.e. when we are done with our iterations of the coarsened loop
   Value *EpilogueStart;
   Value *Start = &LoopBounds->getInitialIVValue();
-  Value *End = &LoopBounds->getFinalIVValue();
+  Value *End = HoistEnd(&LoopBounds->getFinalIVValue());
   Value *Stride = LoopBounds->getStepValue();
   Value *One = ConstantInt::get(Start->getType(), 1);
   Value *UnrollFactorCst = ConstantInt::get(Start->getType(), UnrollFactor);
