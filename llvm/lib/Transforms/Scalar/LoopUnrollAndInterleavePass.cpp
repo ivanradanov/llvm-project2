@@ -152,9 +152,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   }
   BasicBlock *LatchBlock = L->getLoopLatch();
   assert(LatchBlock);
-  SmallVector<BasicBlock *, 4> ExitBlocks;
-  L->getExitBlocks(ExitBlocks);
   BasicBlock *ExitBlock = L->getExitBlock();
+  BasicBlock *ExitingBlock = L->getExitingBlock();
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
 
   // Disabled by default
@@ -242,12 +241,12 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Clone the loop to use as an epilogue, the original one will be coarsened
   // in-place
-  ValueToValueMapTy VMap;
+  ValueToValueMapTy EpilogueVMap;
   SmallVector<BasicBlock *> EpilogueLoopBlocks;
   // TODO insert after the last block of the loop
-  Loop *EpilogueLoop =
-      cloneLoopWithPreheader(LatchBlock->getNextNode(), Preheader, L, VMap,
-                             ".epilogue", LI, &DT, EpilogueLoopBlocks);
+  Loop *EpilogueLoop = cloneLoopWithPreheader(
+      LatchBlock->getNextNode(), Preheader, L, EpilogueVMap, ".epilogue", LI,
+      &DT, EpilogueLoopBlocks);
   auto IsInEpilogue = [&](Use &U) -> bool {
     if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
       if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
@@ -349,14 +348,22 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Plumbing around the coarsened and epilogue loops
 
-  BasicBlock *EpiloguePH = cast<BasicBlock>(VMap[Preheader]);
+  BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
   EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
                                      EpilogueLoopBlocks.end(), EpiloguePH));
   for (Instruction &I : *Preheader) {
-    VMap.erase(&I);
+    EpilogueVMap.erase(&I);
   }
-  VMap.erase(Preheader);
-  remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
+  EpilogueVMap.erase(Preheader);
+  remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
+
+  for (BasicBlock::iterator I = ExitBlock->begin(); isa<PHINode>(I);) {
+    PHINode *PN = cast<PHINode>(I++);
+
+    Value *IncomingVal = PN->getIncomingValueForBlock(ExitingBlock);
+    PN->addIncoming(EpilogueVMap[IncomingVal],
+                    cast<BasicBlock>(EpilogueVMap[ExitingBlock]));
+  }
 
   // Calc the start value for the epilogue loop, should be:
   // Start + (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor *
