@@ -232,6 +232,14 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     return LoopUnrollResult::Unmodified;
   }
 
+  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
+  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
+  if (!InitialIVInst) {
+    LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal
+                      << "\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
   // Clone the loop to use as an epilogue, the original one will be coarsened
   // in-place
   ValueToValueMapTy VMap;
@@ -285,13 +293,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   // Set up new initial IV values, for now we do initial + stride, initial + 2 *
   // stride, ..., initial + (UnrollFactor - 1) * stride
-  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
-  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
-  if (!InitialIVInst) {
-    LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal
-                      << "\n");
-    return LoopUnrollResult::Unmodified;
-  }
   for (unsigned I = 1; I < UnrollFactor; I++) {
     Value *CoarsenedInitialIV;
     if (Chunkify) {
