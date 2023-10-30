@@ -460,11 +460,10 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   LLVM_DEBUG(llvm::dbgs() << "After unroll and interleave:\n" << *F);
 
   simplifyLoop(L, nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  simplifyLoop(EpilogueLoop, nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  simplifyLoop(EpilogueLoop, nullptr, nullptr, nullptr, nullptr, nullptr,
+               false);
 
   setLoopAlreadyCoarsened(L);
-
-
 
   return LoopUnrollResult::PartiallyUnrolled;
 }
