@@ -157,7 +157,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   BasicBlock *ExitBlock = L->getExitBlock();
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
 
-  unsigned UnrollFactor = 4;
+  // Disabled by default
+  unsigned UnrollFactor = 1;
   if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
     StringRef(env).getAsInteger(10, UnrollFactor);
   assert(UnrollFactor > 0);
@@ -346,7 +347,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
     BasicBlock *BB = I->getParent();
     if (BB == Preheader ||
-        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) !=
+        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) ==
             OriginalLoopBlocks.end())
       return End;
 
@@ -356,6 +357,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
       Instruction *Cloned = I->clone();
       Cloned->insertBefore(Preheader->getTerminator());
       Cloned->setName(I->getName() + ".hoisted.ub");
+      I->replaceAllUsesWith(Cloned);
+      I->eraseFromParent();
       return Cloned;
     }
     return End;
