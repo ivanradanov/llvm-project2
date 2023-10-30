@@ -204,14 +204,31 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     assert(Found && "Did not find kmpc call");
   }
 
-  // TODO abort if trip countis not divisible by the factor (or use the original
-  // non coarsened loop) we expect the runtime to call us with the appropriate
-  // trip count
-
   auto LoopBounds = L->getBounds(SE);
   if (LoopBounds == std::nullopt) {
     LLVM_DEBUG(dbgs() << "Unable to find loop bounds of the omp workshare "
                          "loop, not coarsening\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
+  // We need the upper bound of the loop to be defined before we enter it in
+  // order to know whether we should enter the coarsened version or the
+  // epilogue.
+  Value *End = [&](Value *End) -> Value * {
+    Instruction *I = dyn_cast<LoadInst>(End);
+    if (!I)
+      return End;
+
+    BasicBlock *BB = I->getParent();
+    if (BB == Preheader ||
+        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) ==
+            OriginalLoopBlocks.end())
+      return End;
+
+    return nullptr;
+  }(&LoopBounds->getFinalIVValue());
+  if (End == nullptr) {
+    LLVM_DEBUG(dbgs() << "Unusable FinalIVValue define in the loop\n");
     return LoopUnrollResult::Unmodified;
   }
 
@@ -340,37 +357,13 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   VMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, VMap);
 
-  auto HoistEnd = [&](Value *End) -> Value * {
-    Instruction *I = dyn_cast<Instruction>(End);
-    if (!I)
-      return End;
-
-    BasicBlock *BB = I->getParent();
-    if (BB == Preheader ||
-        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) ==
-            OriginalLoopBlocks.end())
-      return End;
-
-    if (Instruction *I = dyn_cast<Instruction>(End)) {
-      // TODO need to make sure this is legal - it should be the case for an omp
-      // workshare loop (why didnt we licm it?)
-      Instruction *Cloned = I->clone();
-      Cloned->insertBefore(Preheader->getTerminator());
-      Cloned->setName(I->getName() + ".hoisted.ub");
-      I->replaceAllUsesWith(Cloned);
-      I->eraseFromParent();
-      return Cloned;
-    }
-    return End;
-  };
-
   // Calc the start value for the epilogue loop, should be:
   // Start + (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor *
   // Stride.
   // I.e. when we are done with our iterations of the coarsened loop
   Value *EpilogueStart;
   Value *Start = &LoopBounds->getInitialIVValue();
-  Value *End = HoistEnd(&LoopBounds->getFinalIVValue());
+  // Value *End = GetEnd(&LoopBounds->getFinalIVValue()); // Defined above.
   Value *Stride = LoopBounds->getStepValue();
   Value *One = ConstantInt::get(Start->getType(), 1);
   Value *UnrollFactorCst = ConstantInt::get(Start->getType(), UnrollFactor);
@@ -458,10 +451,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   EpiloguePH->eraseFromParent();
 
   LLVM_DEBUG(llvm::dbgs() << "After unroll and interleave:\n" << *F);
-
-  simplifyLoop(L, nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  simplifyLoop(EpilogueLoop, nullptr, nullptr, nullptr, nullptr, nullptr,
-               false);
 
   setLoopAlreadyCoarsened(L);
 
