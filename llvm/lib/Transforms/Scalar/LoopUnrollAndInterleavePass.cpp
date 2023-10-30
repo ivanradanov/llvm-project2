@@ -117,27 +117,49 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
   return getUnrollMetadataForLoop(L, "llvm.loop.coarsen.disable");
 }
 
+#define DBGS llvm::dbgs() << "LUAI: "
+#define DBGS_FAIL llvm::dbgs() << "LUAI: FAIL: "
+
 static LoopUnrollResult
 tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                 const TargetTransformInfo &TTI, AssumptionCache &AC,
                 OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
                 ProfileSummaryInfo *PSI) {
-
-  if (getLoopAlreadyCoarsened(L)) {
-    LLVM_DEBUG(dbgs() << "Already coarsened\n");
+  // Disabled by default
+  unsigned UnrollFactor = 1;
+  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
+    StringRef(Env).getAsInteger(10, UnrollFactor);
+  assert(UnrollFactor > 0);
+  if (UnrollFactor == 1) {
+    LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
     return LoopUnrollResult::Unmodified;
+  }
+
+  // TODO currently doesnt work
+  bool Chunkify = false;
+  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_CHUNKIFY")) {
+    unsigned Int = 0;
+    StringRef(Env).getAsInteger(10, Int);
+    Chunkify = Int;
   }
 
   Function *F = L->getHeader()->getParent();
-  LLVM_DEBUG(dbgs() << "Loop Unroll And Interleave: F["
-                    << L->getHeader()->getParent()->getName() << "] Loop %"
-                    << L->getHeader()->getName() << " "
-                    << "Parallel=" << L->isAnnotatedParallel() << " ");
+  LLVM_DEBUG(DBGS << "F[" << F->getName() << "] Loop %"
+                  << L->getHeader()->getName() << " "
+                  << "Parallel=" << L->isAnnotatedParallel() << "\n");
 
-  if (!isWorkShareLoop(L)) {
-    LLVM_DEBUG(dbgs() << "Not work share loop\n");
+  if (getLoopAlreadyCoarsened(L)) {
+    LLVM_DEBUG(DBGS << "Already coarsened\n");
     return LoopUnrollResult::Unmodified;
   }
+
+  if (!isWorkShareLoop(L)) {
+    LLVM_DEBUG(DBGS << "Not work share loop\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
+    LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
 
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
@@ -147,7 +169,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     // We delete the preheader of the epilogue loop so this is currently how we
     // detect that this may be the epilogue loop, because all other loops should
     // have a preheader after being simplified before this pass
-    LLVM_DEBUG(dbgs() << "No preheader\n");
+    LLVM_DEBUG(DBGS_FAIL << "No preheader\n");
     return LoopUnrollResult::Unmodified;
   }
   BasicBlock *LatchBlock = L->getLoopLatch();
@@ -155,23 +177,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   BasicBlock *ExitBlock = L->getExitBlock();
   BasicBlock *ExitingBlock = L->getExitingBlock();
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
-
-  // Disabled by default
-  unsigned UnrollFactor = 1;
-  if (char *env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
-    StringRef(env).getAsInteger(10, UnrollFactor);
-  assert(UnrollFactor > 0);
-  if (UnrollFactor == 1) {
-    LLVM_DEBUG(dbgs() << "Unroll factor of 1 - ignoring\n");
-    return LoopUnrollResult::Unmodified;
-  }
-
-  bool Chunkify = false;
-  if (char *env = getenv("UNROLL_AND_INTERLEAVE_CHUNKIFY")) {
-    unsigned Int = 0;
-    StringRef(env).getAsInteger(10, Int);
-    Chunkify = Int;
-  }
 
   // Change the kmpc_call chunk size
   if (Chunkify) {
@@ -205,8 +210,8 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   auto LoopBounds = L->getBounds(SE);
   if (LoopBounds == std::nullopt) {
-    LLVM_DEBUG(dbgs() << "Unable to find loop bounds of the omp workshare "
-                         "loop, not coarsening\n");
+    LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
+                            "loop, not coarsening\n");
     return LoopUnrollResult::Unmodified;
   }
 
@@ -227,15 +232,15 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     return nullptr;
   }(&LoopBounds->getFinalIVValue());
   if (End == nullptr) {
-    LLVM_DEBUG(dbgs() << "Unusable FinalIVValue define in the loop\n");
+    LLVM_DEBUG(DBGS_FAIL << "Unusable FinalIVValue define in the loop\n");
     return LoopUnrollResult::Unmodified;
   }
 
   Value *InitialIVVal = &LoopBounds->getInitialIVValue();
   Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
   if (!InitialIVInst) {
-    LLVM_DEBUG(dbgs() << "Unexpected initial val definition" << *InitialIVVal
-                      << "\n");
+    LLVM_DEBUG(DBGS_FAIL << "Unexpected initial val definition" << *InitialIVVal
+                         << "\n");
     return LoopUnrollResult::Unmodified;
   }
 
@@ -458,9 +463,12 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   EpiloguePH->eraseFromParent();
 
-  LLVM_DEBUG(llvm::dbgs() << "After unroll and interleave:\n" << *F);
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
+    LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
 
   setLoopAlreadyCoarsened(L);
+
+  LLVM_DEBUG(DBGS << "SUCCESS\n");
 
   return LoopUnrollResult::PartiallyUnrolled;
 }
