@@ -127,6 +127,7 @@
 #include "llvm/Transforms/Utils/CanonicalizeAliases.h"
 #include "llvm/Transforms/Utils/CountVisits.h"
 #include "llvm/Transforms/Utils/InjectTLIMappings.h"
+#include "llvm/Transforms/Utils/LCSSA.h"
 #include "llvm/Transforms/Utils/LibCallsShrinkWrap.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
@@ -1424,6 +1425,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   }
   OptimizePM.addPass(SimplifyCFGPass());
   OptimizePM.addPass(EarlyCSEPass());
+  OptimizePM.addPass(LoopSimplifyPass());
+  OptimizePM.addPass(LCSSAPass());
 
   // Distribute loops to allow partial vectorization.  I.e. isolate dependences
   // into separate loop that would otherwise inhibit vectorization.  This is
