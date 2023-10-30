@@ -117,8 +117,11 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
   return getUnrollMetadataForLoop(L, "llvm.loop.coarsen.disable");
 }
 
-static LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT,
-                                        LoopInfo *LI, ScalarEvolution &SE) {
+static LoopUnrollResult
+tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
+                const TargetTransformInfo &TTI, AssumptionCache &AC,
+                OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
+                ProfileSummaryInfo *PSI) {
 
   if (getLoopAlreadyCoarsened(L)) {
     LLVM_DEBUG(dbgs() << "Already coarsened\n");
@@ -135,8 +138,6 @@ static LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT,
     LLVM_DEBUG(dbgs() << "Not work share loop\n");
     return LoopUnrollResult::Unmodified;
   }
-
-  simplifyLoop(L, &DT, LI, &SE, nullptr, nullptr, false);
 
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
@@ -455,29 +456,25 @@ static LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT,
 
   LLVM_DEBUG(llvm::dbgs() << "After unroll and interleave:\n" << *F);
 
+  simplifyLoop(L, nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  simplifyLoop(EpilogueLoop, nullptr, nullptr, nullptr, nullptr, nullptr, false);
+
   setLoopAlreadyCoarsened(L);
+
+
 
   return LoopUnrollResult::PartiallyUnrolled;
 }
 
 PreservedAnalyses
-LoopUnrollAndInterleavePass::run(Function &F, FunctionAnalysisManager &AM) {
-  auto &LI = AM.getResult<LoopAnalysis>(F);
-  auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
-  auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
-  auto &ORE = AM.getResult<OptimizationRemarkEmitterAnalysis>(F);
+LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
+                                 LoopStandardAnalysisResults &AR,
+                                 LPMUpdater &Updater) {
+  OptimizationRemarkEmitter ORE(L.getHeader()->getParent());
 
-  // across the loops.
-  SmallVector<Loop *, 8> Worklist;
-
-  for (Loop *TopLevelLoop : LI)
-    Worklist.push_back(TopLevelLoop);
-
-  // Now walk the identified inner loops.
-  bool Changed = false;
-  for (Loop *L : Worklist)
-    Changed |= tryToUnrollLoop(L, DT, &LI, SE) != LoopUnrollResult::Unmodified;
-
+  bool Changed = tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, ORE,
+                                 /*BFI*/ nullptr, /*PSI*/ nullptr) !=
+                 LoopUnrollResult::Unmodified;
   if (!Changed)
     return PreservedAnalyses::all();
 

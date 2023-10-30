@@ -1402,19 +1402,26 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
 
   invokeVectorizerStartEPCallbacks(OptimizePM, Level);
 
-  LoopPassManager LPM;
-  // First rotate loops that may have been un-rotated by prior passes.
-  // Disable header duplication at -Oz.
-  LPM.addPass(LoopRotatePass(Level != OptimizationLevel::Oz, LTOPreLink));
-  // Some loops may have become dead by now. Try to delete them.
-  // FIXME: see discussion in https://reviews.llvm.org/D112851,
-  //        this may need to be revisited once we run GVN before loop deletion
-  //        in the simplification pipeline.
-  LPM.addPass(LoopDeletionPass());
-  OptimizePM.addPass(createFunctionToLoopPassAdaptor(
-      std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
+  {
+    LoopPassManager LPM;
+    // First rotate loops that may have been un-rotated by prior passes.
+    // Disable header duplication at -Oz.
+    LPM.addPass(LoopRotatePass(Level != OptimizationLevel::Oz, LTOPreLink));
+    // Some loops may have become dead by now. Try to delete them.
+    // FIXME: see discussion in https://reviews.llvm.org/D112851,
+    //        this may need to be revisited once we run GVN before loop deletion
+    //        in the simplification pipeline.
+    LPM.addPass(LoopDeletionPass());
+    OptimizePM.addPass(createFunctionToLoopPassAdaptor(
+                           std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
+  }
 
-  OptimizePM.addPass(LoopUnrollAndInterleavePass());
+  {
+    LoopPassManager LPM;
+    LPM.addPass(LoopUnrollAndInterleavePass());
+    OptimizePM.addPass(createFunctionToLoopPassAdaptor(
+                           std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
+  }
   OptimizePM.addPass(SimplifyCFGPass());
   OptimizePM.addPass(EarlyCSEPass());
 
