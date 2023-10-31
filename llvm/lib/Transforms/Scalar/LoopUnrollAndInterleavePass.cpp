@@ -120,6 +120,46 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
 #define DBGS llvm::dbgs() << "LUAI: "
 #define DBGS_FAIL llvm::dbgs() << "LUAI: FAIL: "
 
+static bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
+  const bool DoExtraAnalysis = true;
+  bool Result = true;
+  for (BasicBlock *BB : TheLoop->blocks()) {
+    // Check whether the BB terminator is a BranchInst. Any other terminator is
+    // not supported yet.
+    auto *Term = BB->getTerminator();
+    auto *Br = dyn_cast<BranchInst>(Term);
+    auto *Sw = dyn_cast<SwitchInst>(Term);
+    if (!Br && !Sw) {
+      LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator" << *Term << "\n");
+      if (DoExtraAnalysis)
+        Result = false;
+      else
+        return false;
+    }
+
+    // TODO we can better if we know there is no synchronisation as we do not
+    // need to care about stores from other iterations
+    if (Br && Br->isConditional() &&
+        !TheLoop->isLoopInvariant(Br->getCondition()) &&
+        !LI->isLoopHeader(Br->getSuccessor(0)) &&
+        !LI->isLoopHeader(Br->getSuccessor(1))) {
+      LLVM_DEBUG(DBGS_FAIL << "Divergent branch found:" << *Br << "\n");
+      if (DoExtraAnalysis)
+        Result = false;
+      else
+        return false;
+    }
+    if (Sw && !TheLoop->isLoopInvariant(Sw->getCondition())) {
+      LLVM_DEBUG(DBGS_FAIL << "Divergent switch found:" << *Sw << "\n");
+      if (DoExtraAnalysis)
+        Result = false;
+      else
+        return false;
+    }
+  }
+  return Result;
+}
+
 static LoopUnrollResult
 tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                 const TargetTransformInfo &TTI, AssumptionCache &AC,
@@ -160,6 +200,9 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
     LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
+
+  if (!isLegalToCoarsen(L, LI))
+    return LoopUnrollResult::Unmodified;
 
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
