@@ -12,28 +12,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
-#include "llvm-c/Core.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseMapInfo.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Analysis/AssumptionCache.h"
-#include "llvm/Analysis/BlockFrequencyInfo.h"
-#include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/LoopUnrollAnalyzer.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
+#include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
@@ -45,7 +35,6 @@
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/InitializePasses.h"
@@ -61,25 +50,60 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/LoopPeel.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <limits>
-#include <memory>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <utility>
 
 using namespace llvm;
 
 #define DEBUG_TYPE "loop-unroll-and-interleave"
+
+class LoopUnrollAndInterleave {
+private:
+  OptimizationRemarkEmitter &ORE;
+  LoopInfo *LI;
+  DominatorTree *DT;
+  PostDominatorTree *PDT;
+  Loop *TheLoop;
+
+  // Loop data
+  BasicBlock *CombinedLatchExiting;
+
+  /// Divergent groups are the maximal sets of basic blocks with the following
+  /// properties:
+  ///
+  /// * There is a divergent branch from a block outside the region (From) to a
+  ///   block (Entry) in the set
+  ///
+  /// * All blocks in the set are post-dominated by a single exiting block (To)
+  ///
+  /// (We assume a single combined exiting/latch block)
+  struct DivergentRegion {
+    // Outside the group
+    BasicBlock *From;
+    BasicBlock *To;
+
+    // Entry block in the region, jumped to from From
+    BasicBlock *Entry;
+    // The blocks in the divergent region
+    SmallPtrSet<BasicBlock *, 8> DivergentBlocks;
+  };
+
+  SmallVector<Instruction *> DivergentBranches;
+  SmallVector<DivergentRegion> DivergentRegions;
+
+  void populateDivergentRegions();
+  bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
+
+public:
+  LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE) : ORE(ORE) {}
+  LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
+                                   ScalarEvolution &SE,
+                                   const TargetTransformInfo &TTI,
+                                   PostDominatorTree &PDT);
+};
 
 static bool isWorkShareLoop(Loop *L) {
   if (!L->isOutermost())
@@ -120,7 +144,16 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
 #define DBGS llvm::dbgs() << "LUAI: "
 #define DBGS_FAIL llvm::dbgs() << "LUAI: FAIL: "
 
-static bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
+#pragma push_macro("ILLEGAL")
+#define ILLEGAL()                                                              \
+  do {                                                                         \
+    if (DoExtraAnalysis)                                                       \
+      Result = false;                                                          \
+    else                                                                       \
+      return false;                                                            \
+  } while (0)
+
+bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
   const bool DoExtraAnalysis = true;
   bool Result = true;
   for (BasicBlock *BB : TheLoop->blocks()) {
@@ -130,41 +163,97 @@ static bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
     auto *Br = dyn_cast<BranchInst>(Term);
     auto *Sw = dyn_cast<SwitchInst>(Term);
     if (!Br && !Sw) {
-      LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator" << *Term << "\n");
-      if (DoExtraAnalysis)
-        Result = false;
-      else
-        return false;
+      LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator" << *Term
+                           << "\n");
+      ILLEGAL();
     }
 
-    // TODO we can better if we know there is no synchronisation as we do not
-    // need to care about stores from other iterations
+    // TODO we need to check for syncs and divergent branches, because I think
+    // they have legality implications
+    //
+    // TODO we can do better if we know there is no
+    // synchronisation as we do not need to care about stores from other
+    // iterations
     if (Br && Br->isConditional() &&
         !TheLoop->isLoopInvariant(Br->getCondition()) &&
         !LI->isLoopHeader(Br->getSuccessor(0)) &&
         !LI->isLoopHeader(Br->getSuccessor(1))) {
-      LLVM_DEBUG(DBGS_FAIL << "Divergent branch found:" << *Br << "\n");
-      if (DoExtraAnalysis)
-        Result = false;
-      else
-        return false;
+      DivergentBranches.push_back(Term);
+      LLVM_DEBUG(DBGS << "Divergent branch found:" << *Br << "\n");
     }
     if (Sw && !TheLoop->isLoopInvariant(Sw->getCondition())) {
-      LLVM_DEBUG(DBGS_FAIL << "Divergent switch found:" << *Sw << "\n");
-      if (DoExtraAnalysis)
-        Result = false;
-      else
-        return false;
+      DivergentBranches.push_back(Term);
+      LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
     }
   }
+
+  CombinedLatchExiting = TheLoop->getExitingBlock();
+  if (CombinedLatchExiting != TheLoop->getLoopLatch()) {
+    LLVM_DEBUG(DBGS << "Expected a combined exiting and latch block\n");
+    ILLEGAL();
+  }
+
   return Result;
 }
+#pragma pop_macro("ILLEGAL")
 
-static LoopUnrollResult
-tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
-                const TargetTransformInfo &TTI, AssumptionCache &AC,
-                OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
-                ProfileSummaryInfo *PSI) {
+template <typename T, typename S> static bool contains(S &C, T A) {
+  return std::find(C.begin(), C.end(), A) != C.end();
+}
+
+static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
+                                SmallPtrSetImpl<BasicBlock *> &Reachable) {
+  std::queue<BasicBlock *> Queue;
+  Queue.push(From);
+  Reachable.insert(From);
+  while (!Queue.empty()) {
+    BasicBlock *SrcBB = Queue.front();
+    Queue.pop();
+    for (BasicBlock *DstBB : children<BasicBlock *>(SrcBB)) {
+      if (Reachable.insert(DstBB).second && DstBB != To)
+        Queue.push(DstBB);
+    }
+  }
+}
+
+void LoopUnrollAndInterleave::populateDivergentRegions() {
+  for (Instruction *Term : DivergentBranches) {
+    BasicBlock *From = Term->getParent();
+    for (unsigned It = 0; It < Term->getNumSuccessors(); It++) {
+      auto *Entry = Term->getSuccessor(It);
+      auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
+      assert(ConvergeBlock &&
+             PDT->dominates(TheLoop->getExitingBlock(), ConvergeBlock));
+
+      SmallPtrSet<BasicBlock *, 8> Reachable;
+      findReachableFromTo(Entry, ConvergeBlock, Reachable);
+      LLVM_DEBUG({
+        DBGS << "Divergent group for entry %" << Entry->getName() << " from %"
+             << Term->getParent()->getName() << " with convergence block %"
+             << ConvergeBlock->getName() << ":\n";
+        for (auto *BB : Reachable) {
+          dbgs() << BB->getName() << ", ";
+        }
+        dbgs() << "\n";
+      });
+
+      Reachable.erase(ConvergeBlock);
+
+      DivergentRegion Region = {From, ConvergeBlock, Entry,
+                                std::move(Reachable)};
+      DivergentRegions.push_back(Region);
+    }
+  }
+}
+
+LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
+    Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
+    const TargetTransformInfo &TTI, PostDominatorTree &PDT) {
+  this->LI = LI;
+  this->TheLoop = L;
+  this->DT = &DT;
+  this->PDT = &PDT;
+
   // Disabled by default
   unsigned UnrollFactor = 1;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
@@ -203,6 +292,27 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
 
   if (!isLegalToCoarsen(L, LI))
     return LoopUnrollResult::Unmodified;
+
+  auto LoopBounds = L->getBounds(SE);
+  if (LoopBounds == std::nullopt) {
+    LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
+                            "loop, not coarsening\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
+  // This makes the divergent region analysis easier as we will _always_ have a
+  // block where the divergent regions converge (because the exiting
+  auto *NewBB = CombinedLatchExiting->splitBasicBlockBefore(
+      CombinedLatchExiting->getTerminator());
+  NewBB->setName(CombinedLatchExiting->getName() + ".split");
+  L->addBasicBlockToLoop(NewBB, *LI);
+
+  // TODO Pretty bad, SE is also invalidated but I /think/ we dont need it any
+  // more
+  PDT.recalculate(*F);
+  DT.recalculate(*F);
+
+  populateDivergentRegions();
 
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
@@ -249,13 +359,6 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
       }
     }();
     assert(Found && "Did not find kmpc call");
-  }
-
-  auto LoopBounds = L->getBounds(SE);
-  if (LoopBounds == std::nullopt) {
-    LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
-                            "loop, not coarsening\n");
-    return LoopUnrollResult::Unmodified;
   }
 
   // We need the upper bound of the loop to be defined before we enter it in
@@ -520,10 +623,13 @@ PreservedAnalyses
 LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
                                  LoopStandardAnalysisResults &AR,
                                  LPMUpdater &Updater) {
-  OptimizationRemarkEmitter ORE(L.getHeader()->getParent());
+  auto *F = L.getHeader()->getParent();
+  OptimizationRemarkEmitter ORE(F);
 
-  bool Changed = tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, ORE,
-                                 /*BFI*/ nullptr, /*PSI*/ nullptr) !=
+  // auto &PDT = AM.getResult<PostDominatorTreeAnalysis>(L, AR);
+  auto PDT = PostDominatorTree(*F);
+  bool Changed = LoopUnrollAndInterleave(ORE).tryToUnrollLoop(
+                     &L, AR.DT, &AR.LI, AR.SE, AR.TTI, PDT) !=
                  LoopUnrollResult::Unmodified;
   if (!Changed)
     return PreservedAnalyses::all();
