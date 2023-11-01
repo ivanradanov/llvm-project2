@@ -71,6 +71,10 @@ private:
   // Loop data
   BasicBlock *CombinedLatchExiting;
 
+  struct MergedDivergentRegion {
+    SmallPtrSet<BasicBlock *, 8> Blocks;
+  };
+
   /// Divergent groups are the maximal sets of basic blocks with the following
   /// properties:
   ///
@@ -88,11 +92,12 @@ private:
     // Entry block in the region, jumped to from From
     BasicBlock *Entry;
     // The blocks in the divergent region
-    SmallPtrSet<BasicBlock *, 8> DivergentBlocks;
+    SmallPtrSet<BasicBlock *, 8> Blocks;
   };
 
   SmallVector<Instruction *> DivergentBranches;
   SmallVector<DivergentRegion> DivergentRegions;
+  SmallVector<MergedDivergentRegion> MergedDivergentRegions;
 
   void populateDivergentRegions();
   bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
@@ -218,32 +223,81 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
 
 void LoopUnrollAndInterleave::populateDivergentRegions() {
   for (Instruction *Term : DivergentBranches) {
-    BasicBlock *From = Term->getParent();
-    for (unsigned It = 0; It < Term->getNumSuccessors(); It++) {
-      auto *Entry = Term->getSuccessor(It);
-      auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
-      assert(ConvergeBlock &&
-             PDT->dominates(TheLoop->getExitingBlock(), ConvergeBlock));
+    BasicBlock *Entry = Term->getParent();
+    auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
+    assert(ConvergeBlock &&
+           PDT->dominates(CombinedLatchExiting, ConvergeBlock));
+    // Split the entry blocks to have the first part be convergent and then
+    // diverge in the second part
+    auto *From = Entry->splitBasicBlockBefore(Entry->getTerminator());
+    From->setName(Entry->getName() + ".divergent.preentry.split");
+    TheLoop->addBasicBlockToLoop(From, *LI);
+    if (TheLoop->getHeader() == Entry)
+      TheLoop->moveToHeader(From);
 
-      SmallPtrSet<BasicBlock *, 8> Reachable;
-      findReachableFromTo(Entry, ConvergeBlock, Reachable);
-      LLVM_DEBUG({
-        DBGS << "Divergent group for entry %" << Entry->getName() << " from %"
-             << Term->getParent()->getName() << " with convergence block %"
-             << ConvergeBlock->getName() << ":\n";
-        for (auto *BB : Reachable) {
-          dbgs() << BB->getName() << ", ";
-        }
-        dbgs() << "\n";
-      });
+    SmallPtrSet<BasicBlock *, 8> Reachable;
+    findReachableFromTo(Entry, ConvergeBlock, Reachable);
 
-      Reachable.erase(ConvergeBlock);
+    Reachable.erase(ConvergeBlock);
 
-      DivergentRegion Region = {From, ConvergeBlock, Entry,
-                                std::move(Reachable)};
-      DivergentRegions.push_back(Region);
+    DivergentRegion Region = {From, ConvergeBlock, Entry, std::move(Reachable)};
+    DivergentRegions.push_back(Region);
+  }
+
+  // Split the converging blocks to have the first part be divergent and
+  // reconverg in the second part
+  SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
+  for (auto &DR : DivergentRegions) {
+    BasicBlock *LastDivergent;
+    if (ConvergingBlocks.contains(DR.To)) {
+      auto Preds = predecessors(DR.To);
+      assert(std::next(Preds.begin()) == Preds.end());
+      LastDivergent = *Preds.begin();
+    } else {
+      LastDivergent = DR.To->splitBasicBlockBefore(DR.To->getFirstNonPHI());
+      LastDivergent->setName(DR.To->getName() + ".divergent.exit.split");
+      TheLoop->addBasicBlockToLoop(LastDivergent, *LI);
+    }
+    DR.Blocks.insert(LastDivergent);
+  }
+
+  LLVM_DEBUG({
+    for (auto &DR : DivergentRegions) {
+      DBGS << "Divergent region for entry %" << DR.Entry->getName()
+           << " from block %" << DR.From->getName() << " to block %"
+           << DR.To->getName() << ":\n";
+      for (auto *BB : DR.Blocks)
+        dbgs() << "%" << BB->getName() << ", ";
+      dbgs() << "\n";
+    }
+  });
+
+  // Merge overlapping divergent regions so as to generate them only once
+  for (auto &DR : DivergentRegions) {
+    // TODO Performance of this isnt very good
+    bool Found = false;
+    for (auto &MDR : MergedDivergentRegions) {
+      if (!set_intersection(DR.Blocks, MDR.Blocks).empty()) {
+        MDR.Blocks.insert(DR.Blocks.begin(), DR.Blocks.end());
+        Found = true;
+        break;
+      }
+    }
+    if (!Found) {
+      MergedDivergentRegion MDR = {DR.Blocks};
+      MergedDivergentRegions.push_back(std::move(MDR));
     }
   }
+  LLVM_DEBUG({
+    DBGS << "Merged divergent regions (" << MergedDivergentRegions.size()
+         << "):\n";
+    for (auto &MDR : MergedDivergentRegions) {
+      dbgs() << "Region: ";
+      for (auto *BB : MDR.Blocks)
+        dbgs() << "%" << BB->getName() << ", ";
+      dbgs() << "\n";
+    }
+  });
 }
 
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
@@ -278,12 +332,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
                   << "Parallel=" << L->isAnnotatedParallel() << "\n");
 
   if (getLoopAlreadyCoarsened(L)) {
-    LLVM_DEBUG(DBGS << "Already coarsened\n");
+    LLVM_DEBUG(DBGS_FAIL << "Already coarsened\n");
     return LoopUnrollResult::Unmodified;
   }
 
   if (!isWorkShareLoop(L)) {
-    LLVM_DEBUG(DBGS << "Not work share loop\n");
+    LLVM_DEBUG(DBGS_FAIL << "Not work share loop\n");
     return LoopUnrollResult::Unmodified;
   }
 
@@ -301,18 +355,17 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   // This makes the divergent region analysis easier as we will _always_ have a
-  // block where the divergent regions converge (because the exiting
-  auto *NewBB = CombinedLatchExiting->splitBasicBlockBefore(
-      CombinedLatchExiting->getTerminator());
-  NewBB->setName(CombinedLatchExiting->getName() + ".split");
-  L->addBasicBlockToLoop(NewBB, *LI);
+  // block where the divergent regions converge
+  // auto *NewBB = CombinedLatchExiting->splitBasicBlockBefore(
+  //     CombinedLatchExiting->getFirstNonPHI());
+  // NewBB->setName(CombinedLatchExiting->getName() + ".divergent.exit.split");
+  // L->addBasicBlockToLoop(NewBB, *LI);
+
+  populateDivergentRegions();
 
   // TODO Pretty bad, SE is also invalidated but I /think/ we dont need it any
   // more
-  PDT.recalculate(*F);
   DT.recalculate(*F);
-
-  populateDivergentRegions();
 
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
@@ -325,10 +378,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     LLVM_DEBUG(DBGS_FAIL << "No preheader\n");
     return LoopUnrollResult::Unmodified;
   }
-  BasicBlock *LatchBlock = L->getLoopLatch();
-  assert(LatchBlock);
   BasicBlock *ExitBlock = L->getExitBlock();
-  BasicBlock *ExitingBlock = L->getExitingBlock();
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
 
   // Change the kmpc_call chunk size
@@ -394,10 +444,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // in-place
   ValueToValueMapTy EpilogueVMap;
   SmallVector<BasicBlock *> EpilogueLoopBlocks;
-  // TODO insert after the last block of the loop
-  Loop *EpilogueLoop = cloneLoopWithPreheader(
-      LatchBlock->getNextNode(), Preheader, L, EpilogueVMap, ".epilogue", LI,
-      &DT, EpilogueLoopBlocks);
+  Loop *EpilogueLoop =
+      cloneLoopWithPreheader(ExitBlock, Preheader, L, EpilogueVMap, ".epilogue",
+                             LI, &DT, EpilogueLoopBlocks);
   auto IsInEpilogue = [&](Use &U) -> bool {
     if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
       if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
@@ -511,9 +560,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   for (BasicBlock::iterator I = ExitBlock->begin(); isa<PHINode>(I);) {
     PHINode *PN = cast<PHINode>(I++);
 
-    Value *IncomingVal = PN->getIncomingValueForBlock(ExitingBlock);
+    Value *IncomingVal = PN->getIncomingValueForBlock(CombinedLatchExiting);
     PN->addIncoming(EpilogueVMap[IncomingVal],
-                    cast<BasicBlock>(EpilogueVMap[ExitingBlock]));
+                    cast<BasicBlock>(EpilogueVMap[CombinedLatchExiting]));
   }
 
   // Calc the start value for the epilogue loop, should be:
@@ -559,16 +608,17 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     // Note we need to check for the loop end first and exit the loop
     // alltogether if we are at the end because if all iterations are handled by
     // the coarsened loop the final IV will be equal to the epilogue start IV
-    BranchInst *BackEdge = dyn_cast<BranchInst>(LatchBlock->getTerminator());
+    BranchInst *BackEdge =
+        dyn_cast<BranchInst>(CombinedLatchExiting->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
-    BasicBlock *PrevBB = LatchBlock->splitBasicBlockBefore(BackEdge);
+    BasicBlock *PrevBB = CombinedLatchExiting->splitBasicBlockBefore(BackEdge);
     Instruction *BI = PrevBB->getTerminator();
     IRBuilder<> Builder(BI);
     Value *IsAtEpilogueStart = Builder.CreateCmp(
         CmpInst::Predicate::ICMP_EQ, &LoopBounds->getStepInst(), EpilogueStart,
         "is.epilogue.start");
     Value *EpilogueBranch = Builder.CreateCondBr(
-        IsAtEpilogueStart, EpilogueLoop->getHeader(), LatchBlock);
+        IsAtEpilogueStart, EpilogueLoop->getHeader(), CombinedLatchExiting);
     BI->eraseFromParent();
     EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, PrevBB);
 
