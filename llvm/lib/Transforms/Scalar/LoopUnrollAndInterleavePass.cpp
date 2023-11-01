@@ -354,13 +354,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     return LoopUnrollResult::Unmodified;
   }
 
-  // This makes the divergent region analysis easier as we will _always_ have a
-  // block where the divergent regions converge
-  // auto *NewBB = CombinedLatchExiting->splitBasicBlockBefore(
-  //     CombinedLatchExiting->getFirstNonPHI());
-  // NewBB->setName(CombinedLatchExiting->getName() + ".divergent.exit.split");
-  // L->addBasicBlockToLoop(NewBB, *LI);
-
   populateDivergentRegions();
 
   // TODO Pretty bad, SE is also invalidated but I /think/ we dont need it any
