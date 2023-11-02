@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -28,6 +29,7 @@
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -67,11 +69,14 @@ private:
   DominatorTree *DT;
   PostDominatorTree *PDT;
   Loop *TheLoop;
+  unsigned UnrollFactor;
 
   // Loop data
   BasicBlock *CombinedLatchExiting;
 
   struct MergedDivergentRegion {
+    SmallPtrSet<BasicBlock *, 8> Entries;
+    BasicBlock *Exit;
     SmallPtrSet<BasicBlock *, 8> Blocks;
   };
 
@@ -108,6 +113,7 @@ private:
   SmallVector<MergedDivergentRegion> MergedDivergentRegions;
   SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
 
+  void insertMDRIncomingPHINodes(Loop *L, ValueToValueMapTy &VMap);
   void populateDivergentRegions();
   bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
 
@@ -291,13 +297,15 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     bool Found = false;
     for (auto &MDR : MergedDivergentRegions) {
       if (!set_intersection(DR.Blocks, MDR.Blocks).empty()) {
+        MDR.Entries.insert(DR.Entry);
+        assert(MDR.Exit == DR.Exit);
         MDR.Blocks.insert(DR.Blocks.begin(), DR.Blocks.end());
         Found = true;
         break;
       }
     }
     if (!Found) {
-      MergedDivergentRegion MDR = {DR.Blocks};
+      MergedDivergentRegion MDR = {{DR.Entry}, DR.Exit, DR.Blocks};
       MergedDivergentRegions.push_back(std::move(MDR));
     }
   }
@@ -319,6 +327,59 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
         cast<BranchInst>((*Preds.begin())->getTerminator()));
   }
 }
+void LoopUnrollAndInterleave::insertMDRIncomingPHINodes(
+    Loop *L, ValueToValueMapTy &VMap) {
+
+  auto MapBlock = [&VMap](BasicBlock *BB) {
+    return cast<BasicBlock>(VMap[BB]);
+  };
+
+  for (auto &MDR : MergedDivergentRegions) {
+    auto MappedRange = llvm::map_range(MDR.Blocks, MapBlock);
+    SmallPtrSet<BasicBlock *, 8> MappedMDRBlocks(MappedRange.begin(),
+                                                 MappedRange.end());
+
+    // Find values defined outside the MDR and used inside it
+    SmallPtrSet<Instruction *, 8> DefinedOutside;
+    for (auto *BB : L->getBlocks()) {
+      if (MappedMDRBlocks.contains(BB))
+        continue;
+
+      for (auto &I : *BB) {
+        if (I.use_empty())
+          continue;
+        for (auto *User : I.users()) {
+          auto *UserI = dyn_cast<Instruction>(User);
+          if (!UserI)
+            continue;
+          if (MappedMDRBlocks.contains(UserI->getParent()))
+            DefinedOutside.insert(&I);
+        }
+      }
+    }
+
+    ValueToValueMapTy PHIVMap;
+    for (auto *I : DefinedOutside) {
+      for (auto *OEntryBB : MDR.Entries) {
+        auto *EntryBB = cast<BasicBlock>(VMap[OEntryBB]);
+        if (DT->dominates(I, EntryBB)) {
+          new StoreInst(
+          auto *PN = PHINode::Create(I->getType(), 1 + UnrollFactor,
+                                     I->getName() + ".expl.phi");
+          PN->insertBefore(EntryBB->getFirstNonPHI());
+          auto Preds = predecessors(EntryBB);
+          assert(std::next(Preds.begin()) == Preds.end());
+          PN->addIncoming(I, *Preds.begin());
+          PHIVMap[I] = PN;
+          break;
+        }
+      }
+    }
+    SmallVector<BasicBlock *> BlocksArray(MappedMDRBlocks.begin(),
+                                          MappedMDRBlocks.end());
+    remapInstructionsInBlocks(BlocksArray, PHIVMap);
+  }
+}
 
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
@@ -329,7 +390,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   this->PDT = &PDT;
 
   // Disabled by default
-  unsigned UnrollFactor = 1;
+  UnrollFactor = 1;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
     StringRef(Env).getAsInteger(10, UnrollFactor);
   assert(UnrollFactor > 0);
@@ -571,9 +632,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Find all values used in the divergent region but defined outside and insert
   // explicit phi nodes that bring in the values in the Entry block
-  // TODO
-  // insertMDRIncomingPHINodes(EpilogueLoop, EpilogueVMap,
-  // MergedDivergentRegions);
+  DT.recalculate(*F); // TODO another recalculation...
+  insertMDRIncomingPHINodes(EpilogueLoop, EpilogueVMap);
+  LLVM_DEBUG(DBGS << "After MDR PHI:\n" << *F);
 
   Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
   auto *CoarsenedIdentPtr = PreheaderBuilder.CreateAlloca(
