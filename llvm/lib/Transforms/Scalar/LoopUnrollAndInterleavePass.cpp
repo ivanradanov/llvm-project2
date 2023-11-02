@@ -575,16 +575,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // insertMDRIncomingPHINodes(EpilogueLoop, EpilogueVMap,
   // MergedDivergentRegions);
 
-  for (auto *BI : ConvergentToDivergentEdges) {
-    assert(!BI->isConditional());
+  Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
+  auto *CoarsenedIdentPtr = PreheaderBuilder.CreateAlloca(
+      CoarsenedIdentifierTy, /*ArraySize*/ nullptr, "coarsened.ident");
 
-    BasicBlock *Entry = BI->getSuccessor(0);
-    BasicBlock *EpilogueEntry =
-        cast<BasicBlock>(EpilogueVMap[BI->getSuccessor(0)]);
-
-    auto &DR = *std::find_if(DivergentRegions.begin(), DivergentRegions.begin(),
-                             [&](auto &DR) { return DR.Entry == Entry; });
-
+  for (auto &DR : DivergentRegions) {
+    BasicBlock *EpilogueEntry = cast<BasicBlock>(EpilogueVMap[DR.Entry]);
     BasicBlock *EpilogueExit = cast<BasicBlock>(EpilogueVMap[DR.Exit]);
     BasicBlock *EpilogueTo = cast<BasicBlock>(EpilogueVMap[DR.To]);
     BasicBlock *EpilogueFrom = cast<BasicBlock>(EpilogueVMap[DR.From]);
@@ -594,49 +590,55 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       (void)EpilogueBB;
     }
 
-    Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
-    PHINode *IsFromCoarsened = PHINode::Create(
-        CoarsenedIdentifierTy, /*NumReservedValues=*/UnrollFactor + 1,
-        "is.from.coarsened", EpilogueEntry->getFirstNonPHI());
-    IsFromCoarsened->addIncoming(ConstantInt::get(CoarsenedIdentifierTy, -1),
-                                 EpilogueFrom);
+    new StoreInst(ConstantInt::get(CoarsenedIdentifierTy, -1),
+                  CoarsenedIdentPtr, EpilogueFrom->getTerminator());
 
     // Multiple DivergentRegion entries may converge at the same location,
     // create the exit switch only once
     auto *ToOutroSw = dyn_cast<SwitchInst>(EpilogueExit->getTerminator());
     int NumSwCases;
     if (!ToOutroSw) {
-      ToOutroSw = SwitchInst::Create(IsFromCoarsened, EpilogueTo, 0);
+      auto *Ld =
+          new LoadInst(CoarsenedIdentifierTy, CoarsenedIdentPtr,
+                       "coarsene.ident.load", EpilogueExit->getTerminator());
+      ToOutroSw = SwitchInst::Create(Ld, EpilogueTo, 0);
       EpilogueExit->getTerminator()->eraseFromParent();
       ToOutroSw->insertInto(EpilogueExit, EpilogueExit->end());
-      NumSwCases = 0;
-    } else {
-      NumSwCases = ToOutroSw->getNumCases();
     }
+    NumSwCases = ToOutroSw->getNumCases();
 
+    BasicBlock *LastOutro = nullptr;
     for (unsigned It = 0; It < UnrollFactor; It++) {
+      auto *ThisFactorIdentifier = cast<ConstantInt>(
+          ConstantInt::get(CoarsenedIdentifierTy, NumSwCases + It));
+
       auto *Intro = BasicBlock::Create(
           Ctx, EpilogueEntry->getName() + ".div.intro." + std::to_string(It), F,
           EpilogueEntry);
-      auto *FromIntroBI = BranchInst::Create(EpilogueEntry);
-      FromIntroBI->insertInto(Intro, Intro->end());
-      auto *ToIntroBI = BranchInst::Create(Intro);
-      DR.From->getTerminator()->eraseFromParent();
-      ToIntroBI->insertInto(DR.From, DR.From->end());
+      IRBuilder<> IntroBuilder(Intro);
+      IntroBuilder.CreateStore(ThisFactorIdentifier, CoarsenedIdentPtr);
+      IntroBuilder.CreateBr(EpilogueEntry);
 
-      auto *ThisFactorIdentifier = cast<ConstantInt>(
-          ConstantInt::get(CoarsenedIdentifierTy, NumSwCases + It));
-      IsFromCoarsened->addIncoming(ThisFactorIdentifier, Intro);
+      auto *ToIntroBI = BranchInst::Create(Intro);
+      if (It == 0) {
+        assert(!LastOutro);
+        DR.From->getTerminator()->eraseFromParent();
+        ToIntroBI->insertInto(DR.From, DR.From->end());
+      } else {
+        ToIntroBI->insertInto(LastOutro, LastOutro->end());
+      }
 
       // TODO Handle entry PHIs
 
-      auto *Outro = BasicBlock::Create(
+      auto *Outro = LastOutro = BasicBlock::Create(
           Ctx,
           EpilogueExit->getName() + ".div.outro." + std::to_string(It) + "." +
               std::to_string(NumSwCases / UnrollFactor),
           F, EpilogueTo);
-      auto *FromOutroBI = BranchInst::Create(DR.To);
-      FromOutroBI->insertInto(Outro, Outro->end());
+      if (It == UnrollFactor - 1) {
+        auto *FromOutroBI = BranchInst::Create(DR.To);
+        FromOutroBI->insertInto(Outro, Outro->end());
+      }
 
       ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
