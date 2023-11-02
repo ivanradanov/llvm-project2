@@ -91,13 +91,22 @@ private:
 
     // Entry block in the region, jumped to from From
     BasicBlock *Entry;
+    // Exit block from the region, jumps to To
+    BasicBlock *Exit;
     // The blocks in the divergent region
     SmallPtrSet<BasicBlock *, 8> Blocks;
   };
 
-  SmallVector<Instruction *> DivergentBranches;
+  SmallPtrSet<Instruction *, 8> DivergentBranches;
+  // A DivergentRegion is uniquely identified by the convergent to divergent
+  // edge
+  SmallPtrSet<BranchInst *, 8> ConvergentToDivergentEdges;
+  // Whereas a MergedDivergentRegion is uniquely identified by the divergent to
+  // convergent edge
+  SmallPtrSet<BranchInst *, 8> DivergentToConvergentEdges;
   SmallVector<DivergentRegion> DivergentRegions;
   SmallVector<MergedDivergentRegion> MergedDivergentRegions;
+  SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
 
   void populateDivergentRegions();
   bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
@@ -183,11 +192,11 @@ bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
         !TheLoop->isLoopInvariant(Br->getCondition()) &&
         !LI->isLoopHeader(Br->getSuccessor(0)) &&
         !LI->isLoopHeader(Br->getSuccessor(1))) {
-      DivergentBranches.push_back(Term);
+      DivergentBranches.insert(Term);
       LLVM_DEBUG(DBGS << "Divergent branch found:" << *Br << "\n");
     }
     if (Sw && !TheLoop->isLoopInvariant(Sw->getCondition())) {
-      DivergentBranches.push_back(Term);
+      DivergentBranches.insert(Term);
       LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
     }
   }
@@ -240,13 +249,14 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 
     Reachable.erase(ConvergeBlock);
 
-    DivergentRegion Region = {From, ConvergeBlock, Entry, std::move(Reachable)};
+    DivergentRegion Region = {From, ConvergeBlock, Entry,
+                              /* We will insert the Exit later */ nullptr,
+                              std::move(Reachable)};
     DivergentRegions.push_back(Region);
   }
 
   // Split the converging blocks to have the first part be divergent and
   // reconverg in the second part
-  SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
   for (auto &DR : DivergentRegions) {
     BasicBlock *LastDivergent;
     if (ConvergingBlocks.contains(DR.To)) {
@@ -257,8 +267,11 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       LastDivergent = DR.To->splitBasicBlockBefore(DR.To->getFirstNonPHI());
       LastDivergent->setName(DR.To->getName() + ".divergent.exit.split");
       TheLoop->addBasicBlockToLoop(LastDivergent, *LI);
+      DivergentToConvergentEdges.insert(
+          cast<BranchInst>(LastDivergent->getTerminator()));
     }
     DR.Blocks.insert(LastDivergent);
+    DR.Exit = LastDivergent;
   }
 
   LLVM_DEBUG({
@@ -298,6 +311,13 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       dbgs() << "\n";
     }
   });
+
+  for (auto *DB : DivergentBranches) {
+    auto Preds = predecessors(DB->getParent());
+    assert(std::next(Preds.begin()) == Preds.end());
+    ConvergentToDivergentEdges.insert(
+        cast<BranchInst>((*Preds.begin())->getTerminator()));
+  }
 }
 
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
@@ -327,6 +347,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   Function *F = L->getHeader()->getParent();
+  auto &Ctx = F->getContext();
   LLVM_DEBUG(DBGS << "F[" << F->getName() << "] Loop %"
                   << L->getHeader()->getName() << " "
                   << "Parallel=" << L->isAnnotatedParallel() << "\n");
@@ -539,8 +560,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     for (Instruction *I : ClonedInsts[It])
       RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
 
-  // Plumbing around the coarsened and epilogue loops
-
   BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
   EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
                                      EpilogueLoopBlocks.end(), EpiloguePH));
@@ -549,6 +568,84 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
   EpilogueVMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
+
+  // Find all values used in the divergent region but defined outside and insert
+  // explicit phi nodes that bring in the values in the Entry block
+  // TODO
+  // insertMDRIncomingPHINodes(EpilogueLoop, EpilogueVMap,
+  // MergedDivergentRegions);
+
+  for (auto *BI : ConvergentToDivergentEdges) {
+    assert(!BI->isConditional());
+
+    BasicBlock *Entry = BI->getSuccessor(0);
+    BasicBlock *EpilogueEntry =
+        cast<BasicBlock>(EpilogueVMap[BI->getSuccessor(0)]);
+
+    auto &DR = *std::find_if(DivergentRegions.begin(), DivergentRegions.begin(),
+                             [&](auto &DR) { return DR.Entry == Entry; });
+
+    BasicBlock *EpilogueExit = cast<BasicBlock>(EpilogueVMap[DR.Exit]);
+    BasicBlock *EpilogueTo = cast<BasicBlock>(EpilogueVMap[DR.To]);
+    BasicBlock *EpilogueFrom = cast<BasicBlock>(EpilogueVMap[DR.From]);
+
+    for (auto *BB : DR.Blocks) {
+      auto *EpilogueBB = cast<BasicBlock>(EpilogueVMap[BB]);
+      (void)EpilogueBB;
+    }
+
+    Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
+    PHINode *IsFromCoarsened = PHINode::Create(
+        CoarsenedIdentifierTy, /*NumReservedValues=*/UnrollFactor + 1,
+        "is.from.coarsened", EpilogueEntry->getFirstNonPHI());
+    IsFromCoarsened->addIncoming(ConstantInt::get(CoarsenedIdentifierTy, -1),
+                                 EpilogueFrom);
+
+    // Multiple DivergentRegion entries may converge at the same location,
+    // create the exit switch only once
+    auto *ToOutroSw = dyn_cast<SwitchInst>(EpilogueExit->getTerminator());
+    int NumSwCases;
+    if (!ToOutroSw) {
+      ToOutroSw = SwitchInst::Create(IsFromCoarsened, EpilogueTo, 0);
+      EpilogueExit->getTerminator()->eraseFromParent();
+      ToOutroSw->insertInto(EpilogueExit, EpilogueExit->end());
+      NumSwCases = 0;
+    } else {
+      NumSwCases = ToOutroSw->getNumCases();
+    }
+
+    for (unsigned It = 0; It < UnrollFactor; It++) {
+      auto *Intro = BasicBlock::Create(
+          Ctx, EpilogueEntry->getName() + ".div.intro." + std::to_string(It), F,
+          EpilogueEntry);
+      auto *FromIntroBI = BranchInst::Create(EpilogueEntry);
+      FromIntroBI->insertInto(Intro, Intro->end());
+      auto *ToIntroBI = BranchInst::Create(Intro);
+      DR.From->getTerminator()->eraseFromParent();
+      ToIntroBI->insertInto(DR.From, DR.From->end());
+
+      auto *ThisFactorIdentifier = cast<ConstantInt>(
+          ConstantInt::get(CoarsenedIdentifierTy, NumSwCases + It));
+      IsFromCoarsened->addIncoming(ThisFactorIdentifier, Intro);
+
+      // TODO Handle entry PHIs
+
+      auto *Outro = BasicBlock::Create(
+          Ctx,
+          EpilogueExit->getName() + ".div.outro." + std::to_string(It) + "." +
+              std::to_string(NumSwCases / UnrollFactor),
+          F, EpilogueTo);
+      auto *FromOutroBI = BranchInst::Create(DR.To);
+      FromOutroBI->insertInto(Outro, Outro->end());
+
+      ToOutroSw->addCase(ThisFactorIdentifier, Outro);
+    }
+  }
+
+  // TODO Remove
+  LLVM_DEBUG(DBGS << "After dr intro/outro:\n" << *F);
+
+  // Plumbing around the coarsened and epilogue loops
 
   for (BasicBlock::iterator I = ExitBlock->begin(); isa<PHINode>(I);) {
     PHINode *PN = cast<PHINode>(I++);
