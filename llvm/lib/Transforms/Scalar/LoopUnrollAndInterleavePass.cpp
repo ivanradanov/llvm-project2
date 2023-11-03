@@ -56,6 +56,7 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
+#include "llvm/Transforms/Utils/PromoteMemToReg.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
@@ -64,6 +65,14 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "loop-unroll-and-interleave"
+
+template <typename OutTy, typename CastTy, typename InTy>
+static OutTy mapContainer(InTy &Container, ValueToValueMapTy &VMap) {
+  auto MappedRange = llvm::map_range(
+      Container, [&VMap](Value *V) { return cast<CastTy>(VMap[V]); });
+  OutTy Mapped(MappedRange.begin(), MappedRange.end());
+  return std::move(Mapped);
+}
 
 class LoopUnrollAndInterleave {
 private:
@@ -411,15 +420,11 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 void LoopUnrollAndInterleave::demoteMDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
                                             Loop *CL) {
 
-  auto MapBlock = [&VMap](BasicBlock *BB) {
-    return cast<BasicBlock>(VMap[BB]);
-  };
-
   // Demote values defined outside used inside in the Non Coarsened Loop (NCL)
   for (auto &MDR : MergedDivergentRegions) {
-    auto MappedRange = llvm::map_range(MDR.Blocks, MapBlock);
-    SmallPtrSet<BasicBlock *, 8> MappedMDRBlocks(MappedRange.begin(),
-                                                 MappedRange.end());
+    auto MappedMDRBlocks =
+        mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(MDR.Blocks,
+                                                               VMap);
 
     // Find values defined outside the MDR and used inside it
     SmallPtrSet<Instruction *, 8> &DefinedOutside = MDR.DefinedOutside;
@@ -712,10 +717,18 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       (*VMaps[0])[I] = I;
       (*ReverseVMaps[0])[I] = I;
       for (unsigned It = 1; It < UnrollFactor; It++) {
-        // Do not clone terminators - we use the contrl flow of the existing
-        // iteration (we assume all iterations follow the same control flow)
         if (I->isTerminator()) {
-          continue;
+          if (UseDynamicConvergence) {
+            // TODO here we would check if all original iterations agree on the
+            // next block and take the coarsened branch if they do. Currently
+            // unsupported
+            assert(0 && "Unsupported");
+          } else {
+            // Do not clone terminators - we use the control flow of the
+            // existing iteration (if the branch is divergent we will insert
+            // an entry to a divergent region here later)
+            continue;
+          }
         }
 
         Instruction *Cloned = I->clone();
@@ -747,7 +760,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // Find all values used in the divergent region but defined outside and demote
   // them to memory - now we can change the CFG easier.
   demoteMDRRegs(DivergentRegionsLoop, DivergentRegionsVMap, TheLoop);
-  LLVM_DEBUG(DBGS << "After demoteMDRRegs:\n" << *F);
 
   ValueToValueMapTy ReverseDRLVMap;
   for (auto M : DivergentRegionsVMap) {
@@ -843,8 +855,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
-  //
-  // TODO erase the blocks not included in the MDRs
   SmallPtrSet<BasicBlock *, 8> NotUsedDRBlocks(
       DivergentRegionsLoopBlocks.begin(), DivergentRegionsLoopBlocks.end());
   for (auto &MDR : MergedDivergentRegions) {
@@ -862,9 +872,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
-  // TODO Remove
-  LLVM_DEBUG(DBGS << "After dr intro/outro:\n" << *F);
-
   // If we do not use dynamic convergence then the coarsened versions of the DRs
   // are unused and we have to delete them
   // TODO not sure if we can have convergent flow go into a DR and exit through
@@ -874,18 +881,24 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     for (auto &MDR : MergedDivergentRegions) {
       assert(all_of(MDR.Entries,
                     [](auto *Entry) { return predecessors(Entry).empty(); }));
-      // TODO assert no predecessors from outside the MDR from _any_ BB
+      // TODO assert no predecessors from outside the MDR from _any_ BB in it
       SmallVector<BasicBlock *> Tmp(MDR.Blocks.begin(), MDR.Blocks.end());
       DeleteDeadBlocks(Tmp);
-      // for (auto *BB : MDR.Blocks) {
-      //   BB->replaceAllUsesWith(llvm::UndefValue::get(BB->getType()));
-      //   BB->eraseFromParent();
-      // }
     }
   }
 
-  // TODO Remove
-  LLVM_DEBUG(DBGS << "After dr removal:\n" << *F);
+  // Now that we are done with the aggressive CFG restructuring we can
+  // re-promote the regs we demoted earlier
+  // TODO can we check we were able to promote everything without undefs?
+  DT.recalculate(*F); // TODO another recalculation...
+  for (auto &MDR : MergedDivergentRegions) {
+    PromoteMemToReg(mapContainer<SmallVector<AllocaInst *>, AllocaInst>(
+                        MDR.DefinedInside, *MDR.InsideDemotedVMap),
+                    DT);
+    PromoteMemToReg(mapContainer<SmallVector<AllocaInst *>, AllocaInst>(
+                        MDR.DefinedOutside, *MDR.OutsideDemotedVMap),
+                    DT);
+  }
 
   // Plumbing around the coarsened and epilogue loops
 
