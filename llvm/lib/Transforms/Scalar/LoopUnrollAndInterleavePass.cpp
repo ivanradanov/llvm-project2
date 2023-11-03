@@ -779,7 +779,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     if (!ToOutroSw) {
       auto *Ld = new LoadInst(CoarsenedIdentifierTy, CoarsenedIdentPtr,
                               "coarsene.ident.load", DRExit->getTerminator());
-      ToOutroSw = SwitchInst::Create(Ld, DRTo, 0);
+      // We will override the default dest later, set something random
+      ToOutroSw = SwitchInst::Create(Ld, DREntry, 0);
       DRExit->getTerminator()->eraseFromParent();
       ToOutroSw->insertInto(DRExit, DRExit->end());
     }
@@ -833,7 +834,10 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         FromOutroBI->insertInto(Outro, Outro->end());
       }
 
-      ToOutroSw->addCase(ThisFactorIdentifier, Outro);
+      if (It == 0)
+        ToOutroSw->setDefaultDest(Outro);
+      else
+        ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
   }
 
@@ -841,6 +845,22 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // the remainders
   //
   // TODO erase the blocks not included in the MDRs
+  SmallPtrSet<BasicBlock *, 8> NotUsedDRBlocks(
+      DivergentRegionsLoopBlocks.begin(), DivergentRegionsLoopBlocks.end());
+  for (auto &MDR : MergedDivergentRegions) {
+    auto MappedRange =
+        llvm::map_range(MDR.Blocks, [&DivergentRegionsVMap](BasicBlock *BB) {
+          return cast<BasicBlock>(DivergentRegionsVMap[BB]);
+        });
+    SmallPtrSet<BasicBlock *, 8> MappedMDRBlocks(MappedRange.begin(),
+                                                 MappedRange.end());
+    set_subtract(NotUsedDRBlocks, MappedMDRBlocks);
+  }
+  {
+    SmallVector<BasicBlock *> Tmp(NotUsedDRBlocks.begin(),
+                                  NotUsedDRBlocks.end());
+    DeleteDeadBlocks(Tmp);
+  }
 
   // TODO Remove
   LLVM_DEBUG(DBGS << "After dr intro/outro:\n" << *F);
