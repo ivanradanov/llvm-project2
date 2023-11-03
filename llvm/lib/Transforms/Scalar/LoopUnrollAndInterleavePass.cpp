@@ -274,7 +274,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   }
 
   // Split the converging blocks to have the first part be divergent and
-  // reconverg in the second part
+  // reconverge in the second part
   for (auto &DR : DivergentRegions) {
     BasicBlock *LastDivergent;
     if (ConvergingBlocks.contains(DR.To)) {
@@ -735,15 +735,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       for (auto *I : MDR.DefinedOutside) {
         auto *OriginalValue = cast<Instruction>(ReverseEpilogueVMap[I]);
         Instruction *CoarsenedValue =
-            cast_or_null<Instruction>((*VMaps[It])[OriginalValue]);
-        if (!CoarsenedValue) {
-          // Currently we duplicate all insts so the only time we do not find an
-          // inst in the map is if is the 0th original iteration - in the future
-          // we may want to only duplicate insts that are different from
-          // iteration to iteration
-          assert(It == 0);
-          CoarsenedValue = OriginalValue;
-        }
+            cast<Instruction>((*VMaps[It])[OriginalValue]);
         IntroBuilder.CreateStore(CoarsenedValue, (*MDR.OutsideDemotedVMap)[I]);
       }
 
@@ -756,11 +748,10 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           F, EpilogueTo);
       for (auto *CoarsenedValue : MDR.DefinedInside) {
         auto *OriginalValue =
-            cast<Instruction>((*ReverseVMaps[It])[CoarsenedValue]);
-        if (!OriginalValue) {
-          assert(It == 0);
-          OriginalValue = CoarsenedValue;
-        }
+            cast_or_null<Instruction>((*ReverseVMaps[It])[CoarsenedValue]);
+        // When the defined inside value is from another original iteration
+        if (!OriginalValue)
+          continue;
         auto *EpilogueValue = cast<Instruction>(EpilogueVMap[OriginalValue]);
         new StoreInst(EpilogueValue, (*MDR.InsideDemotedVMap)[CoarsenedValue],
                       Outro);
