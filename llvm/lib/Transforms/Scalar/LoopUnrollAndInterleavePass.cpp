@@ -52,6 +52,7 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
@@ -68,16 +69,25 @@ private:
   LoopInfo *LI;
   DominatorTree *DT;
   PostDominatorTree *PDT;
-  Loop *TheLoop;
-  unsigned UnrollFactor;
 
   // Loop data
+  Loop *TheLoop;
   BasicBlock *CombinedLatchExiting;
+  BasicBlock *Preheader;
+  unsigned UnrollFactor;
 
   struct MergedDivergentRegion {
+    // Populated at the start
     SmallPtrSet<BasicBlock *, 8> Entries;
     BasicBlock *Exit;
     SmallPtrSet<BasicBlock *, 8> Blocks;
+
+    // Used for transformations later
+    SmallPtrSet<Instruction *, 8> DefinedOutside;
+    std::unique_ptr<ValueToValueMapTy> OutsideDemotedVMap;
+
+    SmallPtrSet<Instruction *, 8> DefinedInside;
+    std::unique_ptr<ValueToValueMapTy> InsideDemotedVMap;
   };
 
   /// Divergent groups are the maximal sets of basic blocks with the following
@@ -85,7 +95,7 @@ private:
   ///
   /// * There is a divergent branch from a block outside the region (From) to a
   ///   block (Entry) in the set
-  ///
+  /// * There is a path from the Entry to all blocks in the set
   /// * All blocks in the set are post-dominated by a single exiting block (To)
   ///
   /// (We assume a single combined exiting/latch block)
@@ -100,6 +110,8 @@ private:
     BasicBlock *Exit;
     // The blocks in the divergent region
     SmallPtrSet<BasicBlock *, 8> Blocks;
+
+    MergedDivergentRegion *MDR;
   };
 
   SmallPtrSet<Instruction *, 8> DivergentBranches;
@@ -110,10 +122,10 @@ private:
   // convergent edge
   SmallPtrSet<BranchInst *, 8> DivergentToConvergentEdges;
   SmallVector<DivergentRegion> DivergentRegions;
-  SmallVector<MergedDivergentRegion> MergedDivergentRegions;
+  SmallVector<MergedDivergentRegion, 2> MergedDivergentRegions;
   SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
 
-  void insertMDRIncomingPHINodes(Loop *L, ValueToValueMapTy &VMap);
+  void demoteMDRRegs(Loop *NCL, ValueToValueMapTy &VMap, Loop *CL);
   void populateDivergentRegions();
   bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
 
@@ -297,6 +309,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     bool Found = false;
     for (auto &MDR : MergedDivergentRegions) {
       if (!set_intersection(DR.Blocks, MDR.Blocks).empty()) {
+        DR.MDR = &MDR;
         MDR.Entries.insert(DR.Entry);
         assert(MDR.Exit == DR.Exit);
         MDR.Blocks.insert(DR.Blocks.begin(), DR.Blocks.end());
@@ -307,6 +320,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     if (!Found) {
       MergedDivergentRegion MDR = {{DR.Entry}, DR.Exit, DR.Blocks};
       MergedDivergentRegions.push_back(std::move(MDR));
+      DR.MDR = &MergedDivergentRegions.back();
     }
   }
   LLVM_DEBUG({
@@ -327,21 +341,23 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
         cast<BranchInst>((*Preds.begin())->getTerminator()));
   }
 }
-void LoopUnrollAndInterleave::insertMDRIncomingPHINodes(
-    Loop *L, ValueToValueMapTy &VMap) {
+
+void LoopUnrollAndInterleave::demoteMDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
+                                            Loop *CL) {
 
   auto MapBlock = [&VMap](BasicBlock *BB) {
     return cast<BasicBlock>(VMap[BB]);
   };
 
+  // Demote values defined outside used inside in the Non Coarsened Loop (NCL)
   for (auto &MDR : MergedDivergentRegions) {
     auto MappedRange = llvm::map_range(MDR.Blocks, MapBlock);
     SmallPtrSet<BasicBlock *, 8> MappedMDRBlocks(MappedRange.begin(),
                                                  MappedRange.end());
 
     // Find values defined outside the MDR and used inside it
-    SmallPtrSet<Instruction *, 8> DefinedOutside;
-    for (auto *BB : L->getBlocks()) {
+    SmallPtrSet<Instruction *, 8> &DefinedOutside = MDR.DefinedOutside;
+    for (auto *BB : NCL->getBlocks()) {
       if (MappedMDRBlocks.contains(BB))
         continue;
 
@@ -358,26 +374,38 @@ void LoopUnrollAndInterleave::insertMDRIncomingPHINodes(
       }
     }
 
-    ValueToValueMapTy PHIVMap;
+    MDR.OutsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *I : DefinedOutside) {
-      for (auto *OEntryBB : MDR.Entries) {
-        auto *EntryBB = cast<BasicBlock>(VMap[OEntryBB]);
-        if (DT->dominates(I, EntryBB)) {
-          new StoreInst(
-          auto *PN = PHINode::Create(I->getType(), 1 + UnrollFactor,
-                                     I->getName() + ".expl.phi");
-          PN->insertBefore(EntryBB->getFirstNonPHI());
-          auto Preds = predecessors(EntryBB);
-          assert(std::next(Preds.begin()) == Preds.end());
-          PN->addIncoming(I, *Preds.begin());
-          PHIVMap[I] = PN;
-          break;
+      (*MDR.OutsideDemotedVMap)[I] = DemoteRegToStack(
+          *I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
+    }
+  }
+
+  // Demote values defined inside used outside in the Coarsened Loop (CL)
+  for (auto &MDR : MergedDivergentRegions) {
+    // Find values defined outside the MDR and used inside it
+    SmallPtrSet<Instruction *, 8> &DefinedInside = MDR.DefinedInside;
+    for (auto *BB : MDR.Blocks) {
+      for (auto &I : *BB) {
+        if (I.use_empty())
+          continue;
+        for (auto *User : I.users()) {
+          auto *UserI = dyn_cast<Instruction>(User);
+          if (!UserI)
+            continue;
+          BasicBlock *UserBB = UserI->getParent();
+          if (MDR.Blocks.contains(UserBB))
+            continue;
+          DefinedInside.insert(&I);
         }
       }
     }
-    SmallVector<BasicBlock *> BlocksArray(MappedMDRBlocks.begin(),
-                                          MappedMDRBlocks.end());
-    remapInstructionsInBlocks(BlocksArray, PHIVMap);
+
+    MDR.InsideDemotedVMap.reset(new ValueToValueMapTy());
+    for (auto *I : DefinedInside) {
+      (*MDR.InsideDemotedVMap)[I] = DemoteRegToStack(
+          *I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
+    }
   }
 }
 
@@ -445,7 +473,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
   // Save loop properties before it is transformed.
-  BasicBlock *Preheader = L->getLoopPreheader();
+  Preheader = L->getLoopPreheader();
   if (!Preheader) {
     // We delete the preheader of the epilogue loop so this is currently how we
     // detect that this may be the epilogue loop, because all other loops should
@@ -534,9 +562,13 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // VMaps for the separate interleaved iterations
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
   VMaps.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++)
+  ReverseVMaps.reserve(UnrollFactor);
+  for (unsigned I = 0; I < UnrollFactor; I++) {
     VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+    ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+  }
 
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
@@ -567,6 +599,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Set up new initial IV values, for now we do initial + stride, initial + 2 *
   // stride, ..., initial + (UnrollFactor - 1) * stride
+  (*VMaps[0])[InitialIVVal] = InitialIVVal;
+  (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
   for (unsigned I = 1; I < UnrollFactor; I++) {
     Value *CoarsenedInitialIV;
     if (Chunkify) {
@@ -580,6 +614,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           "initial.iv.coarsened." + std::to_string(I));
     }
     (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
+    (*ReverseVMaps[I])[CoarsenedInitialIV] = InitialIVVal;
   }
 
   // Interleave instructions
@@ -599,6 +634,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     }
     for (Instruction *I : ToClone) {
       Instruction *LastI = I;
+      (*VMaps[0])[I] = I;
+      (*ReverseVMaps[0])[I] = I;
       for (unsigned It = 1; It < UnrollFactor; It++) {
         // Do not clone terminators - we use the contrl flow of the existing
         // iteration (we assume all iterations follow the same control flow)
@@ -612,6 +649,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           Cloned->setName(I->getName() + ".coarsened." + std::to_string(It));
         ClonedInsts[It].push_back(Cloned);
         (*VMaps[It])[I] = Cloned;
+        (*ReverseVMaps[It])[Cloned] = I;
         LastI = Cloned;
       }
     }
@@ -630,17 +668,23 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   EpilogueVMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
 
-  // Find all values used in the divergent region but defined outside and insert
-  // explicit phi nodes that bring in the values in the Entry block
   DT.recalculate(*F); // TODO another recalculation...
-  insertMDRIncomingPHINodes(EpilogueLoop, EpilogueVMap);
-  LLVM_DEBUG(DBGS << "After MDR PHI:\n" << *F);
+  // Find all values used in the divergent region but defined outside and demote
+  // them to memory - now we can change the CFG easier.
+  demoteMDRRegs(EpilogueLoop, EpilogueVMap, TheLoop);
+  LLVM_DEBUG(DBGS << "After demoteMDRRegs:\n" << *F);
+
+  ValueToValueMapTy ReverseEpilogueVMap;
+  for (auto M : EpilogueVMap) {
+    ReverseEpilogueVMap[cast<Value>(M.second)] = const_cast<Value *>(M.first);
+  }
 
   Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
   auto *CoarsenedIdentPtr = PreheaderBuilder.CreateAlloca(
       CoarsenedIdentifierTy, /*ArraySize*/ nullptr, "coarsened.ident");
 
   for (auto &DR : DivergentRegions) {
+    auto &MDR = *DR.MDR;
     BasicBlock *EpilogueEntry = cast<BasicBlock>(EpilogueVMap[DR.Entry]);
     BasicBlock *EpilogueExit = cast<BasicBlock>(EpilogueVMap[DR.Exit]);
     BasicBlock *EpilogueTo = cast<BasicBlock>(EpilogueVMap[DR.To]);
@@ -678,7 +722,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           EpilogueEntry);
       IRBuilder<> IntroBuilder(Intro);
       IntroBuilder.CreateStore(ThisFactorIdentifier, CoarsenedIdentPtr);
-      IntroBuilder.CreateBr(EpilogueEntry);
 
       auto *ToIntroBI = BranchInst::Create(Intro);
       if (It == 0) {
@@ -689,13 +732,39 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         ToIntroBI->insertInto(LastOutro, LastOutro->end());
       }
 
-      // TODO Handle entry PHIs
+      for (auto *I : MDR.DefinedOutside) {
+        auto *OriginalValue = cast<Instruction>(ReverseEpilogueVMap[I]);
+        Instruction *CoarsenedValue =
+            cast_or_null<Instruction>((*VMaps[It])[OriginalValue]);
+        if (!CoarsenedValue) {
+          // Currently we duplicate all insts so the only time we do not find an
+          // inst in the map is if is the 0th original iteration - in the future
+          // we may want to only duplicate insts that are different from
+          // iteration to iteration
+          assert(It == 0);
+          CoarsenedValue = OriginalValue;
+        }
+        IntroBuilder.CreateStore(CoarsenedValue, (*MDR.OutsideDemotedVMap)[I]);
+      }
+
+      IntroBuilder.CreateBr(EpilogueEntry);
 
       auto *Outro = LastOutro = BasicBlock::Create(
           Ctx,
           EpilogueExit->getName() + ".div.outro." + std::to_string(It) + "." +
               std::to_string(NumSwCases / UnrollFactor),
           F, EpilogueTo);
+      for (auto *CoarsenedValue : MDR.DefinedInside) {
+        auto *OriginalValue =
+            cast<Instruction>((*ReverseVMaps[It])[CoarsenedValue]);
+        if (!OriginalValue) {
+          assert(It == 0);
+          OriginalValue = CoarsenedValue;
+        }
+        auto *EpilogueValue = cast<Instruction>(EpilogueVMap[OriginalValue]);
+        new StoreInst(EpilogueValue, (*MDR.InsideDemotedVMap)[CoarsenedValue],
+                      Outro);
+      }
       if (It == UnrollFactor - 1) {
         auto *FromOutroBI = BranchInst::Create(DR.To);
         FromOutroBI->insertInto(Outro, Outro->end());
