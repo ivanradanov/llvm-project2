@@ -76,7 +76,10 @@ private:
   Loop *TheLoop;
   BasicBlock *CombinedLatchExiting;
   BasicBlock *Preheader;
+
+  // Options
   unsigned UnrollFactor;
+  bool UseDynamicConvergence = false;
 
   struct MergedDivergentRegion {
     // Populated at the start
@@ -747,6 +750,10 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   auto *CoarsenedIdentPtr = PreheaderBuilder.CreateAlloca(
       CoarsenedIdentifierTy, /*ArraySize*/ nullptr, "coarsened.ident");
 
+  // Hook into the epilogue loop to do the divergent part of the coarsened
+  // computation. Generates Intro and Outro blocks which bring in the
+  // appropriate coarsened values into the DR in the uncoarsened part, and then
+  // bring out those values for use in the subsequent coarsened computation.
   for (auto &DR : DivergentRegions) {
     auto &MDR = *DR.MDR;
     BasicBlock *EpilogueEntry = cast<BasicBlock>(EpilogueVMap[DR.Entry]);
@@ -831,6 +838,28 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // TODO Remove
   LLVM_DEBUG(DBGS << "After dr intro/outro:\n" << *F);
+
+  // If we do not use dynamic convergence then the coarsened versions of the DRs
+  // are unused and we have to delete them
+  // TODO not sure if we can have convergent flow go into a DR and exit through
+  // its exit - I think it is possible and we have to handle that case (not only
+  // here, but in the DR plumbing that we do around the exits above as well
+  if (!UseDynamicConvergence) {
+    for (auto &MDR : MergedDivergentRegions) {
+      assert(all_of(MDR.Entries,
+                    [](auto *Entry) { return predecessors(Entry).empty(); }));
+      // TODO assert no predecessors from outside the MDR from _any_ BB
+      SmallVector<BasicBlock *> Tmp(MDR.Blocks.begin(), MDR.Blocks.end());
+      DeleteDeadBlocks(Tmp);
+      // for (auto *BB : MDR.Blocks) {
+      //   BB->replaceAllUsesWith(llvm::UndefValue::get(BB->getType()));
+      //   BB->eraseFromParent();
+      // }
+    }
+  }
+
+  // TODO Remove
+  LLVM_DEBUG(DBGS << "After dr removal:\n" << *F);
 
   // Plumbing around the coarsened and epilogue loops
 
