@@ -13,6 +13,7 @@
 
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -58,6 +59,7 @@
 #include "llvm/Transforms/Utils/SizeOpts.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+#include <algorithm>
 
 using namespace llvm;
 
@@ -123,7 +125,6 @@ private:
   SmallPtrSet<BranchInst *, 8> DivergentToConvergentEdges;
   SmallVector<DivergentRegion> DivergentRegions;
   SmallVector<MergedDivergentRegion, 2> MergedDivergentRegions;
-  SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
 
   void demoteMDRRegs(Loop *NCL, ValueToValueMapTy &VMap, Loop *CL);
   void populateDivergentRegions();
@@ -249,47 +250,109 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
 }
 
 void LoopUnrollAndInterleave::populateDivergentRegions() {
+
+  SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
+  SmallPtrSet<BasicBlock *, 8> EntryBlocks;
+
   for (Instruction *Term : DivergentBranches) {
     BasicBlock *Entry = Term->getParent();
     auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
     assert(ConvergeBlock &&
            PDT->dominates(CombinedLatchExiting, ConvergeBlock));
-    // Split the entry blocks to have the first part be convergent and then
-    // diverge in the second part
-    auto *From = Entry->splitBasicBlockBefore(Entry->getTerminator());
-    From->setName(Entry->getName() + ".divergent.preentry.split");
-    TheLoop->addBasicBlockToLoop(From, *LI);
-    if (TheLoop->getHeader() == Entry)
-      TheLoop->moveToHeader(From);
 
     SmallPtrSet<BasicBlock *, 8> Reachable;
     findReachableFromTo(Entry, ConvergeBlock, Reachable);
 
-    Reachable.erase(ConvergeBlock);
-
-    DivergentRegion Region = {From, ConvergeBlock, Entry,
-                              /* We will insert the Exit later */ nullptr,
+    // We will insert the Entry and Exit later
+    DivergentRegion Region = {Entry, ConvergeBlock, nullptr, nullptr,
                               std::move(Reachable)};
-    DivergentRegions.push_back(Region);
+    ConvergingBlocks.insert(ConvergeBlock);
+    EntryBlocks.insert(Entry);
+    DivergentRegions.push_back(std::move(Region));
   }
 
-  // Split the converging blocks to have the first part be divergent and
-  // reconverge in the second part
-  for (auto &DR : DivergentRegions) {
-    BasicBlock *LastDivergent;
-    if (ConvergingBlocks.contains(DR.To)) {
-      auto Preds = predecessors(DR.To);
-      assert(std::next(Preds.begin()) == Preds.end());
-      LastDivergent = *Preds.begin();
-    } else {
-      LastDivergent = DR.To->splitBasicBlockBefore(DR.To->getFirstNonPHI());
-      LastDivergent->setName(DR.To->getName() + ".divergent.exit.split");
-      TheLoop->addBasicBlockToLoop(LastDivergent, *LI);
-      DivergentToConvergentEdges.insert(
-          cast<BranchInst>(LastDivergent->getTerminator()));
+  SmallPtrSet<BasicBlock *, 8> EntryAndConvergingBlocks =
+      set_intersection(ConvergingBlocks, EntryBlocks);
+
+  // Split blocks that are both an entry and an exit to a DR in this way:
+  // DivergentExit -> Convergent -> DivergentEntry
+  // Where we will later insert insert jumps to/from a DR at the two new edges.
+  for (auto *TheBlock : EntryAndConvergingBlocks) {
+    std::string BlockName = TheBlock->getName().str();
+    auto *DivergentEntry = TheBlock;
+    auto *Convergent =
+        DivergentEntry->splitBasicBlockBefore(DivergentEntry->getTerminator());
+    auto *DivergentExit =
+        Convergent->splitBasicBlockBefore(Convergent->getFirstNonPHI());
+    DivergentExit->setName(BlockName + ".divergent.exit");
+    DivergentEntry->setName(BlockName + ".divergent.entry");
+    Convergent->setName(BlockName);
+
+    TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
+    TheLoop->addBasicBlockToLoop(Convergent, *LI);
+    assert(TheLoop->getHeader() != TheBlock &&
+           "A Converging block cannot be the header.");
+
+    for (auto &DR : llvm::make_filter_range(
+             DivergentRegions,
+             [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
+      DR.Blocks.erase(DR.To);
+      DR.Blocks.insert(DivergentExit);
+      DR.Exit = DivergentExit;
+      DR.To = Convergent;
     }
-    DR.Blocks.insert(LastDivergent);
-    DR.Exit = LastDivergent;
+    auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
+      return DR.From == TheBlock;
+    });
+    assert(DR);
+    DR->From = Convergent;
+    DR->Entry = DivergentEntry;
+  }
+
+  for (auto *TheBlock : EntryBlocks) {
+    // Already handled
+    if (EntryAndConvergingBlocks.contains(TheBlock))
+      continue;
+    std::string BlockName = TheBlock->getName().str();
+    auto *DivergentEntry = TheBlock;
+    auto *Convergent =
+        DivergentEntry->splitBasicBlockBefore(DivergentEntry->getTerminator());
+    DivergentEntry->setName(BlockName + ".divergent.entry");
+    Convergent->setName(BlockName);
+
+    TheLoop->addBasicBlockToLoop(Convergent, *LI);
+    if (TheLoop->getHeader() == TheBlock)
+      TheLoop->moveToHeader(Convergent);
+
+    auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
+      return DR.From == TheBlock;
+    });
+    assert(DR);
+    DR->From = Convergent;
+    DR->Entry = DivergentEntry;
+  }
+
+  for (auto *TheBlock : ConvergingBlocks) {
+    // Already handled
+    if (EntryAndConvergingBlocks.contains(TheBlock))
+      continue;
+    std::string BlockName = TheBlock->getName().str();
+    auto *Convergent = TheBlock;
+    auto *DivergentExit =
+        Convergent->splitBasicBlockBefore(Convergent->getFirstNonPHI());
+    Convergent->setName(BlockName);
+    DivergentExit->setName(BlockName + ".divergent.exit");
+
+    TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
+
+    for (auto &DR : llvm::make_filter_range(
+             DivergentRegions,
+             [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
+      DR.Blocks.erase(DR.To);
+      DR.Blocks.insert(DivergentExit);
+      DR.Exit = DivergentExit;
+      DR.To = Convergent;
+    }
   }
 
   LLVM_DEBUG({
@@ -465,6 +528,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   populateDivergentRegions();
+  LLVM_DEBUG(DBGS << "After populateDivergentRegions:\n" << *F);
 
   // TODO Pretty bad, SE is also invalidated but I /think/ we dont need it any
   // more
