@@ -420,23 +420,19 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
 
   // Demote values defined outside a DR used inside it in the Non Coarsened Loop
   // (NCL)
+  DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemote;
   for (auto &DR : DivergentRegions) {
+    ToDemote[&DR] = {};
     auto MappedMDRBlocks =
         mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(DR.Blocks,
                                                                VMap);
 
     // Find values defined outside the DR and used inside it
-    DR.DefinedOutsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *BB : NCL->getBlocks()) {
       if (MappedMDRBlocks.contains(BB))
         continue;
 
-      SmallVector<Instruction *> ToHandle;
       for (auto &I : *BB) {
-        ToHandle.push_back(&I);
-      }
-      for (auto *II : ToHandle) {
-        auto &I = *II;
         if (I.use_empty())
           continue;
         for (auto *User : I.users()) {
@@ -444,23 +440,33 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           if (!UserI)
             continue;
           if (MappedMDRBlocks.contains(UserI->getParent())) {
-            auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[&I]);
-            if (!Demoted) {
-              Demoted = DemoteRegToStack(
-                  I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
-              DemotedRegsVMap[&I] = Demoted;
-            }
-            (*DR.DefinedOutsideDemotedVMap)[&I] = Demoted;
+            ToDemote[&DR].push_back(&I);
             break;
           }
         }
       }
     }
   }
+  for (auto Pair : ToDemote) {
+    auto &DR = *Pair.getFirst();
+    auto &ToDemote = Pair.getSecond();
+    DR.DefinedOutsideDemotedVMap.reset(new ValueToValueMapTy());
+    for (auto *I : ToDemote) {
+      auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
+      if (!Demoted) {
+        Demoted = DemoteRegToStack(
+            *I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
+        DemotedRegsVMap[I] = Demoted;
+      }
+      (*DR.DefinedOutsideDemotedVMap)[I] = Demoted;
+    }
+  }
 
   // Demote values defined inside a DR and used outside it in the Coarsened Loop
   // (CL)
+  ToDemote.clear();
   for (auto &DR : DivergentRegions) {
+    ToDemote[&DR] = {};
     // Find values defined outside the DR and used inside it
     DR.DefinedInsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *BB : DR.Blocks) {
@@ -479,16 +485,24 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           BasicBlock *UserBB = UserI->getParent();
           if (DR.Blocks.contains(UserBB))
             continue;
-          auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[&I]);
-          if (!Demoted) {
-            Demoted = DemoteRegToStack(
-                I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
-            DemotedRegsVMap[&I] = Demoted;
-          }
-          (*DR.DefinedInsideDemotedVMap)[&I] = Demoted;
+          ToDemote[&DR].push_back(&I);
           break;
         }
       }
+    }
+  }
+  for (auto Pair : ToDemote) {
+    auto &DR = *Pair.getFirst();
+    auto &ToDemote = Pair.getSecond();
+    DR.DefinedOutsideDemotedVMap.reset(new ValueToValueMapTy());
+    for (auto *I : ToDemote) {
+      auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
+      if (!Demoted) {
+        Demoted = DemoteRegToStack(
+            *I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
+        DemotedRegsVMap[I] = Demoted;
+      }
+      (*DR.DefinedInsideDemotedVMap)[I] = Demoted;
     }
   }
 }
