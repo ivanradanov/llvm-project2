@@ -431,7 +431,12 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
       if (MappedMDRBlocks.contains(BB))
         continue;
 
+      SmallVector<Instruction *> ToHandle;
       for (auto &I : *BB) {
+        ToHandle.push_back(&I);
+      }
+      for (auto *II : ToHandle) {
+        auto &I = *II;
         if (I.use_empty())
           continue;
         for (auto *User : I.users()) {
@@ -446,6 +451,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
               DemotedRegsVMap[&I] = Demoted;
             }
             (*DR.DefinedOutsideDemotedVMap)[&I] = Demoted;
+            break;
           }
         }
       }
@@ -458,7 +464,12 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
     // Find values defined outside the DR and used inside it
     DR.DefinedInsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *BB : DR.Blocks) {
+      SmallVector<Instruction *> ToHandle;
       for (auto &I : *BB) {
+        ToHandle.push_back(&I);
+      }
+      for (auto *II : ToHandle) {
+        auto &I = *II;
         if (I.use_empty())
           continue;
         for (auto *User : I.users()) {
@@ -475,6 +486,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
             DemotedRegsVMap[&I] = Demoted;
           }
           (*DR.DefinedInsideDemotedVMap)[&I] = Demoted;
+          break;
         }
       }
     }
