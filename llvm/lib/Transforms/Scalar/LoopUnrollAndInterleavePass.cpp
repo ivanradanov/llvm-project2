@@ -121,11 +121,8 @@ private:
     MergedDivergentRegion *MDR;
 
     // Used for transformations later
-    SmallPtrSet<Instruction *, 8> DefinedOutside;
-    std::unique_ptr<ValueToValueMapTy> OutsideDemotedVMap;
-
-    SmallPtrSet<Instruction *, 8> DefinedInside;
-    std::unique_ptr<ValueToValueMapTy> InsideDemotedVMap;
+    std::unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
+    std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
   };
 
   SmallPtrSet<Instruction *, 8> DemotedRegs;
@@ -429,7 +426,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
                                                                VMap);
 
     // Find values defined outside the DR and used inside it
-    DR.OutsideDemotedVMap.reset(new ValueToValueMapTy());
+    DR.DefinedOutsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *BB : NCL->getBlocks()) {
       if (MappedMDRBlocks.contains(BB))
         continue;
@@ -442,16 +439,13 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           if (!UserI)
             continue;
           if (MappedMDRBlocks.contains(UserI->getParent())) {
-            DR.DefinedOutside.insert(&I);
-            if (DemotedRegs.insert(&I).second) {
-              auto *Demoted = DemoteRegToStack(
+            auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[&I]);
+            if (!Demoted) {
+              Demoted = DemoteRegToStack(
                   I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
-              (*DR.OutsideDemotedVMap)[&I] =  Demoted;
               DemotedRegsVMap[&I] = Demoted;
-            } else {
-              auto *Demoted = cast<AllocaInst>(DemotedRegsVMap[&I]);
-              (*DR.OutsideDemotedVMap)[&I] = Demoted;
             }
+            (*DR.DefinedOutsideDemotedVMap)[&I] = Demoted;
           }
         }
       }
@@ -462,7 +456,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
   // (CL)
   for (auto &DR : DivergentRegions) {
     // Find values defined outside the DR and used inside it
-    DR.InsideDemotedVMap.reset(new ValueToValueMapTy());
+    DR.DefinedInsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *BB : DR.Blocks) {
       for (auto &I : *BB) {
         if (I.use_empty())
@@ -474,16 +468,13 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           BasicBlock *UserBB = UserI->getParent();
           if (DR.Blocks.contains(UserBB))
             continue;
-          DR.DefinedInside.insert(&I);
-          if (DemotedRegs.insert(&I).second) {
-            auto *Demoted = DemoteRegToStack(
+          auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[&I]);
+          if (!Demoted) {
+            Demoted = DemoteRegToStack(
                 I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
-            (*DR.InsideDemotedVMap)[&I] = Demoted;
             DemotedRegsVMap[&I] = Demoted;
-          } else {
-            auto *Demoted = cast<AllocaInst>(DemotedRegsVMap[&I]);
-            (*DR.InsideDemotedVMap)[&I] = Demoted;
           }
+          (*DR.DefinedInsideDemotedVMap)[&I] = Demoted;
         }
       }
     }
@@ -827,11 +818,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         ToIntroBI->insertInto(LastOutro, LastOutro->end());
       }
 
-      for (auto *I : DR.DefinedOutside) {
+      for (auto P : *DR.DefinedOutsideDemotedVMap) {
+        auto *I = P.first;
         auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
         Instruction *CoarsenedValue =
             cast<Instruction>((*VMaps[It])[OriginalValue]);
-        IntroBuilder.CreateStore(CoarsenedValue, (*DR.OutsideDemotedVMap)[I]);
+        IntroBuilder.CreateStore(CoarsenedValue, P.second);
       }
 
       IntroBuilder.CreateBr(DREntry);
@@ -841,14 +833,15 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           DRExit->getName() + ".div.outro." + std::to_string(It) + "." +
               std::to_string(NumSwCases / UnrollFactor),
           F, DRTo);
-      for (auto *CoarsenedValue : DR.DefinedInside) {
+      for (auto P : *DR.DefinedInsideDemotedVMap) {
+        auto *CoarsenedValue = P.first;
         auto *OriginalValue =
             cast_or_null<Instruction>((*ReverseVMaps[It])[CoarsenedValue]);
         // When the defined inside value is from another original iteration
         if (!OriginalValue)
           continue;
         auto *DRValue = cast<Instruction>(DivergentRegionsVMap[OriginalValue]);
-        new StoreInst(DRValue, (*DR.InsideDemotedVMap)[CoarsenedValue], Outro);
+        new StoreInst(DRValue, P.second, Outro);
       }
       if (It == UnrollFactor - 1) {
         auto *FromOutroBI = BranchInst::Create(DR.To);
