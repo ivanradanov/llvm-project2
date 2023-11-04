@@ -281,6 +281,18 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     DivergentRegions.push_back(std::move(Region));
   }
 
+  auto AddExisting = [&](BasicBlock *TheBlock, BasicBlock *BB1,
+                         BasicBlock *BB2 = nullptr) {
+    for (auto &DR : llvm::make_filter_range(
+             DivergentRegions, [TheBlock](DivergentRegion &DR) {
+               return DR.Blocks.contains(TheBlock);
+             })) {
+      DR.Blocks.insert(BB1);
+      if (BB2)
+        DR.Blocks.insert(BB2);
+    }
+  };
+
   SmallPtrSet<BasicBlock *, 8> EntryAndConvergingBlocks =
       set_intersection(ConvergingBlocks, EntryBlocks);
 
@@ -303,6 +315,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     assert(TheLoop->getHeader() != TheBlock &&
            "A Converging block cannot be the header.");
 
+    AddExisting(TheBlock, Convergent, DivergentExit);
     for (auto &DR : llvm::make_filter_range(
              DivergentRegions,
              [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
@@ -334,6 +347,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     if (TheLoop->getHeader() == TheBlock)
       TheLoop->moveToHeader(Convergent);
 
+    AddExisting(TheBlock, Convergent);
     auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
       return DR.From == TheBlock;
     });
@@ -355,6 +369,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 
     TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
 
+    AddExisting(TheBlock, DivergentExit);
     for (auto &DR : llvm::make_filter_range(
              DivergentRegions,
              [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
@@ -416,7 +431,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 }
 
 void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
-                                            Loop *CL) {
+                                           Loop *CL) {
 
   // Demote values defined outside a DR used inside it in the Non Coarsened Loop
   // (NCL)
@@ -424,8 +439,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
   for (auto &DR : DivergentRegions) {
     ToDemote[&DR] = {};
     auto MappedMDRBlocks =
-        mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(DR.Blocks,
-                                                               VMap);
+        mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(DR.Blocks, VMap);
 
     // Find values defined outside the DR and used inside it
     for (auto *BB : NCL->getBlocks()) {
@@ -454,8 +468,8 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
     for (auto *I : ToDemote) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
-        Demoted = DemoteRegToStack(
-            *I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
+        Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
+                                   Preheader->getFirstNonPHI());
         DemotedRegsVMap[I] = Demoted;
       }
       (*DR.DefinedOutsideDemotedVMap)[I] = Demoted;
@@ -498,8 +512,8 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
     for (auto *I : ToDemote) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
-        Demoted = DemoteRegToStack(
-            *I, /*VolatileLoads=*/false, Preheader->getFirstNonPHI());
+        Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
+                                   Preheader->getFirstNonPHI());
         DemotedRegsVMap[I] = Demoted;
       }
       (*DR.DefinedInsideDemotedVMap)[I] = Demoted;
@@ -880,34 +894,20 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
   }
-  LLVM_DEBUG(DBGS << "1:\n" << *F);
-  for (auto *DR : DemotedRegs) {
-    auto *AI = cast<AllocaInst>(DemotedRegsVMap[DR]);
-    DBGS << "demoted ai:" << *AI << "\n";
-  }
 
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
-  SmallPtrSet<BasicBlock *, 8> NotUsedDRBlocks(
-      DivergentRegionsLoopBlocks.begin(), DivergentRegionsLoopBlocks.end());
-  for (auto &DR : DivergentRegions) {
-    auto MappedRange =
-        llvm::map_range(DR.Blocks, [&DivergentRegionsVMap](BasicBlock *BB) {
-          return cast<BasicBlock>(DivergentRegionsVMap[BB]);
-        });
-    SmallPtrSet<BasicBlock *, 8> MappedMDRBlocks(MappedRange.begin(),
-                                                 MappedRange.end());
-    set_subtract(NotUsedDRBlocks, MappedMDRBlocks);
-  }
   {
-    SmallVector<BasicBlock *> Tmp(NotUsedDRBlocks.begin(),
-                                  NotUsedDRBlocks.end());
+    SmallPtrSet<BasicBlock *, 8> UnusedDRBlocks(
+        DivergentRegionsLoopBlocks.begin(), DivergentRegionsLoopBlocks.end());
+    for (auto &DR : DivergentRegions) {
+      auto MappedMDRBlocks =
+          mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(
+              DR.Blocks, DivergentRegionsVMap);
+      set_subtract(UnusedDRBlocks, MappedMDRBlocks);
+    }
+    SmallVector<BasicBlock *> Tmp(UnusedDRBlocks.begin(), UnusedDRBlocks.end());
     DeleteDeadBlocks(Tmp);
-  }
-  LLVM_DEBUG(DBGS << "3:\n" << *F);
-  for (auto *DR : DemotedRegs) {
-    auto *AI = cast<AllocaInst>(DemotedRegsVMap[DR]);
-    DBGS << "demoted ai:" << *AI << "\n";
   }
 
   // If we do not use dynamic convergence then the coarsened versions of the DRs
@@ -924,12 +924,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
-  LLVM_DEBUG(DBGS << "4:\n" << *F);
-  for (auto *DR : DemotedRegs) {
-    auto *AI = cast<AllocaInst>(DemotedRegsVMap[DR]);
-    DBGS << "demoted ai:" << *AI << "\n";
-  }
-
   // Now that we are done with the aggressive CFG restructuring we can
   // re-promote the regs we demoted earlier
   // TODO can we check we were able to promote everything without undefs?
@@ -937,8 +931,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   PromoteMemToReg(mapContainer<SmallVector<AllocaInst *>, AllocaInst>(
                       DemotedRegs, DemotedRegsVMap),
                   DT);
-
-  LLVM_DEBUG(DBGS << "2:\n" << *F);
 
   // Plumbing around the coarsened and epilogue loops
 
