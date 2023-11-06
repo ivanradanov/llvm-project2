@@ -90,13 +90,6 @@ private:
   unsigned UnrollFactor;
   bool UseDynamicConvergence = false;
 
-  struct MergedDivergentRegion {
-    // Populated at the start
-    SmallPtrSet<BasicBlock *, 8> Entries;
-    SmallPtrSet<BasicBlock *, 8> Exits;
-    SmallPtrSet<BasicBlock *, 8> Blocks;
-  };
-
   /// Divergent groups are the maximal sets of basic blocks with the following
   /// properties:
   ///
@@ -118,8 +111,6 @@ private:
     // The blocks in the divergent region
     SmallPtrSet<BasicBlock *, 8> Blocks;
 
-    MergedDivergentRegion *MDR;
-
     // Used for transformations later
     std::unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
     std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
@@ -134,7 +125,6 @@ private:
   SmallPtrSet<BranchInst *, 8> ConvergentToDivergentEdges;
   SmallPtrSet<BranchInst *, 8> DivergentToConvergentEdges;
   SmallVector<DivergentRegion, 0> DivergentRegions;
-  SmallVector<MergedDivergentRegion, 0> MergedDivergentRegions;
 
   void demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap, Loop *CL);
   void populateDivergentRegions();
@@ -391,42 +381,30 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     }
   });
 
-  // Merge overlapping divergent regions so as to generate them only once
-  for (auto &DR : DivergentRegions) {
-    // TODO Performance of this isnt very good
-    bool Found = false;
-    for (auto &MDR : MergedDivergentRegions) {
-      if (!set_intersection(DR.Blocks, MDR.Blocks).empty()) {
-        DR.MDR = &MDR;
-        MDR.Entries.insert(DR.Entry);
-        MDR.Exits.insert(DR.Exit);
-        MDR.Blocks.insert(DR.Blocks.begin(), DR.Blocks.end());
-        Found = true;
-        break;
-      }
-    }
-    if (!Found) {
-      MergedDivergentRegion MDR = {{DR.Entry}, {DR.Exit}, DR.Blocks};
-      MergedDivergentRegions.push_back(std::move(MDR));
-      DR.MDR = &MergedDivergentRegions.back();
-    }
-  }
-  LLVM_DEBUG({
-    DBGS << "Merged divergent regions (" << MergedDivergentRegions.size()
-         << "):\n";
-    for (auto &MDR : MergedDivergentRegions) {
-      dbgs() << "Region: ";
-      for (auto *BB : MDR.Blocks)
-        dbgs() << "%" << BB->getName() << ", ";
-      dbgs() << "\n";
-    }
-  });
-
   for (auto *DB : DivergentBranches) {
     auto Preds = predecessors(DB->getParent());
     assert(std::next(Preds.begin()) == Preds.end());
     ConvergentToDivergentEdges.insert(
         cast<BranchInst>((*Preds.begin())->getTerminator()));
+  }
+
+  if (!UseDynamicConvergence) {
+    // If we are not going to use dynamic convergence, then all DRs that have
+    // entries in another DR are unreachable - delete them.
+    for (auto It = DivergentRegions.begin(), End = DivergentRegions.end();
+         It != End;) {
+      bool Erase = false;
+      for (auto &DR : DivergentRegions) {
+        if (DR.Blocks.contains(It->Entry)) {
+          Erase = true;
+          break;
+        }
+      }
+      if (Erase)
+        It = DivergentRegions.erase(It);
+      else
+        ++It;
+    }
   }
 }
 
