@@ -117,7 +117,6 @@ private:
     std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
   };
 
-  SmallPtrSet<Instruction *, 8> DemotedRegs;
   ValueToValueMapTy DemotedRegsVMap;
 
   SmallPtrSet<Instruction *, 8> DivergentBranches;
@@ -827,6 +826,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     }
   }
 
+  // Grab the demoted allocas before the map is invalidated
+  SmallVector<AllocaInst *> DemotedAllocas;
+  for (auto P : DemotedRegsVMap)
+    DemotedAllocas.push_back(cast<AllocaInst>(P.second));
+
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
   {
@@ -856,13 +860,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
-  // Now that we are done with the aggressive CFG restructuring we can
-  // re-promote the regs we demoted earlier
+  // Now that we are done with the aggressive CFG restructuring and deleting
+  // dead blocks we can re-promote the regs we demoted earlier
   // TODO can we check we were able to promote everything without undefs?
   DT.recalculate(*F); // TODO another recalculation...
-  PromoteMemToReg(mapContainer<SmallVector<AllocaInst *>, AllocaInst>(
-                      DemotedRegs, DemotedRegsVMap),
-                  DT);
+  PromoteMemToReg(DemotedAllocas, DT);
 
   // Plumbing around the coarsened and epilogue loops
 
