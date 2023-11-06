@@ -282,6 +282,28 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
         DR.Blocks.insert(BB2);
     }
   };
+  auto AddExit = [&](BasicBlock *TheBlock, BasicBlock *DivergentExit,
+                     BasicBlock *Convergent) {
+    for (auto &DR : llvm::make_filter_range(
+             DivergentRegions,
+             [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
+      DR.Blocks.erase(Convergent);
+      DR.Blocks.insert(DivergentExit);
+      DR.Exit = DivergentExit;
+      DR.To = Convergent;
+    }
+  };
+  auto AddEntry = [&](BasicBlock *TheBlock, BasicBlock *Convergent,
+                      BasicBlock *DivergentEntry) {
+    auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
+      return DR.From == TheBlock;
+    });
+    assert(DR);
+    DR->Blocks.erase(Convergent);
+    DR->Blocks.insert(DivergentEntry);
+    DR->From = Convergent;
+    DR->Entry = DivergentEntry;
+  };
 
   SmallPtrSet<BasicBlock *, 8> EntryAndConvergingBlocks =
       set_intersection(ConvergingBlocks, EntryBlocks);
@@ -306,22 +328,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
            "A Converging block cannot be the header.");
 
     AddExisting(TheBlock, Convergent, DivergentExit);
-    for (auto &DR : llvm::make_filter_range(
-             DivergentRegions,
-             [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
-      DR.Blocks.erase(DR.To);
-      DR.Blocks.insert(DivergentExit);
-      DR.Exit = DivergentExit;
-      DR.To = Convergent;
-    }
-    auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
-      return DR.From == TheBlock;
-    });
-    assert(DR);
-    DR->Blocks.erase(Convergent);
-    DR->Blocks.insert(DivergentEntry);
-    DR->From = Convergent;
-    DR->Entry = DivergentEntry;
+    AddExit(TheBlock, DivergentExit, Convergent);
+    AddEntry(TheBlock, Convergent, DivergentEntry);
   }
 
   for (auto *TheBlock : EntryBlocks) {
@@ -340,14 +348,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       TheLoop->moveToHeader(Convergent);
 
     AddExisting(TheBlock, Convergent);
-    auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
-      return DR.From == TheBlock;
-    });
-    assert(DR);
-    DR->Blocks.erase(Convergent);
-    DR->Blocks.insert(DivergentEntry);
-    DR->From = Convergent;
-    DR->Entry = DivergentEntry;
+    AddEntry(TheBlock, Convergent, DivergentEntry);
   }
 
   for (auto *TheBlock : ConvergingBlocks) {
@@ -364,21 +365,14 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
 
     AddExisting(TheBlock, DivergentExit);
-    for (auto &DR : llvm::make_filter_range(
-             DivergentRegions,
-             [TheBlock](DivergentRegion &DR) { return DR.To == TheBlock; })) {
-      DR.Blocks.erase(DR.To);
-      DR.Blocks.insert(DivergentExit);
-      DR.Exit = DivergentExit;
-      DR.To = Convergent;
-    }
+    AddExit(TheBlock, DivergentExit, Convergent);
   }
 
   LLVM_DEBUG({
     for (auto &DR : DivergentRegions) {
       DBGS << "Divergent region for entry %" << DR.Entry->getName()
-           << " from block %" << DR.From->getName() << " to block %"
-           << DR.To->getName() << ":\n";
+           << " and exit %" << DR.Exit->getName() << " from block %"
+           << DR.From->getName() << " to block %" << DR.To->getName() << ":\n";
       for (auto *BB : DR.Blocks)
         dbgs() << "%" << BB->getName() << ", ";
       dbgs() << "\n";
@@ -395,8 +389,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   if (!UseDynamicConvergence) {
     // If we are not going to use dynamic convergence, then all DRs that have
     // entries in another DR are unreachable - delete them.
-    for (auto It = DivergentRegions.begin(), End = DivergentRegions.end();
-         It != End;) {
+    for (auto *It = DivergentRegions.begin(); It != DivergentRegions.end();) {
       bool Erase = false;
       for (auto &DR : DivergentRegions) {
         if (&DR == &*It)
