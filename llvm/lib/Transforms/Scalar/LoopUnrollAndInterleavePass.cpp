@@ -864,6 +864,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // dead blocks we can re-promote the regs we demoted earlier
   // TODO can we check we were able to promote everything without undefs?
   DT.recalculate(*F); // TODO another recalculation...
+  DemotedAllocas.push_back(CoarsenedIdentPtr);
   PromoteMemToReg(DemotedAllocas, DT);
 
   // Plumbing around the coarsened and epilogue loops
