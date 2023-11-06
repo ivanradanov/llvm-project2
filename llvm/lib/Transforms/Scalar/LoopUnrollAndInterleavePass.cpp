@@ -262,6 +262,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 
     SmallPtrSet<BasicBlock *, 8> Reachable;
     findReachableFromTo(Entry, ConvergeBlock, Reachable);
+    Reachable.erase(ConvergeBlock);
+    Reachable.erase(Entry);
 
     // We will insert the Entry and Exit later
     DivergentRegion Region = {Entry, ConvergeBlock, nullptr, nullptr,
