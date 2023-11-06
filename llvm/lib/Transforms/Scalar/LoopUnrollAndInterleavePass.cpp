@@ -973,6 +973,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         dyn_cast<BranchInst>(CombinedLatchExiting->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
     BasicBlock *PrevBB = CombinedLatchExiting->splitBasicBlockBefore(BackEdge);
+    PrevBB->setName(CombinedLatchExiting->getName() + "epilogue.start.check");
     Instruction *BI = PrevBB->getTerminator();
     IRBuilder<> Builder(BI);
     Value *IsAtEpilogueStart = Builder.CreateCmp(
@@ -988,6 +989,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     // check for the epilogue loop start first
     BasicBlock *EndCheckBB =
         PrevBB->splitBasicBlockBefore(cast<Instruction>(EpilogueBranch));
+    EndCheckBB->setName(PrevBB->getName() + ".original.end.check");
     Instruction *EndCheckBI = EndCheckBB->getTerminator();
     IRBuilder<> EpilogueCheckBuilder(EndCheckBI);
     EpilogueCheckBuilder.CreateCondBr(BackEdge->getCondition(), PrevBB,
