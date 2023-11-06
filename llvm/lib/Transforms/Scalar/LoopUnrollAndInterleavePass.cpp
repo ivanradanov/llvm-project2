@@ -26,6 +26,7 @@
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Debuginfod/Debuginfod.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
@@ -132,10 +133,10 @@ private:
 
 public:
   LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE) : ORE(ORE) {}
-  LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
-                                   ScalarEvolution &SE,
-                                   const TargetTransformInfo &TTI,
-                                   PostDominatorTree &PDT);
+  LoopUnrollResult
+  tryToUnrollLoop(Loop *L, unsigned UnrollFactor, bool UseDynamicConvergence,
+                  DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
+                  const TargetTransformInfo &TTI, PostDominatorTree &PDT);
 };
 
 static bool isWorkShareLoop(Loop *L) {
@@ -506,30 +507,15 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
 }
 
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
-    Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
+    Loop *L, unsigned UnrollFactor, bool UseDynamicConvergence,
+    DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     const TargetTransformInfo &TTI, PostDominatorTree &PDT) {
   this->LI = LI;
   this->TheLoop = L;
   this->DT = &DT;
   this->PDT = &PDT;
-
-  // Disabled by default
-  UnrollFactor = 1;
-  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
-    StringRef(Env).getAsInteger(10, UnrollFactor);
-  assert(UnrollFactor > 0);
-  if (UnrollFactor == 1) {
-    LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
-    return LoopUnrollResult::Unmodified;
-  }
-
-  // TODO currently doesnt work
-  bool Chunkify = false;
-  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_CHUNKIFY")) {
-    unsigned Int = 0;
-    StringRef(Env).getAsInteger(10, Int);
-    Chunkify = Int;
-  }
+  this->UnrollFactor = UnrollFactor;
+  this->UseDynamicConvergence = UseDynamicConvergence;
 
   Function *F = L->getHeader()->getParent();
   auto &Ctx = F->getContext();
@@ -579,36 +565,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
   BasicBlock *ExitBlock = L->getExitBlock();
   std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
-
-  // Change the kmpc_call chunk size
-  if (Chunkify) {
-    Function *F = L->getHeader()->getParent();
-    bool Found = false;
-    [&]() {
-      for (BasicBlock &BB : *F) {
-        for (Instruction &I : BB) {
-          if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-            if (Function *CF = CI->getCalledFunction()) {
-              if (CF->getName() == "__kmpc_for_static_init_8u") {
-                unsigned ChunkSizeOperandNum = 8;
-                ConstantInt *ConstInt =
-                    dyn_cast<ConstantInt>(CI->getOperand(ChunkSizeOperandNum));
-                assert(ConstInt);
-                CI->setOperand(
-                    ChunkSizeOperandNum,
-                    ConstantInt::get(
-                        CI->getOperand(ChunkSizeOperandNum)->getType(),
-                        UnrollFactor * ConstInt->getValue()));
-                Found = true;
-                return;
-              }
-            }
-          }
-        }
-      }
-    }();
-    assert(Found && "Did not find kmpc call");
-  }
 
   // We need the upper bound of the loop to be defined before we enter it in
   // order to know whether we should enter the coarsened version or the
@@ -679,15 +635,13 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // The new Step is UnrollFactor * OriginalStep
   Value *IVStepVal = LoopBounds->getStepValue();
   if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
-    if (!Chunkify) {
-      Value *NewStep = PreheaderBuilder.CreateMul(
-          IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
-          "coarsened.step");
-      IVStepInst->replaceUsesWithIf(
-          NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
-            return U.getUser() != NewStep && !IsInEpilogue(U);
-          });
-    }
+    Value *NewStep = PreheaderBuilder.CreateMul(
+        IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
+        "coarsened.step");
+    IVStepInst->replaceUsesWithIf(
+        NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
+          return U.getUser() != NewStep && !IsInEpilogue(U);
+        });
   } else {
     // If the step is a constant
     auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
@@ -707,16 +661,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
   for (unsigned I = 1; I < UnrollFactor; I++) {
     Value *CoarsenedInitialIV;
-    if (Chunkify) {
-      CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
-          InitialIVVal, ConstantInt::get(IVStepVal->getType(), I));
-    } else {
-      Value *MultipliedStep = PreheaderBuilder.CreateMul(
-          IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
-      CoarsenedInitialIV = PreheaderBuilder.CreateAdd(
-          InitialIVVal, MultipliedStep,
-          "initial.iv.coarsened." + std::to_string(I));
-    }
+    Value *MultipliedStep = PreheaderBuilder.CreateMul(
+        IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
+    CoarsenedInitialIV =
+        PreheaderBuilder.CreateAdd(InitialIVVal, MultipliedStep,
+                                   "initial.iv.coarsened." + std::to_string(I));
     (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
     (*ReverseVMaps[I])[CoarsenedInitialIV] = InitialIVVal;
   }
@@ -1037,11 +986,27 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
   auto *F = L.getHeader()->getParent();
   OptimizationRemarkEmitter ORE(F);
 
+  unsigned UnrollFactor = 1;
+  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
+    StringRef(Env).getAsInteger(10, UnrollFactor);
+  assert(UnrollFactor > 0);
+  if (UnrollFactor == 1) {
+    LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
+    return PreservedAnalyses::all();
+  }
+
+  bool UseDynamicConvergence = false;
+  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_DYNAMIC_CONVERGENCE")) {
+    unsigned Int = 0;
+    StringRef(Env).getAsInteger(10, Int);
+    UseDynamicConvergence = Int;
+  }
+
   // auto &PDT = AM.getResult<PostDominatorTreeAnalysis>(L, AR);
   auto PDT = PostDominatorTree(*F);
   bool Changed = LoopUnrollAndInterleave(ORE).tryToUnrollLoop(
-                     &L, AR.DT, &AR.LI, AR.SE, AR.TTI, PDT) !=
-                 LoopUnrollResult::Unmodified;
+                     &L, UnrollFactor, UseDynamicConvergence, AR.DT, &AR.LI,
+                     AR.SE, AR.TTI, PDT) != LoopUnrollResult::Unmodified;
   if (!Changed)
     return PreservedAnalyses::all();
 
