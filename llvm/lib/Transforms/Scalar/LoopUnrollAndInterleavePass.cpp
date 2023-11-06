@@ -467,7 +467,6 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
   for (auto &DR : DivergentRegions) {
     ToDemote[&DR] = {};
     // Find values defined outside the DR and used inside it
-    DR.DefinedInsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *BB : DR.Blocks) {
       SmallVector<Instruction *> ToHandle;
       for (auto &I : *BB) {
@@ -493,7 +492,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
   for (auto Pair : ToDemote) {
     auto &DR = *Pair.getFirst();
     auto &ToDemote = Pair.getSecond();
-    DR.DefinedOutsideDemotedVMap.reset(new ValueToValueMapTy());
+    DR.DefinedInsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *I : ToDemote) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
