@@ -318,6 +318,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       return DR.From == TheBlock;
     });
     assert(DR);
+    DR->Blocks.erase(Convergent);
+    DR->Blocks.insert(DivergentEntry);
     DR->From = Convergent;
     DR->Entry = DivergentEntry;
   }
@@ -342,6 +344,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       return DR.From == TheBlock;
     });
     assert(DR);
+    DR->Blocks.erase(Convergent);
+    DR->Blocks.insert(DivergentEntry);
     DR->From = Convergent;
     DR->Entry = DivergentEntry;
   }
@@ -395,6 +399,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
          It != End;) {
       bool Erase = false;
       for (auto &DR : DivergentRegions) {
+        if (&DR == &*It)
+          continue;
         if (DR.Blocks.contains(It->Entry)) {
           Erase = true;
           break;
@@ -555,7 +561,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   populateDivergentRegions();
-  LLVM_DEBUG(DBGS << "After populateDivergentRegions:\n" << *F);
 
   // TODO Pretty bad, SE is also invalidated but I /think/ we dont need it any
   // more
@@ -774,6 +779,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
   EpilogueVMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
+  EpiloguePH->eraseFromParent();
 
   DT.recalculate(*F); // TODO another recalculation...
   // Find all values used in the divergent region but defined outside and demote
@@ -1011,8 +1017,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       PN->setOperand(OpNo, &LoopBounds->getStepInst());
     }
   }
-
-  EpiloguePH->eraseFromParent();
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
