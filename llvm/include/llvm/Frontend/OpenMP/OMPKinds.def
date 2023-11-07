@@ -617,6 +617,9 @@ __OMP_ATTRS_SET(WriteOnlyPtrAttrs,
                     : AttributeSet())
 #endif
 
+__OMP_ATTRS_SET(ScheduleArgPtrAttrs,
+                AttributeSet(EnumAttr(NoCapture), EnumAttr(NoFree)))
+
 __OMP_ATTRS_SET(ArgPtrAttrs,
                 OptimisticAttributes
                     ? AttributeSet(EnumAttr(NoCapture), EnumAttr(NoFree))
@@ -785,39 +788,43 @@ __OMP_RTL_ATTRS(__kmpc_end_ordered, BarrierAttrs, AttributeSet(),
                 ParamAttrs(ReadOnlyPtrAttrs, SExt))
 
 __OMP_RTL_ATTRS(__kmpc_for_static_init_4, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_for_static_init_4u, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_for_static_init_8, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs,
-                           AttributeSet(), AttributeSet()))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, AttributeSet(), AttributeSet()))
 __OMP_RTL_ATTRS(__kmpc_for_static_init_8u, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs,
-                           AttributeSet(), AttributeSet()))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, AttributeSet(), AttributeSet()))
 __OMP_RTL_ATTRS(__kmpc_for_static_fini, InaccessibleArgOnlyAttrs,
                 AttributeSet(), ParamAttrs(ReadOnlyPtrAttrs, SExt))
 __OMP_RTL_ATTRS(__kmpc_distribute_static_init_4, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_distribute_static_init_4u, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_distribute_static_init_8, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs,
-                           AttributeSet(), AttributeSet()))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, AttributeSet(), AttributeSet()))
 __OMP_RTL_ATTRS(__kmpc_distribute_static_init_8u, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs,
-                           AttributeSet(), AttributeSet()))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, AttributeSet(), AttributeSet()))
 __OMP_RTL_ATTRS(__kmpc_distribute_static_fini, InaccessibleArgOnlyAttrs,
                 AttributeSet(), ParamAttrs(ReadOnlyPtrAttrs, SExt))
 __OMP_RTL_ATTRS(__kmpc_dist_dispatch_init_4, GetterArgWriteAttrs,
@@ -835,25 +842,31 @@ __OMP_RTL_ATTRS(__kmpc_dist_dispatch_init_8u, GetterArgWriteAttrs,
                 AttributeSet(),
                 ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dispatch_init_4, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, SExt, SExt, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, SExt, SExt, SExt,
+                           SExt))
 __OMP_RTL_ATTRS(__kmpc_dispatch_init_4u, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ZExt, ZExt, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ZExt, ZExt, SExt,
+                           SExt))
 __OMP_RTL_ATTRS(__kmpc_dispatch_init_8, GetterArgWriteAttrs, AttributeSet(),
                 ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_dispatch_init_8u, GetterArgWriteAttrs, AttributeSet(),
                 ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_dispatch_next_4, GetterArgWriteAttrs, SExt,
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dispatch_next_4u, GetterArgWriteAttrs, SExt,
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dispatch_next_8, GetterArgWriteAttrs, SExt,
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dispatch_next_8u, GetterArgWriteAttrs, SExt,
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dispatch_fini_4, InaccessibleArgOnlyAttrs,
                 AttributeSet(), ParamAttrs(ReadOnlyPtrAttrs, SExt))
 __OMP_RTL_ATTRS(__kmpc_dispatch_fini_4u, InaccessibleArgOnlyAttrs,
@@ -863,35 +876,43 @@ __OMP_RTL_ATTRS(__kmpc_dispatch_fini_8, InaccessibleArgOnlyAttrs,
 __OMP_RTL_ATTRS(__kmpc_dispatch_fini_8u, InaccessibleArgOnlyAttrs,
                 AttributeSet(), ParamAttrs(ReadOnlyPtrAttrs, SExt))
 __OMP_RTL_ATTRS(__kmpc_team_static_init_4, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_team_static_init_4u, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, SExt, SExt))
 __OMP_RTL_ATTRS(__kmpc_team_static_init_8, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_team_static_init_8u, GetterArgWriteAttrs, AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dist_for_static_init_4, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs, SExt,
+                           SExt))
 __OMP_RTL_ATTRS(__kmpc_dist_for_static_init_4u, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs,
-                           ArgPtrAttrs, SExt, SExt))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs, SExt,
+                           SExt))
 __OMP_RTL_ATTRS(__kmpc_dist_for_static_init_8, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs))
 __OMP_RTL_ATTRS(__kmpc_dist_for_static_init_8u, GetterArgWriteAttrs,
                 AttributeSet(),
-                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ArgPtrAttrs,
-                           ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs, ArgPtrAttrs))
+                ParamAttrs(ReadOnlyPtrAttrs, SExt, SExt, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs,
+                           ScheduleArgPtrAttrs, ScheduleArgPtrAttrs))
 
 __OMP_RTL_ATTRS(__kmpc_single, BarrierAttrs, SExt,
                 ParamAttrs(ReadOnlyPtrAttrs, SExt))
