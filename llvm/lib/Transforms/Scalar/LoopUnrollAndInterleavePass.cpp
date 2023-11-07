@@ -563,7 +563,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // order to know whether we should enter the coarsened version or the
   // epilogue.
   Value *End = [&](Value *End) -> Value * {
-    Instruction *I = dyn_cast<LoadInst>(End);
+    Instruction *I = dyn_cast<Instruction>(End);
     if (!I)
       return End;
 
