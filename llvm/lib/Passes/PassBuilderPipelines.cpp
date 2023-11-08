@@ -23,6 +23,7 @@
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -66,6 +67,7 @@
 #include "llvm/Transforms/IPO/SCCP.h"
 #include "llvm/Transforms/IPO/SampleProfile.h"
 #include "llvm/Transforms/IPO/SampleProfileProbe.h"
+#include "llvm/Transforms/IPO/StripSymbols.h"
 #include "llvm/Transforms/IPO/SyntheticCountsPropagation.h"
 #include "llvm/Transforms/IPO/WholeProgramDevirt.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
@@ -1310,6 +1312,10 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
                                              ThinOrFullLTOPhase LTOPhase) {
   const bool LTOPreLink = isLTOPreLink(LTOPhase);
   ModulePassManager MPM;
+
+  // TODO we currently do not handle debug info
+  if (!getenv("LUAI_PRESERVE_DEBUG_INFO"))
+    MPM.addPass(StripSymbolsPass());
 
   // Run partial inlining pass to partially inline functions that have
   // large bodies.

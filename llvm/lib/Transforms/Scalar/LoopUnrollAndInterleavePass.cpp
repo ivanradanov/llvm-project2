@@ -984,9 +984,6 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
   auto *F = L.getHeader()->getParent();
   OptimizationRemarkEmitter ORE(F);
 
-  // TODO We do not handle debug info correctly yet
-  stripDebugInfo(*F);
-
   unsigned UnrollFactor = 1;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
     StringRef(Env).getAsInteger(10, UnrollFactor);
