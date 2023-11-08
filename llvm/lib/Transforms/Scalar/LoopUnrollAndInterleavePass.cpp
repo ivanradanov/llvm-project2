@@ -31,6 +31,7 @@
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
@@ -982,6 +983,9 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
                                  LPMUpdater &Updater) {
   auto *F = L.getHeader()->getParent();
   OptimizationRemarkEmitter ORE(F);
+
+  // TODO We do not handle debug info correctly yet
+  stripDebugInfo(*F);
 
   unsigned UnrollFactor = 1;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
