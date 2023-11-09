@@ -68,6 +68,13 @@ using namespace llvm;
 
 #define DEBUG_TYPE "loop-unroll-and-interleave"
 
+static cl::opt<int> UnrollFactorOpt("luai-factor", cl::init(1), cl::Hidden,
+                                    cl::desc("Factor to coarsen with"));
+
+static cl::opt<bool> UseDynamicConvergenceOpt(
+    "luai-use-dynamic-convergence", cl::init(false), cl::Hidden,
+    cl::desc("Runtime check for convergence between coarsened iterations"));
+
 template <typename OutTy, typename CastTy, typename InTy>
 static OutTy mapContainer(InTy &Container, ValueToValueMapTy &VMap) {
   auto MappedRange = llvm::map_range(
@@ -89,8 +96,8 @@ private:
   BasicBlock *Preheader;
 
   // Options
-  unsigned UnrollFactor;
-  bool UseDynamicConvergence = false;
+  const unsigned UnrollFactor;
+  const bool UseDynamicConvergence;
 
   /// Divergent groups are the maximal sets of basic blocks with the following
   /// properties:
@@ -132,11 +139,14 @@ private:
   bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
 
 public:
-  LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE) : ORE(ORE) {}
-  LoopUnrollResult
-  tryToUnrollLoop(Loop *L, unsigned UnrollFactor, bool UseDynamicConvergence,
-                  DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
-                  const TargetTransformInfo &TTI, PostDominatorTree &PDT);
+  LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE, unsigned UnrollFactor,
+                          bool UseDynamicConvergence)
+      : ORE(ORE), UnrollFactor(UnrollFactor),
+        UseDynamicConvergence(UseDynamicConvergence) {}
+  LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
+                                   ScalarEvolution &SE,
+                                   const TargetTransformInfo &TTI,
+                                   PostDominatorTree &PDT);
 };
 
 static bool isWorkShareLoop(Loop *L) {
@@ -501,15 +511,12 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
 }
 
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
-    Loop *L, unsigned UnrollFactor, bool UseDynamicConvergence,
-    DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
+    Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
     const TargetTransformInfo &TTI, PostDominatorTree &PDT) {
   this->LI = LI;
   this->TheLoop = L;
   this->DT = &DT;
   this->PDT = &PDT;
-  this->UnrollFactor = UnrollFactor;
-  this->UseDynamicConvergence = UseDynamicConvergence;
 
   Function *F = L->getHeader()->getParent();
   auto &Ctx = F->getContext();
@@ -683,19 +690,24 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       Instruction *LastI = I;
       (*VMaps[0])[I] = I;
       (*ReverseVMaps[0])[I] = I;
+
+      bool IsTerminator = I->isTerminator();
+      bool IsConvergentToDivergent = false;
+      BranchInst *BI = nullptr;
+      if (IsTerminator && UseDynamicConvergence) {
+        BI = dyn_cast<BranchInst>(I);
+        if (ConvergentToDivergentEdges.contains(BI)) {
+          IsConvergentToDivergent = true;
+          assert(BI);
+        }
+      }
+
       for (unsigned It = 1; It < UnrollFactor; It++) {
-        if (I->isTerminator()) {
-          if (UseDynamicConvergence) {
-            // TODO here we would check if all original iterations agree on the
-            // next block and take the coarsened branch if they do. Currently
-            // unsupported
-            assert(0 && "Unsupported");
-          } else {
-            // Do not clone terminators - we use the control flow of the
-            // existing iteration (if the branch is divergent we will insert
-            // an entry to a divergent region here later)
-            continue;
-          }
+        if (IsTerminator) {
+          // Do not clone terminators - we use the control flow of the
+          // existing iteration (if the branch is divergent we will insert
+          // an entry to a divergent region here later)
+          continue;
         }
 
         Instruction *Cloned = I->clone();
@@ -706,6 +718,25 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         (*VMaps[It])[I] = Cloned;
         (*ReverseVMaps[It])[Cloned] = I;
         LastI = Cloned;
+      }
+
+      if (UseDynamicConvergence) {
+        Value *AllSame = ConstantInt::get(IntegerType::getInt1Ty(Ctx), true);
+        Value *Cond = BI->getCondition();
+        IRBuilder<> Builder(BI);
+        for (unsigned It = 1; It < UnrollFactor; It++) {
+          // The condition has to be an instruction otherwise it cannot be
+          // divergent
+          auto *CoarsenedCond = cast<Instruction>((*VMaps[It])[Cond]);
+          auto *Same = Builder.CreateCmp(CmpInst::Predicate::ICMP_EQ,
+                                         CoarsenedCond, Cond);
+          AllSame = Builder.CreateAnd(Same, AllSame);
+        }
+        // If the branches agree on the condition, branch to the convergent
+        // region, else, we branch to the divergent region (we will insert that
+        // successor later)
+        Builder.CreateCondBr(AllSame, BI->getSuccessor(0), BI->getSuccessor(0));
+        BI->eraseFromParent();
       }
     }
   }
@@ -779,8 +810,15 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       auto *ToIntroBI = BranchInst::Create(Intro);
       if (It == 0) {
         assert(!LastOutro);
-        DR.From->getTerminator()->eraseFromParent();
-        ToIntroBI->insertInto(DR.From, DR.From->end());
+        if (UseDynamicConvergence) {
+          // If the coarsened versions did _not_ agree on the condition, jump to
+          // the divergent region
+          DR.From->getTerminator()->setSuccessor(1, Intro);
+          ToIntroBI->deleteValue();
+        } else {
+          DR.From->getTerminator()->eraseFromParent();
+          ToIntroBI->insertInto(DR.From, DR.From->end());
+        }
       } else {
         ToIntroBI->insertInto(LastOutro, LastOutro->end());
       }
@@ -984,16 +1022,19 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
   auto *F = L.getHeader()->getParent();
   OptimizationRemarkEmitter ORE(F);
 
-  unsigned UnrollFactor = 1;
+  unsigned UnrollFactor = UnrollFactorOpt;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
     StringRef(Env).getAsInteger(10, UnrollFactor);
-  assert(UnrollFactor > 0);
   if (UnrollFactor == 1) {
     LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
     return PreservedAnalyses::all();
   }
+  if (UnrollFactor < 1) {
+    LLVM_DEBUG(DBGS << "Unroll factor of less than 1 - ignoring\n");
+    return PreservedAnalyses::all();
+  }
 
-  bool UseDynamicConvergence = false;
+  bool UseDynamicConvergence = UseDynamicConvergenceOpt;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_DYNAMIC_CONVERGENCE")) {
     unsigned Int = 0;
     StringRef(Env).getAsInteger(10, Int);
@@ -1002,9 +1043,10 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
 
   // auto &PDT = AM.getResult<PostDominatorTreeAnalysis>(L, AR);
   auto PDT = PostDominatorTree(*F);
-  bool Changed = LoopUnrollAndInterleave(ORE).tryToUnrollLoop(
-                     &L, UnrollFactor, UseDynamicConvergence, AR.DT, &AR.LI,
-                     AR.SE, AR.TTI, PDT) != LoopUnrollResult::Unmodified;
+  bool Changed =
+      LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence)
+          .tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, PDT) !=
+      LoopUnrollResult::Unmodified;
   if (!Changed)
     return PreservedAnalyses::all();
 
