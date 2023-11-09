@@ -392,11 +392,9 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     }
   });
 
-  for (auto *DB : DivergentBranches) {
-    auto Preds = predecessors(DB->getParent());
-    assert(std::next(Preds.begin()) == Preds.end());
+  for (auto &DR : DivergentRegions) {
     ConvergentToDivergentEdges.insert(
-        cast<BranchInst>((*Preds.begin())->getTerminator()));
+        cast<BranchInst>(DR.From->getTerminator()));
   }
 
   if (!UseDynamicConvergence) {
@@ -692,13 +690,21 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       (*ReverseVMaps[0])[I] = I;
 
       bool IsTerminator = I->isTerminator();
-      bool IsConvergentToDivergent = false;
-      BranchInst *BI = nullptr;
+      bool IsConvergentToDivergentBr = false;
+      Instruction *DivergentCond = nullptr;
       if (IsTerminator && UseDynamicConvergence) {
-        BI = dyn_cast<BranchInst>(I);
+        BranchInst *BI = dyn_cast<BranchInst>(I);
         if (ConvergentToDivergentEdges.contains(BI)) {
-          IsConvergentToDivergent = true;
-          assert(BI);
+          assert(BI && !BI->isConditional());
+          IsConvergentToDivergentBr = true;
+          auto *DivBr = BI->getSuccessor(0)->getTerminator();
+          if (auto *Sw = dyn_cast<SwitchInst>(DivBr))
+            DivergentCond = cast<Instruction>(Sw->getCondition());
+          else if (auto *BI = dyn_cast<BranchInst>(DivBr))
+            DivergentCond = cast<Instruction>(BI->getCondition());
+          else
+            llvm_unreachable(
+                "Divergent branches must be either branch or switch insts");
         }
       }
 
@@ -720,10 +726,18 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         LastI = Cloned;
       }
 
-      if (UseDynamicConvergence) {
+      // The current state:
+      //
+      // ConvergentBlock:
+      //   ...
+      //   br %DivergentEntry ( = I)
+      // DivergentEntry:
+      //   ...
+      //   br %cond %... ( = DivBr)
+      if (IsConvergentToDivergentBr) {
         Value *AllSame = ConstantInt::get(IntegerType::getInt1Ty(Ctx), true);
-        Value *Cond = BI->getCondition();
-        IRBuilder<> Builder(BI);
+        Value *Cond = DivergentCond;
+        IRBuilder<> Builder(I);
         for (unsigned It = 1; It < UnrollFactor; It++) {
           // The condition has to be an instruction otherwise it cannot be
           // divergent
@@ -735,8 +749,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         // If the branches agree on the condition, branch to the convergent
         // region, else, we branch to the divergent region (we will insert that
         // successor later)
-        Builder.CreateCondBr(AllSame, BI->getSuccessor(0), BI->getSuccessor(0));
-        BI->eraseFromParent();
+        Builder.CreateCondBr(AllSame, I->getSuccessor(0), I->getSuccessor(0));
+        I->eraseFromParent();
       }
     }
   }
