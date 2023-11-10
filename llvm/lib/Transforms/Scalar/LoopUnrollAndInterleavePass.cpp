@@ -400,6 +400,12 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
         cast<BranchInst>(DR.From->getTerminator()));
   }
 
+  for (auto &DR : DivergentRegions) {
+    DR.IsNested = any_of(DivergentRegions, [&](DivergentRegion &OtherDR) {
+      return OtherDR.Blocks.contains(DR.From);
+    });
+  }
+
   if (!UseDynamicConvergence) {
     // If we are not going to use dynamic convergence, then all DRs that have
     // entries in another DR are unreachable - delete them.
@@ -881,9 +887,47 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       else
         ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
+  }
+  // We need to to make intro/outros for nested DRs in the DR
+  if (UseDynamicConvergence) {
+    for (auto &DR : DivergentRegions) {
+      BasicBlock *DREntry = cast<BasicBlock>(DivergentRegionsVMap[DR.Entry]);
+      BasicBlock *DRExit = cast<BasicBlock>(DivergentRegionsVMap[DR.Exit]);
+      BasicBlock *DRTo = cast<BasicBlock>(DivergentRegionsVMap[DR.To]);
+      BasicBlock *DRFrom = cast<BasicBlock>(DivergentRegionsVMap[DR.From]);
 
-    if (DR.IsNested) {
-      // We need to to make intro/outros in the DRs as well
+      if (DR.IsNested) {
+        auto *Intro = BasicBlock::Create(
+            Ctx, DREntry->getName() + ".div.intro.nested", F, DREntry);
+        IRBuilder<> IntroBuilder(Intro);
+
+        auto *ToIntroBI = BranchInst::Create(Intro);
+        DRFrom->getTerminator()->eraseFromParent();
+        ToIntroBI->insertInto(DRFrom, DRFrom->end());
+
+        for (auto P : *DR.DefinedOutsideDemotedVMap) {
+          auto *I = const_cast<Value *>(P.first);
+          IntroBuilder.CreateStore(I, P.second);
+        }
+
+        IntroBuilder.CreateBr(DREntry);
+
+        auto *Outro = BasicBlock::Create(
+            Ctx, DRExit->getName() + ".div.outro.nested", F, DRTo);
+        for (auto P : *DR.DefinedInsideDemotedVMap) {
+          auto *CoarsenedValue = P.first;
+          auto *OriginalValue =
+              cast_or_null<Instruction>((*ReverseVMaps[0])[CoarsenedValue]);
+          // When the defined inside value is from another original iteration
+          if (!OriginalValue)
+            continue;
+          auto *DRValue =
+              cast<Instruction>(DivergentRegionsVMap[OriginalValue]);
+          new StoreInst(DRValue, P.second, Outro);
+        }
+        auto *FromOutroBI = BranchInst::Create(DRTo);
+        FromOutroBI->insertInto(Outro, Outro->end());
+      }
     }
   }
 
@@ -925,7 +969,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   F->getParent()->dump();
 
   // Now that we are done with the aggressive CFG restructuring and deleting
-  // dead blocks we can re-promote the regs we demoted earlier
+  // dead blocks we can re-promote the regs we demoted earlier.
   // TODO can we check we were able to promote everything without undefs?
   DT.recalculate(*F); // TODO another recalculation...
   DemotedAllocas.push_back(CoarsenedIdentPtr);
@@ -946,7 +990,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // Calc the start value for the epilogue loop, should be:
   // Start + (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor *
   // Stride.
-  // I.e. when we are done with our iterations of the coarsened loop
+  // I.e. when we are done with our iterations of the coarsened loop.
   Value *EpilogueStart;
   Value *Start = &LoopBounds->getInitialIVValue();
   // Value *End = GetEnd(&LoopBounds->getFinalIVValue()); // Defined above.
