@@ -120,6 +120,9 @@ private:
     // The blocks in the divergent region
     SmallPtrSet<BasicBlock *, 8> Blocks;
 
+    // Properties
+    bool IsNested;
+
     // Used for transformations later
     std::unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
     std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
@@ -734,6 +737,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       // DivergentEntry:
       //   ...
       //   br %cond %... ( = DivBr)
+      //
+      // We change `I` to be a conditional branch with the condition of whether
+      // all the coarsened iterations agreed on the `DivBr` condition
       if (IsConvergentToDivergentBr) {
         Value *AllSame = ConstantInt::get(IntegerType::getInt1Ty(Ctx), true);
         Value *Cond = DivergentCond;
@@ -807,13 +813,16 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       ToOutroSw = SwitchInst::Create(Ld, DREntry, 0);
       DRExit->getTerminator()->eraseFromParent();
       ToOutroSw->insertInto(DRExit, DRExit->end());
+      NumSwCases = 0;
+    } else {
+      NumSwCases = ToOutroSw->getNumCases() + 1;
     }
-    NumSwCases = ToOutroSw->getNumCases();
 
     BasicBlock *LastOutro = nullptr;
     for (unsigned It = 0; It < UnrollFactor; It++) {
+      auto ThisFactorIdentifierVal = NumSwCases + It;
       auto *ThisFactorIdentifier = cast<ConstantInt>(
-          ConstantInt::get(CoarsenedIdentifierTy, NumSwCases + It));
+          ConstantInt::get(CoarsenedIdentifierTy, ThisFactorIdentifierVal));
 
       auto *Intro = BasicBlock::Create(
           Ctx, DREntry->getName() + ".div.intro." + std::to_string(It), F,
@@ -850,7 +859,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       auto *Outro = LastOutro = BasicBlock::Create(
           Ctx,
           DRExit->getName() + ".div.outro." + std::to_string(It) + "." +
-              std::to_string(NumSwCases / UnrollFactor),
+              std::to_string(ThisFactorIdentifierVal / UnrollFactor),
           F, DRTo);
       for (auto P : *DR.DefinedInsideDemotedVMap) {
         auto *CoarsenedValue = P.first;
@@ -867,10 +876,14 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         FromOutroBI->insertInto(Outro, Outro->end());
       }
 
-      if (It == 0)
+      if (ThisFactorIdentifierVal == 0)
         ToOutroSw->setDefaultDest(Outro);
       else
         ToOutroSw->addCase(ThisFactorIdentifier, Outro);
+    }
+
+    if (DR.IsNested) {
+      // We need to to make intro/outros in the DRs as well
     }
   }
 
@@ -908,12 +921,17 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
+  dbgs() << "before repromote\n";
+  F->getParent()->dump();
+
   // Now that we are done with the aggressive CFG restructuring and deleting
   // dead blocks we can re-promote the regs we demoted earlier
   // TODO can we check we were able to promote everything without undefs?
   DT.recalculate(*F); // TODO another recalculation...
   DemotedAllocas.push_back(CoarsenedIdentPtr);
   PromoteMemToReg(DemotedAllocas, DT);
+
+  dbgs() << "after repromote\n";
 
   // Plumbing around the coarsened and epilogue loops
 
