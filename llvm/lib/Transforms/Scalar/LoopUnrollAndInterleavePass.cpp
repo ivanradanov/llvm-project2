@@ -872,6 +872,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     }
 
     BasicBlock *LastOutro = nullptr;
+    BasicBlock *FirstIntro = nullptr;
     for (unsigned It = 0; It < UnrollFactor; It++) {
       auto ThisFactorIdentifierVal = NumSwCases + It;
       auto *ThisFactorIdentifier = cast<ConstantInt>(
@@ -880,6 +881,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       auto *Intro = BasicBlock::Create(
           Ctx, DREntry->getName() + ".div.intro." + std::to_string(It), F,
           DREntry);
+      if (It == 0)
+        FirstIntro = Intro;
       IRBuilder<> IntroBuilder(Intro);
       IntroBuilder.CreateStore(ThisFactorIdentifier, CoarsenedIdentPtr);
 
@@ -904,7 +907,18 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
         Instruction *CoarsenedValue =
             cast<Instruction>((*VMaps[It])[OriginalValue]);
-        IntroBuilder.CreateStore(CoarsenedValue, P.second);
+        // If we use dynamic convergence then a nested DR can be entered from
+        // another DR so the entry point is not unique - we need PHIs for the
+        // coarsened iterations
+        if (It == 0 || !UseDynamicConvergence || !DR.IsNested) {
+          IntroBuilder.CreateStore(CoarsenedValue, P.second);
+        } else {
+          auto *Passthrough =
+              PHINode::Create(CoarsenedValue->getType(), 1, "passthrough.phi");
+          Passthrough->addIncoming(CoarsenedValue, FirstIntro);
+          Passthrough->insertInto(DREntry, DREntry->begin());
+          IntroBuilder.CreateStore(Passthrough, P.second);
+        }
       }
 
       IntroBuilder.CreateBr(DREntry);
@@ -938,8 +952,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       ToOutroSw->addCase(FromDRIdent, DRTo);
     }
   }
-  // We need to to make intro/outros for nested DRs in the DR
   if (UseDynamicConvergence) {
+    // We need to to make intro/outros for nested DRs in the DR
     for (auto &DR : DivergentRegions) {
       BasicBlock *DREntry = cast<BasicBlock>(DivergentRegionsVMap[DR.Entry]);
       BasicBlock *DRExit = cast<BasicBlock>(DivergentRegionsVMap[DR.Exit]);
@@ -962,6 +976,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         }
 
         IntroBuilder.CreateBr(DREntry);
+        for (auto &I : *DREntry) {
+          if (auto *PN = dyn_cast<PHINode>(&I))
+            PN->addIncoming(UndefValue::get(PN->getType()), Intro);
+          else
+            break;
+        }
 
         auto *Outro = BasicBlock::Create(
             Ctx, DRExit->getName() + ".div.outro.nested", F, DRTo);
