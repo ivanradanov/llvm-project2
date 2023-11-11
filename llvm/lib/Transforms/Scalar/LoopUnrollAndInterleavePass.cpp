@@ -138,7 +138,7 @@ private:
   // edge
   SmallPtrSet<BranchInst *, 8> ConvergentToDivergentEdges;
   SmallPtrSet<BranchInst *, 8> DivergentToConvergentEdges;
-  SmallVector<DivergentRegion, 2> DivergentRegions;
+  std::list<DivergentRegion> DivergentRegions;
 
   void demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap, Loop *CL);
   void populateDivergentRegions();
@@ -308,8 +308,6 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 
   for (auto &P : SharingConverge) {
     auto &Sharing = P.second;
-    if (Sharing.size() == 1)
-      continue;
 
     auto *ConvergeBlock = P.first;
     for (auto *DR = Sharing.begin();; DR++) {
@@ -325,6 +323,35 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       TheLoop->addBasicBlockToLoop(NewConvergeBlock, *LI);
       ConvergingBlocks.insert(NewConvergeBlock);
       (*DR)->To = NewConvergeBlock;
+
+      // TODO test this code
+      SmallPtrSet<BasicBlock *, 2> OutsidePredBBs;
+      for (auto *PredBB : predecessors(NewConvergeBlock)) {
+        if (!(*DR)->Blocks.contains(PredBB)) {
+          // Redirect the edges coming from an outer DR to use the original
+          // converge block and not the split one
+          PredBB->getTerminator()->replaceSuccessorWith(NewConvergeBlock,
+                                                        ConvergeBlock);
+          OutsidePredBBs.insert(PredBB);
+        }
+      }
+      // Fix the PHINodes
+      for (auto &PN : NewConvergeBlock->phis()) {
+        auto *NewPN = PHINode::Create(PN.getType(), PN.getNumIncomingValues(),
+                                      PN.getName() + ".csplit");
+        NewPN->insertInto(ConvergeBlock, ConvergeBlock->begin());
+        PN.replaceAllUsesWith(NewPN);
+
+        for (auto *IncomingBB : PN.blocks()) {
+          if (OutsidePredBBs.contains(IncomingBB)) {
+            NewPN->addIncoming(&PN, NewConvergeBlock);
+          } else {
+            NewPN->addIncoming(PN.getIncomingValueForBlock(IncomingBB),
+                               IncomingBB);
+            PN.removeIncomingValue(IncomingBB);
+          }
+        }
+      }
 
       // Insert the new converge block in the blocks of OuterDRs that contain DR
       for (auto *OuterDR = DR + 1; OuterDR != Sharing.end(); OuterDR++) {
@@ -358,10 +385,10 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   };
   auto AddEntry = [&](BasicBlock *TheBlock, BasicBlock *Convergent,
                       BasicBlock *DivergentEntry) {
-    auto *DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
+    auto DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
       return DR.From == TheBlock;
     });
-    assert(DR);
+    assert(DR != DivergentRegions.end());
     DR->Blocks.erase(Convergent);
     DR->Blocks.insert(DivergentEntry);
     DR->From = Convergent;
@@ -458,7 +485,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   if (!UseDynamicConvergence) {
     // If we are not going to use dynamic convergence, then all DRs that have
     // entries in another DR are unreachable - delete them.
-    for (auto *It = DivergentRegions.begin(); It != DivergentRegions.end();) {
+    for (auto It = DivergentRegions.begin(); It != DivergentRegions.end();) {
       bool Erase = false;
       for (auto &DR : DivergentRegions) {
         if (&DR == &*It)
@@ -872,17 +899,15 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     }
 
     BasicBlock *LastOutro = nullptr;
-    BasicBlock *FirstIntro = nullptr;
+    SmallVector<BasicBlock *> Intros;
     for (unsigned It = 0; It < UnrollFactor; It++) {
       auto ThisFactorIdentifierVal = NumSwCases + It;
       auto *ThisFactorIdentifier = cast<ConstantInt>(
           ConstantInt::get(CoarsenedIdentifierTy, ThisFactorIdentifierVal));
 
       auto *Intro = BasicBlock::Create(
-          Ctx, DREntry->getName() + ".div.intro." + std::to_string(It), F,
-          DREntry);
-      if (It == 0)
-        FirstIntro = Intro;
+          Ctx, DREntry->getName() + ".intro." + std::to_string(It), F, DREntry);
+      Intros.push_back(Intro);
       IRBuilder<> IntroBuilder(Intro);
       IntroBuilder.CreateStore(ThisFactorIdentifier, CoarsenedIdentPtr);
 
@@ -913,21 +938,18 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         if (It == 0 || !UseDynamicConvergence || !DR.IsNested) {
           IntroBuilder.CreateStore(CoarsenedValue, P.second);
         } else {
-          auto *Passthrough =
-              PHINode::Create(CoarsenedValue->getType(), 1, "passthrough.phi");
-          Passthrough->addIncoming(CoarsenedValue, FirstIntro);
-          Passthrough->insertInto(DREntry, DREntry->begin());
-          IntroBuilder.CreateStore(Passthrough, P.second);
+          auto *Forward =
+              PHINode::Create(CoarsenedValue->getType(), 1, "forward.phi");
+          Forward->addIncoming(CoarsenedValue, Intros[0]);
+          Forward->insertInto(DREntry, DREntry->begin());
+          IntroBuilder.CreateStore(Forward, P.second);
         }
       }
 
       IntroBuilder.CreateBr(DREntry);
 
       auto *Outro = LastOutro = BasicBlock::Create(
-          Ctx,
-          DRExit->getName() + ".div.outro." + std::to_string(It) + "." +
-              std::to_string(ThisFactorIdentifierVal / UnrollFactor),
-          F, DRTo);
+          Ctx, DRExit->getName() + ".outro." + std::to_string(It), F, DRTo);
       for (auto P : *DR.DefinedInsideDemotedVMap) {
         auto *CoarsenedValue = P.first;
         auto *OriginalValue =
@@ -948,8 +970,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       else
         ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
-    if (DR.IsNested) {
-      ToOutroSw->addCase(FromDRIdent, DRTo);
+    if (DR.IsNested && UseDynamicConvergence) {
+      // Re-forward the original coarsened values through all
+      for (unsigned It = 1; It < UnrollFactor; It++)
+        for (auto &PN : DREntry->phis())
+          PN.addIncoming(&PN, Intros[It]);
     }
   }
   if (UseDynamicConvergence) {
@@ -962,7 +987,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
       if (DR.IsNested) {
         auto *Intro = BasicBlock::Create(
-            Ctx, DREntry->getName() + ".div.intro.nested", F, DREntry);
+            Ctx, DREntry->getName() + ".intro.nested", F, DREntry);
         IRBuilder<> IntroBuilder(Intro);
         IntroBuilder.CreateStore(FromDRIdent, DR.IdentPtr);
 
@@ -976,15 +1001,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         }
 
         IntroBuilder.CreateBr(DREntry);
-        for (auto &I : *DREntry) {
-          if (auto *PN = dyn_cast<PHINode>(&I))
-            PN->addIncoming(UndefValue::get(PN->getType()), Intro);
-          else
-            break;
-        }
+        for (auto &PN : DREntry->phis())
+          PN.addIncoming(UndefValue::get(PN.getType()), Intro);
 
         auto *Outro = BasicBlock::Create(
-            Ctx, DRExit->getName() + ".div.outro.nested", F, DRTo);
+            Ctx, DRExit->getName() + ".outro.nested", F, DRTo);
         for (auto P : *DR.DefinedInsideDemotedVMap) {
           auto *CoarsenedValue = P.first;
           auto *OriginalValue =
@@ -998,6 +1019,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         }
         auto *FromOutroBI = BranchInst::Create(DRTo);
         FromOutroBI->insertInto(Outro, Outro->end());
+        cast<SwitchInst>(DRExit->getTerminator())->addCase(FromDRIdent, Outro);
       }
     }
   }
@@ -1036,9 +1058,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
-  dbgs() << "before repromote\n";
-  F->getParent()->dump();
-
   // Now that we are done with the aggressive CFG restructuring and deleting
   // dead blocks we can re-promote the regs we demoted earlier.
   // TODO can we check we were able to promote everything without undefs?
@@ -1047,8 +1066,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DemotedAllocas.push_back(DR.IdentPtr);
   }
   PromoteMemToReg(DemotedAllocas, DT);
-
-  dbgs() << "after repromote\n";
 
   // Plumbing around the coarsened and epilogue loops
 
@@ -1153,8 +1170,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       PN->setOperand(OpNo, &LoopBounds->getStepInst());
     }
   }
-
-  F->getParent()->dump();
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
