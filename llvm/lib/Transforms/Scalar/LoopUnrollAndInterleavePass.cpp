@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/StringRef.h"
@@ -122,10 +123,12 @@ private:
 
     // Properties
     bool IsNested;
+    SmallPtrSet<DivergentRegion *, 3> NestedDRs;
 
     // Used for transformations later
     std::unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
     std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
+    AllocaInst *IdentPtr;
   };
 
   ValueToValueMapTy DemotedRegsVMap;
@@ -135,7 +138,7 @@ private:
   // edge
   SmallPtrSet<BranchInst *, 8> ConvergentToDivergentEdges;
   SmallPtrSet<BranchInst *, 8> DivergentToConvergentEdges;
-  SmallVector<DivergentRegion, 0> DivergentRegions;
+  SmallVector<DivergentRegion, 2> DivergentRegions;
 
   void demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap, Loop *CL);
   void populateDivergentRegions();
@@ -268,6 +271,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
   SmallPtrSet<BasicBlock *, 8> EntryBlocks;
 
+  SmallMapVector<BasicBlock *, SmallVector<DivergentRegion *>, 8>
+      SharingConverge;
   for (Instruction *Term : DivergentBranches) {
     BasicBlock *Entry = Term->getParent();
     auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
@@ -285,6 +290,48 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     ConvergingBlocks.insert(ConvergeBlock);
     EntryBlocks.insert(Entry);
     DivergentRegions.push_back(std::move(Region));
+
+    if (!SharingConverge.contains(ConvergeBlock)) {
+      SharingConverge[ConvergeBlock] = {&DivergentRegions.back()};
+    } else {
+      auto &Sharing = SharingConverge[ConvergeBlock];
+      auto *ToInsert = &DivergentRegions.back();
+      auto *InsertPt = Sharing.begin();
+      auto *End = Sharing.end();
+      // Sort the DRs sharing a To block from innermost to outermost
+      for (; InsertPt != End && !(*InsertPt)->Blocks.contains(Entry);
+           InsertPt++)
+        ;
+      Sharing.insert(InsertPt, ToInsert);
+    }
+  }
+
+  for (auto &P : SharingConverge) {
+    auto &Sharing = P.second;
+    if (Sharing.size() == 1)
+      continue;
+
+    auto *ConvergeBlock = P.first;
+    for (auto *DR = Sharing.begin();; DR++) {
+      bool IsOutermost = DR + 1 == Sharing.end();
+      if (IsOutermost) {
+        (*DR)->IsNested = false;
+        break;
+      }
+      (*DR)->IsNested = true;
+      auto *NewConvergeBlock =
+          ConvergeBlock->splitBasicBlockBefore(ConvergeBlock->getFirstNonPHI());
+      NewConvergeBlock->setName(ConvergeBlock->getName() + ".csplit");
+      TheLoop->addBasicBlockToLoop(NewConvergeBlock, *LI);
+      ConvergingBlocks.insert(NewConvergeBlock);
+      (*DR)->To = NewConvergeBlock;
+
+      // Insert the new converge block in the blocks of OuterDRs that contain DR
+      for (auto *OuterDR = DR + 1; OuterDR != Sharing.end(); OuterDR++) {
+        (*OuterDR)->Blocks.insert(NewConvergeBlock);
+        (*OuterDR)->NestedDRs.insert(*DR);
+      }
+    }
   }
 
   auto AddExisting = [&](BasicBlock *TheBlock, BasicBlock *BB1,
@@ -400,11 +447,13 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
         cast<BranchInst>(DR.From->getTerminator()));
   }
 
-  for (auto &DR : DivergentRegions) {
-    DR.IsNested = any_of(DivergentRegions, [&](DivergentRegion &OtherDR) {
-      return OtherDR.Blocks.contains(DR.From);
-    });
-  }
+  LLVM_DEBUG({
+    for (auto &DR : DivergentRegions)
+      assert(DR.IsNested ==
+             any_of(DivergentRegions, [&](DivergentRegion &OtherDR) {
+               return OtherDR.Blocks.contains(DR.From);
+             }));
+  });
 
   if (!UseDynamicConvergence) {
     // If we are not going to use dynamic convergence, then all DRs that have
@@ -791,22 +840,20 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     ReverseDRLVMap[cast<Value>(M.second)] = const_cast<Value *>(M.first);
   }
 
-  Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
-  auto *CoarsenedIdentPtr = PreheaderBuilder.CreateAlloca(
-      CoarsenedIdentifierTy, /*ArraySize*/ nullptr, "coarsened.ident");
-
   // Hook into the the blocks from the DR loop to do the divergent part of the
   // coarsened computation. Generates Intro and Outro blocks which bring in the
   // appropriate coarsened values into the DR in the uncoarsened part, and then
   // bring out those values for use in the subsequent coarsened computation.
+  Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
+  auto *FromDRIdent =
+      cast<ConstantInt>(ConstantInt::get(CoarsenedIdentifierTy, -1));
   for (auto &DR : DivergentRegions) {
     BasicBlock *DREntry = cast<BasicBlock>(DivergentRegionsVMap[DR.Entry]);
     BasicBlock *DRExit = cast<BasicBlock>(DivergentRegionsVMap[DR.Exit]);
     BasicBlock *DRTo = cast<BasicBlock>(DivergentRegionsVMap[DR.To]);
-    BasicBlock *DRFrom = cast<BasicBlock>(DivergentRegionsVMap[DR.From]);
 
-    new StoreInst(ConstantInt::get(CoarsenedIdentifierTy, -1),
-                  CoarsenedIdentPtr, DRFrom->getTerminator());
+    auto *CoarsenedIdentPtr = DR.IdentPtr = PreheaderBuilder.CreateAlloca(
+        CoarsenedIdentifierTy, /*ArraySize*/ nullptr, "dr.coarsened.ident");
 
     // Multiple DivergentRegion entries may converge at the same location,
     // create the exit switch only once
@@ -814,7 +861,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     int NumSwCases;
     if (!ToOutroSw) {
       auto *Ld = new LoadInst(CoarsenedIdentifierTy, CoarsenedIdentPtr,
-                              "coarsene.ident.load", DRExit->getTerminator());
+                              "coarsened.ident.load", DRExit->getTerminator());
       // We will override the default dest later, set something random
       ToOutroSw = SwitchInst::Create(Ld, DREntry, 0);
       DRExit->getTerminator()->eraseFromParent();
@@ -887,6 +934,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       else
         ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
+    if (DR.IsNested) {
+      ToOutroSw->addCase(FromDRIdent, DRTo);
+    }
   }
   // We need to to make intro/outros for nested DRs in the DR
   if (UseDynamicConvergence) {
@@ -900,6 +950,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         auto *Intro = BasicBlock::Create(
             Ctx, DREntry->getName() + ".div.intro.nested", F, DREntry);
         IRBuilder<> IntroBuilder(Intro);
+        IntroBuilder.CreateStore(FromDRIdent, DR.IdentPtr);
 
         auto *ToIntroBI = BranchInst::Create(Intro);
         DRFrom->getTerminator()->eraseFromParent();
@@ -972,7 +1023,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // dead blocks we can re-promote the regs we demoted earlier.
   // TODO can we check we were able to promote everything without undefs?
   DT.recalculate(*F); // TODO another recalculation...
-  DemotedAllocas.push_back(CoarsenedIdentPtr);
+  for (auto &DR : DivergentRegions) {
+    DemotedAllocas.push_back(DR.IdentPtr);
+  }
   PromoteMemToReg(DemotedAllocas, DT);
 
   dbgs() << "after repromote\n";
@@ -1080,6 +1133,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       PN->setOperand(OpNo, &LoopBounds->getStepInst());
     }
   }
+
+  F->getParent()->dump();
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
