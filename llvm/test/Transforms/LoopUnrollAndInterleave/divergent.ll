@@ -87,7 +87,7 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; CHECK:       omp.inner.for.body:
 ; CHECK-NEXT:    [[DOTOMP_IV_033:%.*]] = phi i64 [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD15:%.*]], [[OMP_INNER_FOR_INC:%.*]] ]
 ; CHECK-NEXT:    [[DOTOMP_IV_033_COARSENED_1:%.*]] = phi i64 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD15_COARSENED_1:%.*]], [[OMP_INNER_FOR_INC]] ]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_0:%.*]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0:%.*]]
 ; CHECK:       omp.inner.for.incepilogue.start.check.original.end.check:
 ; CHECK-NEXT:    [[ADD15]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_033]]
 ; CHECK-NEXT:    [[ADD15_COARSENED_1]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_033_COARSENED_1]]
@@ -115,24 +115,24 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; CHECK-NEXT:    [[MUL13_DRS:%.*]] = shl nsw i32 [[TMP13]], 2
 ; CHECK-NEXT:    store i32 [[MUL13_DRS]], ptr [[ARRAYIDX12_DRS]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.div.outro.0.0:
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_1:%.*]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.div.outro.1.0:
+; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.0:
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1:%.*]]
+; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.1:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK_ORIGINAL_END_CHECK:%.*]]
-; CHECK:       omp.inner.for.body.divergent.entry.drs.div.intro.0:
+; CHECK:       omp.inner.for.body.divergent.entry.drs.intro.0:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS:%.*]]
-; CHECK:       omp.inner.for.body.divergent.entry.drs.div.intro.1:
+; CHECK:       omp.inner.for.body.divergent.entry.drs.intro.1:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs:
-; CHECK-NEXT:    [[COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_1]] ]
-; CHECK-NEXT:    [[DOTOMP_IV_033_DRS_REG2MEM_0]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_1]] ]
+; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_033_DRS_REG2MEM_0]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
 ; CHECK-NEXT:    switch i64 [[DOTOMP_IV_033_DRS_REG2MEM_0]], label [[SW_DEFAULT_DRS:%.*]] [
 ; CHECK-NEXT:    i64 0, label [[SW_BB_DRS:%.*]]
 ; CHECK-NEXT:    i64 1, label [[SW_BB8_DRS:%.*]]
 ; CHECK-NEXT:    ]
 ; CHECK:       omp.inner.for.inc.divergent.exit.drs:
-; CHECK-NEXT:    switch i32 [[COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_DIV_OUTRO_0_0:%.*]] [
-; CHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_DIV_OUTRO_1_0:%.*]]
+; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_0:%.*]] [
+; CHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_1:%.*]]
 ; CHECK-NEXT:    ]
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_033_EPILOGUE:%.*]] = phi i64 [ [[ADD15]], [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK]] ], [ [[ADD15_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
@@ -226,7 +226,7 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; DRCHECK-NEXT:    [[DOTOMP_IV_033_COARSENED_1:%.*]] = phi i64 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD15_COARSENED_1:%.*]], [[OMP_INNER_FOR_INC]] ]
 ; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp eq i64 [[DOTOMP_IV_033_COARSENED_1]], [[DOTOMP_IV_033]]
 ; DRCHECK-NEXT:    [[TMP12:%.*]] = and i1 [[TMP11]], true
-; DRCHECK-NEXT:    br i1 [[TMP12]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY:%.*]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_0:%.*]]
+; DRCHECK-NEXT:    br i1 [[TMP12]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY:%.*]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0:%.*]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry:
 ; DRCHECK-NEXT:    switch i64 [[DOTOMP_IV_033]], label [[SW_DEFAULT:%.*]] [
 ; DRCHECK-NEXT:    i64 0, label [[SW_BB:%.*]]
@@ -287,24 +287,24 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; DRCHECK-NEXT:    [[MUL13_DRS:%.*]] = shl nsw i32 [[TMP18]], 2
 ; DRCHECK-NEXT:    store i32 [[MUL13_DRS]], ptr [[ARRAYIDX12_DRS]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.div.outro.0.0:
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_1:%.*]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.div.outro.1.0:
+; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.outro.0:
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1:%.*]]
+; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.outro.1:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK_ORIGINAL_END_CHECK]]
-; DRCHECK:       omp.inner.for.body.divergent.entry.drs.div.intro.0:
+; DRCHECK:       omp.inner.for.body.divergent.entry.drs.intro.0:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS:%.*]]
-; DRCHECK:       omp.inner.for.body.divergent.entry.drs.div.intro.1:
+; DRCHECK:       omp.inner.for.body.divergent.entry.drs.intro.1:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs:
-; DRCHECK-NEXT:    [[COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_1]] ]
-; DRCHECK-NEXT:    [[DOTOMP_IV_033_DRS_REG2MEM_0]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_DIV_INTRO_1]] ]
+; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
+; DRCHECK-NEXT:    [[DOTOMP_IV_033_DRS_REG2MEM_0]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
 ; DRCHECK-NEXT:    switch i64 [[DOTOMP_IV_033_DRS_REG2MEM_0]], label [[SW_DEFAULT_DRS:%.*]] [
 ; DRCHECK-NEXT:    i64 0, label [[SW_BB_DRS:%.*]]
 ; DRCHECK-NEXT:    i64 1, label [[SW_BB8_DRS:%.*]]
 ; DRCHECK-NEXT:    ]
 ; DRCHECK:       omp.inner.for.inc.divergent.exit.drs:
-; DRCHECK-NEXT:    switch i32 [[COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_DIV_OUTRO_0_0:%.*]] [
-; DRCHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_DIV_OUTRO_1_0:%.*]]
+; DRCHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_0:%.*]] [
+; DRCHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_1:%.*]]
 ; DRCHECK-NEXT:    ]
 ; DRCHECK:       omp.inner.for.body.epilogue:
 ; DRCHECK-NEXT:    [[DOTOMP_IV_033_EPILOGUE:%.*]] = phi i64 [ [[ADD15]], [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK]] ], [ [[ADD15_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
