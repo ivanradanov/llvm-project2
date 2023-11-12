@@ -899,6 +899,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
     BasicBlock *LastOutro = nullptr;
     SmallVector<BasicBlock *> Intros;
+    ValueToValueMapTy SavedCoarsened;
+    SmallVector<AllocaInst *> DRTmpStorage;
     for (unsigned It = 0; It < UnrollFactor; It++) {
       auto ThisFactorIdentifierVal = NumSwCases + It;
       auto *ThisFactorIdentifier = cast<ConstantInt>(
@@ -926,23 +928,36 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         ToIntroBI->insertInto(LastOutro, LastOutro->end());
       }
 
+      if (It == 0 && UseDynamicConvergence && DR.IsNested) {
+        // Stash all of the coarsened values, we need to do this in the case of
+        // dynamic convergence because an entry from the coarsened loop into a
+        // nested loop will break the domimance of the subsequent intros
+        for (unsigned J = 1; J < UnrollFactor; J++) {
+          for (auto P : *DR.DefinedOutsideDemotedVMap) {
+            auto *I = P.first;
+            auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
+            Instruction *CoarsenedValue =
+                cast<Instruction>((*VMaps[J])[OriginalValue]);
+            SavedCoarsened[CoarsenedValue] = PreheaderBuilder.CreateAlloca(
+                CoarsenedValue->getType(), /*ArraySize=*/nullptr,
+                CoarsenedValue->getName() + ".drstash");
+            DRTmpStorage.push_back(cast<AllocaInst>(SavedCoarsened[CoarsenedValue]));
+            IntroBuilder.CreateStore(CoarsenedValue,
+                                     SavedCoarsened[CoarsenedValue]);
+          }
+        }
+      }
       for (auto P : *DR.DefinedOutsideDemotedVMap) {
         auto *I = P.first;
         auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
         Instruction *CoarsenedValue =
             cast<Instruction>((*VMaps[It])[OriginalValue]);
-        // If we use dynamic convergence then a nested DR can be entered from
-        // another DR so the entry point is not unique - we need PHIs for the
-        // coarsened iterations
-        if (It == 0 || !UseDynamicConvergence || !DR.IsNested) {
-          IntroBuilder.CreateStore(CoarsenedValue, P.second);
-        } else {
-          auto *Forward =
-              PHINode::Create(CoarsenedValue->getType(), 1, "forward.phi");
-          Forward->addIncoming(CoarsenedValue, Intros[0]);
-          Forward->insertInto(DREntry, DREntry->begin());
-          IntroBuilder.CreateStore(Forward, P.second);
-        }
+        // Reload from the stashes if needed
+        if (It != 0 && UseDynamicConvergence && DR.IsNested)
+          CoarsenedValue = IntroBuilder.CreateLoad(
+              CoarsenedValue->getType(), SavedCoarsened[CoarsenedValue],
+              CoarsenedValue->getName() + ".drreload");
+        IntroBuilder.CreateStore(CoarsenedValue, P.second);
       }
 
       IntroBuilder.CreateBr(DREntry);
@@ -1000,8 +1015,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         }
 
         IntroBuilder.CreateBr(DREntry);
-        for (auto &PN : DREntry->phis())
-          PN.addIncoming(UndefValue::get(PN.getType()), Intro);
+        assert(DREntry->phis().begin() == DREntry->phis().end());
 
         auto *Outro = BasicBlock::Create(
             Ctx, DRExit->getName() + ".outro.nested", F, DRTo);
@@ -1009,7 +1023,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           auto *CoarsenedValue = P.first;
           auto *OriginalValue =
               cast_or_null<Instruction>((*ReverseVMaps[0])[CoarsenedValue]);
-          // When the defined inside value is from another original iteration
+          // When the defined inside value is from a coarsened original iteration
           if (!OriginalValue)
             continue;
           auto *DRValue =
