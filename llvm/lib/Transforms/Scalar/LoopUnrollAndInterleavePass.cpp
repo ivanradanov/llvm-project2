@@ -870,6 +870,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // coarsened computation. Generates Intro and Outro blocks which bring in the
   // appropriate coarsened values into the DR in the uncoarsened part, and then
   // bring out those values for use in the subsequent coarsened computation.
+  SmallVector<AllocaInst *> DRTmpStorage;
   Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
   auto *FromDRIdent =
       cast<ConstantInt>(ConstantInt::get(CoarsenedIdentifierTy, -1));
@@ -900,7 +901,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     BasicBlock *LastOutro = nullptr;
     SmallVector<BasicBlock *> Intros;
     ValueToValueMapTy SavedCoarsened;
-    SmallVector<AllocaInst *> DRTmpStorage;
     for (unsigned It = 0; It < UnrollFactor; It++) {
       auto ThisFactorIdentifierVal = NumSwCases + It;
       auto *ThisFactorIdentifier = cast<ConstantInt>(
@@ -941,7 +941,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
             SavedCoarsened[CoarsenedValue] = PreheaderBuilder.CreateAlloca(
                 CoarsenedValue->getType(), /*ArraySize=*/nullptr,
                 CoarsenedValue->getName() + ".drstash");
-            DRTmpStorage.push_back(cast<AllocaInst>(SavedCoarsened[CoarsenedValue]));
+            DRTmpStorage.push_back(
+                cast<AllocaInst>(SavedCoarsened[CoarsenedValue]));
             IntroBuilder.CreateStore(CoarsenedValue,
                                      SavedCoarsened[CoarsenedValue]);
           }
@@ -1023,7 +1024,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           auto *CoarsenedValue = P.first;
           auto *OriginalValue =
               cast_or_null<Instruction>((*ReverseVMaps[0])[CoarsenedValue]);
-          // When the defined inside value is from a coarsened original iteration
+          // When the defined inside value is from a coarsened original
+          // iteration
           if (!OriginalValue)
             continue;
           auto *DRValue =
@@ -1038,9 +1040,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   // Grab the demoted allocas before the map is invalidated
-  SmallVector<AllocaInst *> DemotedAllocas;
   for (auto P : DemotedRegsVMap)
-    DemotedAllocas.push_back(cast<AllocaInst>(P.second));
+    DRTmpStorage.push_back(cast<AllocaInst>(P.second));
 
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
@@ -1071,14 +1072,17 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
+  dbgs() << "before promote\n";
+  F->getParent()->dump();
+
   // Now that we are done with the aggressive CFG restructuring and deleting
   // dead blocks we can re-promote the regs we demoted earlier.
   // TODO can we check we were able to promote everything without undefs?
   DT.recalculate(*F); // TODO another recalculation...
   for (auto &DR : DivergentRegions) {
-    DemotedAllocas.push_back(DR.IdentPtr);
+    DRTmpStorage.push_back(DR.IdentPtr);
   }
-  PromoteMemToReg(DemotedAllocas, DT);
+  PromoteMemToReg(DRTmpStorage, DT);
 
   // Plumbing around the coarsened and epilogue loops
 
