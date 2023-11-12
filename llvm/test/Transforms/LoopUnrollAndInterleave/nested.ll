@@ -2,6 +2,23 @@
 ; RUN: opt -passes=loop-unroll-and-interleave %s -S --luai-factor=2 | FileCheck %s
 ; RUN: opt -passes=loop-unroll-and-interleave %s -S --luai-factor=2 --luai-use-dynamic-convergence=1 | FileCheck %s --check-prefix=DRCHECK
 
+; void vecadd(int *a, int size) {
+; #pragma omp target teams distribute parallel for map(tofrom: a[0:size]) //schedule(static, 4)
+;   for (unsigned long i = 0; i < size; i++) {
+;     if (div) {
+;       if (div) {
+;          ...
+;       } else {
+;          ...
+;       }
+;     } else {
+;        ...
+;     }
+;
+;   }
+; }
+
+
 %struct.ident_t = type { i32, i32, i32, i32, ptr }
 %struct.DynamicEnvironmentTy = type { i16 }
 %struct.KernelEnvironmentTy = type { %struct.ConfigurationEnvironmentTy, ptr, ptr }
