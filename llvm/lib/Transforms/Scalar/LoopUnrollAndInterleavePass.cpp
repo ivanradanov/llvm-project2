@@ -326,15 +326,14 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 
       // TODO test this code
       SmallPtrSet<BasicBlock *, 2> OutsidePredBBs;
-      for (auto *PredBB : predecessors(NewConvergeBlock)) {
-        if (!(*DR)->Blocks.contains(PredBB)) {
-          // Redirect the edges coming from an outer DR to use the original
-          // converge block and not the split one
-          PredBB->getTerminator()->replaceSuccessorWith(NewConvergeBlock,
-                                                        ConvergeBlock);
+      for (auto *PredBB : predecessors(NewConvergeBlock))
+        if (!(*DR)->Blocks.contains(PredBB) && (*DR)->From != PredBB)
           OutsidePredBBs.insert(PredBB);
-        }
-      }
+      for (auto *PredBB : OutsidePredBBs)
+        // Redirect the edges coming from an outer DR to use the original
+        // converge block and not the split one
+        PredBB->getTerminator()->replaceSuccessorWith(NewConvergeBlock,
+                                                      ConvergeBlock);
       // Fix the PHINodes
       for (auto &PN : NewConvergeBlock->phis()) {
         auto *NewPN = PHINode::Create(PN.getType(), PN.getNumIncomingValues(),
