@@ -285,8 +285,9 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     Reachable.erase(Entry);
 
     // We will insert the Entry and Exit later
-    DivergentRegion Region = {Entry, ConvergeBlock, nullptr, nullptr,
-                              std::move(Reachable)};
+    DivergentRegion Region = {
+        Entry,   ConvergeBlock,        nullptr,
+        nullptr, std::move(Reachable), /*IsNested=*/false};
     ConvergingBlocks.insert(ConvergeBlock);
     EntryBlocks.insert(Entry);
     DivergentRegions.push_back(std::move(Region));
@@ -312,11 +313,8 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     auto *ConvergeBlock = P.first;
     for (auto *DR = Sharing.begin();; DR++) {
       bool IsOutermost = DR + 1 == Sharing.end();
-      if (IsOutermost) {
-        (*DR)->IsNested = false;
+      if (IsOutermost)
         break;
-      }
-      (*DR)->IsNested = true;
       auto *NewConvergeBlock =
           ConvergeBlock->splitBasicBlockBefore(ConvergeBlock->getFirstNonPHI());
       NewConvergeBlock->setName(ConvergeBlock->getName() + ".csplit");
@@ -457,11 +455,17 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     AddExit(TheBlock, DivergentExit, Convergent);
   }
 
+  for (auto &DR : DivergentRegions)
+    DR.IsNested = any_of(DivergentRegions, [&](DivergentRegion &OtherDR) {
+      return &OtherDR != &DR && OtherDR.Blocks.contains(DR.From);
+    });
+
   LLVM_DEBUG({
     for (auto &DR : DivergentRegions) {
       DBGS << "Divergent region for entry %" << DR.Entry->getName()
            << " and exit %" << DR.Exit->getName() << " from block %"
-           << DR.From->getName() << " to block %" << DR.To->getName() << ":\n";
+           << DR.From->getName() << " to block %" << DR.To->getName()
+           << " nested=" << DR.IsNested << ":\n";
       for (auto *BB : DR.Blocks)
         dbgs() << "%" << BB->getName() << ", ";
       dbgs() << "\n";
@@ -472,14 +476,6 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     ConvergentToDivergentEdges.insert(
         cast<BranchInst>(DR.From->getTerminator()));
   }
-
-  LLVM_DEBUG({
-    for (auto &DR : DivergentRegions)
-      assert(DR.IsNested ==
-             any_of(DivergentRegions, [&](DivergentRegion &OtherDR) {
-               return OtherDR.Blocks.contains(DR.From);
-             }));
-  });
 
   if (!UseDynamicConvergence) {
     // If we are not going to use dynamic convergence, then all DRs that have
