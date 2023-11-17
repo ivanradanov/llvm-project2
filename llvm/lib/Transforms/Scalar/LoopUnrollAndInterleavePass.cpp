@@ -630,6 +630,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   // Clone the loop to use the blocks for divergent regions
+  // TODO Figure out what should happen to alloca's we clone...
   ValueToValueMapTy DivergentRegionsVMap;
   SmallVector<BasicBlock *> DivergentRegionsLoopBlocks;
   Loop *DivergentRegionsLoop = cloneLoopWithPreheader(
@@ -639,6 +640,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Clone the loop once more to use as an epilogue, the original one will be
   // coarsened in-place
+  // TODO Figure out what should happen to alloca's we clone...
   ValueToValueMapTy EpilogueVMap;
   SmallVector<BasicBlock *> EpilogueLoopBlocks;
   Loop *EpilogueLoop =
