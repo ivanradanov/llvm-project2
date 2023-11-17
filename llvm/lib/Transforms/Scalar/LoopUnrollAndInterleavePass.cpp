@@ -124,7 +124,6 @@ private:
     BBSet Blocks;
 
     // Properties
-    bool IsLoop;
     bool IsNested;
     SmallPtrSet<DivergentRegion *, 3> NestedDRs;
 
@@ -289,12 +288,13 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     findReachableFromTo(Entry, ConvergeBlock, Reachable);
     Reachable.erase(ConvergeBlock);
 
-    bool IsLoop = Reachable.contains(Entry);
-
     // We will insert the Entry and Exit later
-    DivergentRegion Region = {
-        Entry,  ConvergeBlock,     nullptr, nullptr, std::move(Reachable),
-        IsLoop, /*IsNested=*/false};
+    DivergentRegion Region = {Entry,
+                              ConvergeBlock,
+                              nullptr,
+                              nullptr,
+                              std::move(Reachable),
+                              /*IsNested=*/false};
     ConvergingBlocks.insert(ConvergeBlock);
     EntryBlocks.insert(Entry);
     DivergentRegions.push_back(std::move(Region));
@@ -323,13 +323,11 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     }
   };
   auto AddEntry = [&](BasicBlock *TheBlock, BasicBlock *Convergent,
-                      BasicBlock *DivergentEntry, bool FoundPreheader = false) {
+                      BasicBlock *DivergentEntry) {
     auto DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
       return DR.From == TheBlock;
     });
     assert(DR != DivergentRegions.end());
-    assert((!DR->IsLoop || DR->IsLoop == FoundPreheader) &&
-           "Loop not in simplify form");
     DR->Blocks.insert(DivergentEntry);
     DR->From = Convergent;
     DR->Entry = DivergentEntry;
@@ -368,33 +366,17 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
       continue;
     std::string BlockName = TheBlock->getName().str();
     auto *DivergentEntry = TheBlock;
-    BasicBlock *Convergent;
-    bool IsLoop;
-    if (auto *SinglePred = TheBlock->getSinglePredecessor()) {
-      // If we find that we already conveniently have a block that we can reuse
-      // as the Convergent, then use it. This happens in cases when the the DR
-      // this is an entry to is a loop and the SinglePred is its preheader. We
-      // require the loops be in simplify form before this transformation is run
-      // and depend on the availability of a preheader for loop DRs. This case
-      // cannot happen in the above EntryAndConvergingBlocks case as that would
-      // require multiple predecessors to TheBlock
-      Convergent = SinglePred;
-      Convergent->setName(Convergent->getName() + ".reusedfrom");
-      IsLoop = true;
-    } else {
-      Convergent = DivergentEntry->splitBasicBlockBefore(
-          DivergentEntry->getTerminator());
-      Convergent->setName(BlockName);
-      IsLoop = false;
-    }
+    BasicBlock *Convergent =
+        DivergentEntry->splitBasicBlockBefore(DivergentEntry->getTerminator());
     DivergentEntry->setName(BlockName + ".divergent.entry");
+    Convergent->setName(BlockName);
 
     TheLoop->addBasicBlockToLoop(Convergent, *LI);
     if (TheLoop->getHeader() == TheBlock)
       TheLoop->moveToHeader(Convergent);
 
     AddExisting(TheBlock, Convergent);
-    AddEntry(TheBlock, Convergent, DivergentEntry, IsLoop);
+    AddEntry(TheBlock, Convergent, DivergentEntry);
   }
 
   for (auto *TheBlock : ConvergingBlocks) {
@@ -473,10 +455,10 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
     // function as they will be executed by the CL (coarsened loop) before
     // entering the DR
     auto *OutsideBlock = cast<BasicBlock>(VMap[DR.From]);
-    while (auto *SinglePred = OutsideBlock->getSinglePredecessor()) {
+    do {
       ExecutedByCL.insert(OutsideBlock);
-      OutsideBlock = SinglePred;
-    }
+      OutsideBlock = OutsideBlock->getSinglePredecessor();
+    } while (OutsideBlock);
 
     // Find values defined outside the DR and used inside it
     for (auto *BB : NCL->getBlocks()) {
