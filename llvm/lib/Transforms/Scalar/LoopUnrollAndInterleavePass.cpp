@@ -128,6 +128,7 @@ private:
     SmallPtrSet<DivergentRegion *, 3> NestedDRs;
 
     // Used for transformations later
+    BBSet ExecutedByCL;
     std::unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
     std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
     AllocaInst *IdentPtr;
@@ -449,20 +450,23 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
     ToDemote[&DR] = {};
     auto MappedDRBlocks = mapContainer<BBSet, BasicBlock>(DR.Blocks, VMap);
 
-    BBSet ExecutedByCL;
+    DR.ExecutedByCL = {};
     // Walk the From block backwards until we get a branch - all values defined
     // in these blocks are considered outside the DR for the purpose of this
     // function as they will be executed by the CL (coarsened loop) before
     // entering the DR
-    auto *OutsideBlock = cast<BasicBlock>(VMap[DR.From]);
+    auto *OutsideBlock = DR.From;
     do {
-      ExecutedByCL.insert(OutsideBlock);
+      DR.ExecutedByCL.insert(OutsideBlock);
       OutsideBlock = OutsideBlock->getSinglePredecessor();
     } while (OutsideBlock);
 
+    auto MappedExecutedByCL =
+        mapContainer<BBSet, BasicBlock>(DR.ExecutedByCL, VMap);
+
     // Find values defined outside the DR and used inside it
     for (auto *BB : NCL->getBlocks()) {
-      if (!ExecutedByCL.contains(BB) && MappedDRBlocks.contains(BB))
+      if (!MappedExecutedByCL.contains(BB) && MappedDRBlocks.contains(BB))
         continue;
 
       for (auto &I : *BB) {
@@ -1017,7 +1021,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   if (!UseDynamicConvergence) {
     BBSet ToDelete;
     for (auto &DR : DivergentRegions) {
-      set_union(ToDelete, DR.Blocks);
+      auto DRToDelete = DR.Blocks;
+      set_subtract(DRToDelete, DR.ExecutedByCL);
+      set_union(ToDelete, DRToDelete);
     }
     SmallVector<BasicBlock *> Tmp(ToDelete.begin(), ToDelete.end());
     DeleteDeadBlocks(Tmp);
