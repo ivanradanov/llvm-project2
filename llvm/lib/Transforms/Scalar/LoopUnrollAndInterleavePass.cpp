@@ -84,6 +84,8 @@ static OutTy mapContainer(InTy &Container, ValueToValueMapTy &VMap) {
   return std::move(Mapped);
 }
 
+typedef SmallPtrSet<BasicBlock *, 8> BBSet;
+
 class LoopUnrollAndInterleave {
 private:
   OptimizationRemarkEmitter &ORE;
@@ -119,9 +121,10 @@ private:
     // Exit block from the region, jumps to To
     BasicBlock *Exit;
     // The blocks in the divergent region
-    SmallPtrSet<BasicBlock *, 8> Blocks;
+    BBSet Blocks;
 
     // Properties
+    bool IsLoop;
     bool IsNested;
     SmallPtrSet<DivergentRegion *, 3> NestedDRs;
 
@@ -255,7 +258,10 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
                                 SmallPtrSetImpl<BasicBlock *> &Reachable) {
   std::queue<BasicBlock *> Queue;
   Queue.push(From);
-  Reachable.insert(From);
+  // `From` is reachable only if we reach it through its successors and not just
+  // by starting at it, so we do not insert it into `Reachable`. We have to
+  // differentiate these cases as the From block should be included in the DR
+  // only if it is reachable in the above sense.
   while (!Queue.empty()) {
     BasicBlock *SrcBB = Queue.front();
     Queue.pop();
@@ -268,8 +274,8 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
 
 void LoopUnrollAndInterleave::populateDivergentRegions() {
 
-  SmallPtrSet<BasicBlock *, 8> ConvergingBlocks;
-  SmallPtrSet<BasicBlock *, 8> EntryBlocks;
+  BBSet ConvergingBlocks;
+  BBSet EntryBlocks;
 
   SmallMapVector<BasicBlock *, SmallVector<DivergentRegion *>, 8>
       SharingConverge;
@@ -279,15 +285,16 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     assert(ConvergeBlock &&
            PDT->dominates(CombinedLatchExiting, ConvergeBlock));
 
-    SmallPtrSet<BasicBlock *, 8> Reachable;
+    BBSet Reachable;
     findReachableFromTo(Entry, ConvergeBlock, Reachable);
     Reachable.erase(ConvergeBlock);
-    Reachable.erase(Entry);
+
+    bool IsLoop = Reachable.contains(Entry);
 
     // We will insert the Entry and Exit later
     DivergentRegion Region = {
-        Entry,   ConvergeBlock,        nullptr,
-        nullptr, std::move(Reachable), /*IsNested=*/false};
+        Entry,  ConvergeBlock,     nullptr, nullptr, std::move(Reachable),
+        IsLoop, /*IsNested=*/false};
     ConvergingBlocks.insert(ConvergeBlock);
     EntryBlocks.insert(Entry);
     DivergentRegions.push_back(std::move(Region));
@@ -316,18 +323,19 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     }
   };
   auto AddEntry = [&](BasicBlock *TheBlock, BasicBlock *Convergent,
-                      BasicBlock *DivergentEntry) {
+                      BasicBlock *DivergentEntry, bool FoundPreheader = false) {
     auto DR = find_if(DivergentRegions, [TheBlock](DivergentRegion &DR) {
       return DR.From == TheBlock;
     });
     assert(DR != DivergentRegions.end());
-    DR->Blocks.erase(Convergent);
+    assert((!DR->IsLoop || DR->IsLoop == FoundPreheader) &&
+           "Loop not in simplify form");
     DR->Blocks.insert(DivergentEntry);
     DR->From = Convergent;
     DR->Entry = DivergentEntry;
   };
 
-  SmallPtrSet<BasicBlock *, 8> EntryAndConvergingBlocks =
+  BBSet EntryAndConvergingBlocks =
       set_intersection(ConvergingBlocks, EntryBlocks);
 
   // Split blocks that are both an entry and an exit to a DR in this way:
@@ -355,22 +363,38 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   }
 
   for (auto *TheBlock : EntryBlocks) {
-    // Already handled
     if (EntryAndConvergingBlocks.contains(TheBlock))
+      // Already handled
       continue;
     std::string BlockName = TheBlock->getName().str();
     auto *DivergentEntry = TheBlock;
-    auto *Convergent =
-        DivergentEntry->splitBasicBlockBefore(DivergentEntry->getTerminator());
+    BasicBlock *Convergent;
+    bool IsLoop;
+    if (auto *SinglePred = TheBlock->getSinglePredecessor()) {
+      // If we find that we already conveniently have a block that we can reuse
+      // as the Convergent, then use it. This happens in cases when the the DR
+      // this is an entry to is a loop and the SinglePred is its preheader. We
+      // require the loops be in simplify form before this transformation is run
+      // and depend on the availability of a preheader for loop DRs. This case
+      // cannot happen in the above EntryAndConvergingBlocks case as that would
+      // require multiple predecessors to TheBlock
+      Convergent = SinglePred;
+      Convergent->setName(Convergent->getName() + ".reusedfrom");
+      IsLoop = true;
+    } else {
+      Convergent = DivergentEntry->splitBasicBlockBefore(
+          DivergentEntry->getTerminator());
+      Convergent->setName(BlockName);
+      IsLoop = false;
+    }
     DivergentEntry->setName(BlockName + ".divergent.entry");
-    Convergent->setName(BlockName);
 
     TheLoop->addBasicBlockToLoop(Convergent, *LI);
     if (TheLoop->getHeader() == TheBlock)
       TheLoop->moveToHeader(Convergent);
 
     AddExisting(TheBlock, Convergent);
-    AddEntry(TheBlock, Convergent, DivergentEntry);
+    AddEntry(TheBlock, Convergent, DivergentEntry, IsLoop);
   }
 
   for (auto *TheBlock : ConvergingBlocks) {
@@ -441,12 +465,22 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemote;
   for (auto &DR : DivergentRegions) {
     ToDemote[&DR] = {};
-    auto MappedMDRBlocks =
-        mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(DR.Blocks, VMap);
+    auto MappedDRBlocks = mapContainer<BBSet, BasicBlock>(DR.Blocks, VMap);
+
+    BBSet ExecutedByCL;
+    // Walk the From block backwards until we get a branch - all values defined
+    // in these blocks are considered outside the DR for the purpose of this
+    // function as they will be executed by the CL (coarsened loop) before
+    // entering the DR
+    auto *OutsideBlock = cast<BasicBlock>(VMap[DR.From]);
+    while (auto *SinglePred = OutsideBlock->getSinglePredecessor()) {
+      ExecutedByCL.insert(OutsideBlock);
+      OutsideBlock = SinglePred;
+    }
 
     // Find values defined outside the DR and used inside it
     for (auto *BB : NCL->getBlocks()) {
-      if (MappedMDRBlocks.contains(BB))
+      if (!ExecutedByCL.contains(BB) && MappedDRBlocks.contains(BB))
         continue;
 
       for (auto &I : *BB) {
@@ -456,7 +490,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           auto *UserI = dyn_cast<Instruction>(User);
           if (!UserI)
             continue;
-          if (MappedMDRBlocks.contains(UserI->getParent())) {
+          if (MappedDRBlocks.contains(UserI->getParent())) {
             ToDemote[&DR].push_back(&I);
             break;
           }
@@ -973,6 +1007,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     }
   }
 
+  F->getParent()->dump();
+
   // Grab the demoted allocas before the map is invalidated
   for (auto P : DemotedRegsVMap)
     DRTmpStorage.push_back(cast<AllocaInst>(P.second));
@@ -980,13 +1016,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
   {
-    SmallPtrSet<BasicBlock *, 8> UnusedDRBlocks(
-        DivergentRegionsLoopBlocks.begin(), DivergentRegionsLoopBlocks.end());
+    BBSet UnusedDRBlocks(DivergentRegionsLoopBlocks.begin(),
+                         DivergentRegionsLoopBlocks.end());
     for (auto &DR : DivergentRegions) {
-      auto MappedMDRBlocks =
-          mapContainer<SmallPtrSet<BasicBlock *, 8>, BasicBlock>(
-              DR.Blocks, DivergentRegionsVMap);
-      set_subtract(UnusedDRBlocks, MappedMDRBlocks);
+      auto MappedDRBlocks =
+          mapContainer<BBSet, BasicBlock>(DR.Blocks, DivergentRegionsVMap);
+      set_subtract(UnusedDRBlocks, MappedDRBlocks);
     }
     SmallVector<BasicBlock *> Tmp(UnusedDRBlocks.begin(), UnusedDRBlocks.end());
     DeleteDeadBlocks(Tmp);
@@ -998,7 +1033,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // its exit - I think it is possible and we have to handle that case (not only
   // here, but in the DR plumbing that we do around the exits above as well
   if (!UseDynamicConvergence) {
-    SmallPtrSet<BasicBlock *, 8> ToDelete;
+    BBSet ToDelete;
     for (auto &DR : DivergentRegions) {
       set_union(ToDelete, DR.Blocks);
     }
