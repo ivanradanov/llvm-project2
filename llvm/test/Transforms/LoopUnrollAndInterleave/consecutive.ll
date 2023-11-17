@@ -136,17 +136,17 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; CHECK:       if.then9.drs:
 ; CHECK-NEXT:    call void @_Z4use3Pi(ptr noundef [[A]]) #[[ATTR6]]
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.0:
+; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.0.0:
 ; CHECK-NEXT:    br label [[IF_END_DIVERGENT_ENTRY_DRS_INTRO_1]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.1:
+; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.1.0:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK_ORIGINAL_END_CHECK:%.*]]
 ; CHECK:       if.end.divergent.exit.drs:
-; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0:%.*]], label [[IF_END_DIVERGENT_EXIT_DRS_OUTRO_0:%.*]] [
-; CHECK-NEXT:    i32 1, label [[IF_END_DIVERGENT_EXIT_DRS_OUTRO_1:%.*]]
+; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0:%.*]], label [[IF_END_DIVERGENT_EXIT_DRS_OUTRO_0_0:%.*]] [
+; CHECK-NEXT:    i32 1, label [[IF_END_DIVERGENT_EXIT_DRS_OUTRO_1_0:%.*]]
 ; CHECK-NEXT:    ]
-; CHECK:       if.end.divergent.exit.drs.outro.0:
+; CHECK:       if.end.divergent.exit.drs.outro.0.0:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1:%.*]]
-; CHECK:       if.end.divergent.exit.drs.outro.1:
+; CHECK:       if.end.divergent.exit.drs.outro.1.0:
 ; CHECK-NEXT:    br label [[IF_END:%.*]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.intro.0:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS:%.*]]
@@ -157,8 +157,8 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; CHECK-NEXT:    [[CALL_DRS_REG2MEM_0:%.*]] = phi i1 [ [[CALL]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[CALL_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
 ; CHECK-NEXT:    br i1 [[CALL_DRS_REG2MEM_0]], label [[IF_THEN_DRS:%.*]], label [[IF_ELSE_DRS:%.*]]
 ; CHECK:       omp.inner.for.inc.divergent.exit.drs:
-; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT1_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_0:%.*]] [
-; CHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_1:%.*]]
+; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT1_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_0_0:%.*]] [
+; CHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_1_0:%.*]]
 ; CHECK-NEXT:    ]
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_023_EPILOGUE:%.*]] = phi i64 [ [[ADD12_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[ADD12]], [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_PREHEADER]] ]
