@@ -636,10 +636,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // TODO Figure out what should happen to alloca's we clone...
   unsigned It = 0;
   for (auto &DR : DivergentRegions) {
-    DR.DivergentRegionsLoop =
-        cloneLoopWithPreheader(ExitBlock, &F->getEntryBlock(), L, *DR.DRLVMap,
-                               ".drs.%d" + std::to_string(It++), LI, &DT,
-                               DR.DivergentRegionsLoopBlocks);
+    DR.DivergentRegionsLoop = cloneLoopWithPreheader(
+        ExitBlock, &F->getEntryBlock(), L, *DR.DRLVMap,
+        ".drs." + std::to_string(It++), LI, &DT, DR.DivergentRegionsLoopBlocks);
     remapInstructionsInBlocks(DR.DivergentRegionsLoopBlocks, *DR.DRLVMap);
   }
 
