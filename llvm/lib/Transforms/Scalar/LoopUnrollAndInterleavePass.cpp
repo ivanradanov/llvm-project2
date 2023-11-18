@@ -64,8 +64,11 @@
 #include "llvm/Transforms/Utils/UnrollLoop.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <algorithm>
+#include <memory>
 
 using namespace llvm;
+using std::make_unique;
+using std::unique_ptr;
 
 #define DEBUG_TYPE "loop-unroll-and-interleave"
 
@@ -127,10 +130,23 @@ private:
     bool IsNested;
 
     // Used for transformations later
+    unique_ptr<ValueToValueMapTy> DRLVMap;
+    unique_ptr<ValueToValueMapTy> ReverseDRLVMap;
+    SmallVector<BasicBlock *> DivergentRegionsLoopBlocks;
+    Loop *DivergentRegionsLoop;
+
     BBSet ExecutedByCL;
-    std::unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
-    std::unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
+    unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
+    unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
+
     AllocaInst *IdentPtr;
+
+    DivergentRegion()
+        : From(nullptr), To(nullptr), Entry(nullptr), Exit(nullptr),
+          IsNested(false), DRLVMap(new ValueToValueMapTy),
+          ReverseDRLVMap(new ValueToValueMapTy), DivergentRegionsLoop(nullptr),
+          DefinedOutsideDemotedVMap(new ValueToValueMapTy),
+          DefinedInsideDemotedVMap(new ValueToValueMapTy) {}
   };
 
   ValueToValueMapTy DemotedRegsVMap;
@@ -144,7 +160,7 @@ private:
   // invalidated
   std::list<DivergentRegion> DivergentRegions;
 
-  void demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap, Loop *CL);
+  void demoteDRRegs(Loop *CL);
   void populateDivergentRegions();
   bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
 
@@ -289,15 +305,14 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     Reachable.erase(ConvergeBlock);
 
     // We will insert the Entry and Exit later
-    DivergentRegion Region = {Entry,
-                              ConvergeBlock,
-                              nullptr,
-                              nullptr,
-                              std::move(Reachable),
-                              /*IsNested=*/false};
+    DivergentRegion Region;
+    Region.From = Entry;
+    Region.To = ConvergeBlock;
+    Region.Blocks = std::move(Reachable);
+    DivergentRegions.push_back(std::move(Region));
+
     ConvergingBlocks.insert(ConvergeBlock);
     EntryBlocks.insert(Entry);
-    DivergentRegions.push_back(std::move(Region));
   }
 
   auto AddExisting = [&](BasicBlock *TheBlock, BasicBlock *BB1,
@@ -439,14 +454,16 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   }
 }
 
-void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
-                                           Loop *CL) {
+void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
 
-  // Demote values defined outside a DR used inside it in the Non Coarsened Loop
-  // (NCL)
-  DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemote;
   for (auto &DR : DivergentRegions) {
-    ToDemote[&DR] = {};
+
+    Loop *NCL = DR.DivergentRegionsLoop;
+    ValueToValueMapTy &VMap = *DR.DRLVMap;
+    SmallVector<Instruction *> ToDemote;
+
+    // Demote values defined outside a DR used inside it in the Non Coarsened
+    // Loop (NCL)
     auto MappedDRBlocks = mapContainer<BBSet, BasicBlock>(DR.Blocks, VMap);
 
     DR.ExecutedByCL = {};
@@ -476,17 +493,12 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           if (!UserI)
             continue;
           if (MappedDRBlocks.contains(UserI->getParent())) {
-            ToDemote[&DR].push_back(&I);
+            ToDemote.push_back(&I);
             break;
           }
         }
       }
     }
-  }
-  for (auto Pair : ToDemote) {
-    auto &DR = *Pair.getFirst();
-    auto &ToDemote = Pair.getSecond();
-    DR.DefinedOutsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *I : ToDemote) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
@@ -496,13 +508,10 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
       }
       (*DR.DefinedOutsideDemotedVMap)[I] = Demoted;
     }
-  }
 
-  // Demote values defined inside a DR and used outside it in the Coarsened Loop
-  // (CL)
-  ToDemote.clear();
-  for (auto &DR : DivergentRegions) {
-    ToDemote[&DR] = {};
+    // Demote values defined inside a DR and used outside it in the Coarsened
+    // Loop (CL)
+    ToDemote.clear();
     // Find values defined outside the DR and used inside it
     for (auto *BB : DR.Blocks) {
       SmallVector<Instruction *> ToHandle;
@@ -520,16 +529,11 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *NCL, ValueToValueMapTy &VMap,
           BasicBlock *UserBB = UserI->getParent();
           if (DR.Blocks.contains(UserBB))
             continue;
-          ToDemote[&DR].push_back(&I);
+          ToDemote.push_back(&I);
           break;
         }
       }
     }
-  }
-  for (auto Pair : ToDemote) {
-    auto &DR = *Pair.getFirst();
-    auto &ToDemote = Pair.getSecond();
-    DR.DefinedInsideDemotedVMap.reset(new ValueToValueMapTy());
     for (auto *I : ToDemote) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
@@ -630,12 +634,14 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Clone the loop to use the blocks for divergent regions
   // TODO Figure out what should happen to alloca's we clone...
-  ValueToValueMapTy DivergentRegionsVMap;
-  SmallVector<BasicBlock *> DivergentRegionsLoopBlocks;
-  Loop *DivergentRegionsLoop = cloneLoopWithPreheader(
-      ExitBlock, &F->getEntryBlock(), L, DivergentRegionsVMap, ".drs", LI, &DT,
-      DivergentRegionsLoopBlocks);
-  remapInstructionsInBlocks(DivergentRegionsLoopBlocks, DivergentRegionsVMap);
+  unsigned It = 0;
+  for (auto &DR : DivergentRegions) {
+    DR.DivergentRegionsLoop =
+        cloneLoopWithPreheader(ExitBlock, &F->getEntryBlock(), L, *DR.DRLVMap,
+                               ".drs.%d" + std::to_string(It++), LI, &DT,
+                               DR.DivergentRegionsLoopBlocks);
+    remapInstructionsInBlocks(DR.DivergentRegionsLoopBlocks, *DR.DRLVMap);
+  }
 
   // Clone the loop once more to use as an epilogue, the original one will be
   // coarsened in-place
@@ -811,11 +817,13 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   DT.recalculate(*F); // TODO another recalculation...
   // Find all values used in the divergent region but defined outside and demote
   // them to memory - now we can change the CFG easier.
-  demoteDRRegs(DivergentRegionsLoop, DivergentRegionsVMap, TheLoop);
+  demoteDRRegs(TheLoop);
 
-  ValueToValueMapTy ReverseDRLVMap;
-  for (auto M : DivergentRegionsVMap) {
-    ReverseDRLVMap[cast<Value>(M.second)] = const_cast<Value *>(M.first);
+  for (auto &DR : DivergentRegions) {
+    ValueToValueMapTy &ReverseDRLVMap = *DR.ReverseDRLVMap;
+    for (auto M : *DR.DRLVMap) {
+      ReverseDRLVMap[cast<Value>(M.second)] = const_cast<Value *>(M.first);
+    }
   }
 
   // Hook into the the blocks from the DR loop to do the divergent part of the
@@ -824,9 +832,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   // bring out those values for use in the subsequent coarsened computation.
   SmallVector<AllocaInst *> DRTmpStorage;
   Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
-  auto *FromDRIdent =
-      cast<ConstantInt>(ConstantInt::get(CoarsenedIdentifierTy, -1));
   for (auto &DR : DivergentRegions) {
+    auto &DivergentRegionsVMap = *DR.DRLVMap;
+    auto &ReverseDRLVMap = *DR.ReverseDRLVMap;
     BasicBlock *DREntry = cast<BasicBlock>(DivergentRegionsVMap[DR.Entry]);
     BasicBlock *DRExit = cast<BasicBlock>(DivergentRegionsVMap[DR.Exit]);
     BasicBlock *DRTo = cast<BasicBlock>(DivergentRegionsVMap[DR.To]);
@@ -880,36 +888,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         ToIntroBI->insertInto(LastOutro, LastOutro->end());
       }
 
-      if (It == 0 && UseDynamicConvergence && DR.IsNested) {
-        // Stash all of the coarsened values, we need to do this in the case of
-        // dynamic convergence because an entry from the coarsened loop into a
-        // nested loop will break the domimance of the subsequent intros
-        for (unsigned J = 1; J < UnrollFactor; J++) {
-          for (auto P : *DR.DefinedOutsideDemotedVMap) {
-            auto *I = P.first;
-            auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
-            Instruction *CoarsenedValue =
-                cast<Instruction>((*VMaps[J])[OriginalValue]);
-            SavedCoarsened[CoarsenedValue] = PreheaderBuilder.CreateAlloca(
-                CoarsenedValue->getType(), /*ArraySize=*/nullptr,
-                CoarsenedValue->getName() + ".drstash");
-            DRTmpStorage.push_back(
-                cast<AllocaInst>(SavedCoarsened[CoarsenedValue]));
-            IntroBuilder.CreateStore(CoarsenedValue,
-                                     SavedCoarsened[CoarsenedValue]);
-          }
-        }
-      }
       for (auto P : *DR.DefinedOutsideDemotedVMap) {
         auto *I = P.first;
         auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
         Instruction *CoarsenedValue =
             cast<Instruction>((*VMaps[It])[OriginalValue]);
         // Reload from the stashes if needed
-        if (It != 0 && UseDynamicConvergence && DR.IsNested)
-          CoarsenedValue = IntroBuilder.CreateLoad(
-              CoarsenedValue->getType(), SavedCoarsened[CoarsenedValue],
-              CoarsenedValue->getName() + ".drreload");
         IntroBuilder.CreateStore(CoarsenedValue, P.second);
       }
 
@@ -937,61 +921,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
       else
         ToOutroSw->addCase(ThisFactorIdentifier, Outro);
     }
-    if (DR.IsNested && UseDynamicConvergence) {
-      // Re-forward the original coarsened values through all
-      for (unsigned It = 1; It < UnrollFactor; It++)
-        for (auto &PN : DREntry->phis())
-          PN.addIncoming(&PN, Intros[It]);
-    }
   }
-  if (UseDynamicConvergence) {
-    // We need to to make intro/outros for nested DRs in the DR
-    for (auto &DR : DivergentRegions) {
-      BasicBlock *DREntry = cast<BasicBlock>(DivergentRegionsVMap[DR.Entry]);
-      BasicBlock *DRExit = cast<BasicBlock>(DivergentRegionsVMap[DR.Exit]);
-      BasicBlock *DRTo = cast<BasicBlock>(DivergentRegionsVMap[DR.To]);
-      BasicBlock *DRFrom = cast<BasicBlock>(DivergentRegionsVMap[DR.From]);
-
-      if (DR.IsNested) {
-        auto *Intro = BasicBlock::Create(
-            Ctx, DREntry->getName() + ".intro.nested", F, DREntry);
-        IRBuilder<> IntroBuilder(Intro);
-        IntroBuilder.CreateStore(FromDRIdent, DR.IdentPtr);
-
-        auto *ToIntroBI = BranchInst::Create(Intro);
-        DRFrom->getTerminator()->eraseFromParent();
-        ToIntroBI->insertInto(DRFrom, DRFrom->end());
-
-        for (auto P : *DR.DefinedOutsideDemotedVMap) {
-          auto *I = const_cast<Value *>(P.first);
-          IntroBuilder.CreateStore(I, P.second);
-        }
-
-        IntroBuilder.CreateBr(DREntry);
-        assert(DREntry->phis().begin() == DREntry->phis().end());
-
-        auto *Outro = BasicBlock::Create(
-            Ctx, DRExit->getName() + ".outro.nested", F, DRTo);
-        for (auto P : *DR.DefinedInsideDemotedVMap) {
-          auto *CoarsenedValue = P.first;
-          auto *OriginalValue =
-              cast_or_null<Instruction>((*ReverseVMaps[0])[CoarsenedValue]);
-          // When the defined inside value is from a coarsened original
-          // iteration
-          if (!OriginalValue)
-            continue;
-          auto *DRValue =
-              cast<Instruction>(DivergentRegionsVMap[OriginalValue]);
-          new StoreInst(DRValue, P.second, Outro);
-        }
-        auto *FromOutroBI = BranchInst::Create(DRTo);
-        FromOutroBI->insertInto(Outro, Outro->end());
-        cast<SwitchInst>(DRExit->getTerminator())->addCase(FromDRIdent, Outro);
-      }
-    }
-  }
-
-  F->getParent()->dump();
 
   // Grab the demoted allocas before the map is invalidated
   for (auto P : DemotedRegsVMap)
@@ -999,12 +929,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
-  {
-    BBSet UnusedDRBlocks(DivergentRegionsLoopBlocks.begin(),
-                         DivergentRegionsLoopBlocks.end());
+  for (auto &DR : DivergentRegions) {
+    BBSet UnusedDRBlocks(DR.DivergentRegionsLoopBlocks.begin(),
+                         DR.DivergentRegionsLoopBlocks.end());
     for (auto &DR : DivergentRegions) {
       auto MappedDRBlocks =
-          mapContainer<BBSet, BasicBlock>(DR.Blocks, DivergentRegionsVMap);
+          mapContainer<BBSet, BasicBlock>(DR.Blocks, *DR.DRLVMap);
       set_subtract(UnusedDRBlocks, MappedDRBlocks);
     }
     SmallVector<BasicBlock *> Tmp(UnusedDRBlocks.begin(), UnusedDRBlocks.end());
