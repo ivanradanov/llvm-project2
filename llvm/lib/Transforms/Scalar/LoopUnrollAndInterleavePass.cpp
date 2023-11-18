@@ -1018,6 +1018,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   // Jump to epilogue from coarsened latch if we are at its start
+  BasicBlock *EpilogueFrom;
   {
     // Note we need to check for the loop end first and exit the loop
     // alltogether if we are at the end because if all iterations are handled by
@@ -1025,7 +1026,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     BranchInst *BackEdge =
         dyn_cast<BranchInst>(CombinedLatchExiting->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
-    BasicBlock *PrevBB = CombinedLatchExiting->splitBasicBlockBefore(BackEdge);
+    BasicBlock *PrevBB = EpilogueFrom =
+        CombinedLatchExiting->splitBasicBlockBefore(BackEdge);
     PrevBB->setName(CombinedLatchExiting->getName() + "epilogue.start.check");
     Instruction *BI = PrevBB->getTerminator();
     IRBuilder<> Builder(BI);
@@ -1050,26 +1052,20 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     EndCheckBI->eraseFromParent();
   }
 
-  // Start the epilogue loop from the iteration the coarsened version ended with
-  // instead of the original lb
+  // Start the epilogue loop ivs from the iteration the coarsened version ended
+  // with instead of the original lb
   {
-    // TODO should we give it EpilogueStart instead of the StepInst? (they
-    // should be equal)
-    SmallVector<std::pair<PHINode *, unsigned>> ToHandle;
-    for (Use &U : InitialIVVal->uses()) {
-      if (!IsInEpilogue(U))
-        continue;
-      if (PHINode *PN = dyn_cast<PHINode>(U.getUser())) {
-        ToHandle.push_back(std::make_pair(PN, U.getOperandNo()));
-      } else {
-        llvm_unreachable("Non PHI use of lb");
-      }
+    ValueToValueMapTy ReverseEpilogueVMap;
+    for (auto M : EpilogueVMap) {
+      ReverseEpilogueVMap[cast<Value>(M.second)] = const_cast<Value *>(M.first);
     }
-    for (auto &Pair : ToHandle) {
-      PHINode *PN = Pair.first;
-      unsigned OpNo = Pair.second;
-      PN->addIncoming(InitialIVVal, Preheader);
-      PN->setOperand(OpNo, &LoopBounds->getStepInst());
+    for (auto &PN : EpilogueLoop->getHeader()->phis()) {
+      auto *CoarsenedPN = cast<PHINode>(ReverseEpilogueVMap[&PN]);
+      PN.setIncomingValueForBlock(
+          EpilogueFrom,
+          CoarsenedPN->getIncomingValueForBlock(CombinedLatchExiting));
+      PN.addIncoming(CoarsenedPN->getIncomingValueForBlock(Preheader),
+                     Preheader);
     }
   }
 
