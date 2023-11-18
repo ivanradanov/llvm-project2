@@ -678,6 +678,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     Value *NewStep = PreheaderBuilder.CreateMul(
         IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
         "coarsened.step");
+    cast<Instruction>(NewStep)->moveAfter(IVStepInst);
     IVStepInst->replaceUsesWithIf(
         NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
           return U.getUser() != NewStep && !IsInEpilogue(U);
