@@ -97,7 +97,7 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK:       for.cond:
 ; CHECK-NEXT:    [[CALL:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6]]) #[[ATTR6:[0-9]+]]
 ; CHECK-NEXT:    [[CALL_COARSENED_1:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_COARSENED_1]]) #[[ATTR6]]
-; CHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0:%.*]]
+; CHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0.intro.0"
 ; CHECK:       omp.inner.for.incepilogue.start.check.original.end.check:
 ; CHECK-NEXT:    [[ADD7]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_014]]
 ; CHECK-NEXT:    [[ADD7_COARSENED_1]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_014_COARSENED_1]]
@@ -109,28 +109,28 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[FOR_COND_PREHEADER_EPILOGUE]], label [[OMP_INNER_FOR_INC]]
 ; CHECK:       omp.inner.for.inc:
 ; CHECK-NEXT:    br i1 [[CMP4]], label [[FOR_COND_PREHEADER]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP18:![0-9]+]]
-; CHECK:       for.cond.divergent.entry.drs.intro.0:
-; CHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS:%.*]]
-; CHECK:       for.cond.divergent.entry.drs.intro.1:
-; CHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS]]
-; CHECK:       for.cond.divergent.entry.drs:
-; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[DR_COARSENED_IDENT_0]], [[FOR_COND_DRS:%.*]] ], [ 1, [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1:%.*]] ]
-; CHECK-NEXT:    [[CONV6_DRS_REG2MEM_0:%.*]] = phi i32 [ [[CONV6]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[CONV6_DRS_REG2MEM_0]], [[FOR_COND_DRS]] ], [ [[CONV6_COARSENED_1]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
-; CHECK-NEXT:    [[CALL_DRS_REG2MEM_0:%.*]] = phi i1 [ [[CALL]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[CALL_DRS:%.*]], [[FOR_COND_DRS]] ], [ [[CALL_COARSENED_1]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
-; CHECK-NEXT:    br i1 [[CALL_DRS_REG2MEM_0]], label [[FOR_BODY_DRS:%.*]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS:%.*]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.0.0:
-; CHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.outro.1.0:
+; CHECK:       "for.cond.divergent.entry.drs.%d0.intro.0":
+; CHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0"
+; CHECK:       "for.cond.divergent.entry.drs.%d0.intro.1":
+; CHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0"
+; CHECK:       "for.cond.divergent.entry.drs.%d0":
+; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, %"for.cond.divergent.entry.drs.%d0.intro.0" ], [ [[DR_COARSENED_IDENT_0]], %"for.cond.drs.%d0" ], [ 1, %"for.cond.divergent.entry.drs.%d0.intro.1" ]
+; CHECK-NEXT:    %"call.drs.%d0.reg2mem.0" = phi i1 [ [[CALL]], %"for.cond.divergent.entry.drs.%d0.intro.0" ], [ %"call.drs.%d0", %"for.cond.drs.%d0" ], [ [[CALL_COARSENED_1]], %"for.cond.divergent.entry.drs.%d0.intro.1" ]
+; CHECK-NEXT:    %"conv6.drs.%d0.reg2mem.0" = phi i32 [ [[CONV6]], %"for.cond.divergent.entry.drs.%d0.intro.0" ], [ %"conv6.drs.%d0.reg2mem.0", %"for.cond.drs.%d0" ], [ [[CONV6_COARSENED_1]], %"for.cond.divergent.entry.drs.%d0.intro.1" ]
+; CHECK-NEXT:    br i1 %"call.drs.%d0.reg2mem.0", label %"for.body.drs.%d0", label %"omp.inner.for.inc.divergent.exit.drs.%d0"
+; CHECK:       "omp.inner.for.inc.divergent.exit.drs.%d0.outro.0":
+; CHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0.intro.1"
+; CHECK:       "omp.inner.for.inc.divergent.exit.drs.%d0.outro.1":
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK_ORIGINAL_END_CHECK:%.*]]
-; CHECK:       for.body.drs:
+; CHECK:       "for.body.drs.%d0":
 ; CHECK-NEXT:    tail call void @_Z4use2Pi(ptr noundef [[A]]) #[[ATTR6]]
-; CHECK-NEXT:    br label [[FOR_COND_DRS]], !llvm.loop [[LOOP20:![0-9]+]]
-; CHECK:       for.cond.drs:
-; CHECK-NEXT:    [[CALL_DRS]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_DRS_REG2MEM_0]]) #[[ATTR6]]
-; CHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs:
-; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_0_0:%.*]] [
-; CHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_1_0:%.*]]
+; CHECK-NEXT:    br label %"for.cond.drs.%d0", !llvm.loop [[LOOP20:![0-9]+]]
+; CHECK:       "for.cond.drs.%d0":
+; CHECK-NEXT:    %"call.drs.%d0" = tail call noundef zeroext i1 @_Z5test1i(i32 noundef %"conv6.drs.%d0.reg2mem.0") #[[ATTR6]]
+; CHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0"
+; CHECK:       "omp.inner.for.inc.divergent.exit.drs.%d0":
+; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label %"omp.inner.for.inc.divergent.exit.drs.%d0.outro.0" [
+; CHECK-NEXT:    i32 1, label %"omp.inner.for.inc.divergent.exit.drs.%d0.outro.1"
 ; CHECK-NEXT:    ]
 ; CHECK:       for.cond.preheader.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_014_EPILOGUE:%.*]] = phi i64 [ [[ADD7]], [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK]] ], [ [[ADD7_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[FOR_COND_PREHEADER_LR_PH]] ]
@@ -217,7 +217,7 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK-NEXT:    [[CALL_COARSENED_1:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_COARSENED_1]]) #[[ATTR6]]
 ; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp eq i1 [[CALL_COARSENED_1]], [[CALL]]
 ; DRCHECK-NEXT:    [[TMP12:%.*]] = and i1 [[TMP11]], true
-; DRCHECK-NEXT:    br i1 [[TMP12]], label [[FOR_COND_DIVERGENT_ENTRY:%.*]], label [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0:%.*]]
+; DRCHECK-NEXT:    br i1 [[TMP12]], label [[FOR_COND_DIVERGENT_ENTRY:%.*]], label %"for.cond.divergent.entry.drs.%d0.intro.0"
 ; DRCHECK:       for.cond.divergent.entry:
 ; DRCHECK-NEXT:    br i1 [[CALL]], label [[FOR_BODY:%.*]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT:%.*]]
 ; DRCHECK:       for.body:
@@ -237,28 +237,28 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[FOR_COND_PREHEADER_EPILOGUE]], label [[OMP_INNER_FOR_INC]]
 ; DRCHECK:       omp.inner.for.inc:
 ; DRCHECK-NEXT:    br i1 [[CMP4]], label [[FOR_COND_PREHEADER]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP20:![0-9]+]]
-; DRCHECK:       for.cond.divergent.entry.drs.intro.0:
-; DRCHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS:%.*]]
-; DRCHECK:       for.cond.divergent.entry.drs.intro.1:
-; DRCHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS]]
-; DRCHECK:       for.cond.divergent.entry.drs:
-; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[DR_COARSENED_IDENT_0]], [[FOR_COND_DRS:%.*]] ], [ 1, [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1:%.*]] ]
-; DRCHECK-NEXT:    [[CONV6_DRS_REG2MEM_0:%.*]] = phi i32 [ [[CONV6]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[CONV6_DRS_REG2MEM_0]], [[FOR_COND_DRS]] ], [ [[CONV6_COARSENED_1]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
-; DRCHECK-NEXT:    [[CALL_DRS_REG2MEM_0:%.*]] = phi i1 [ [[CALL]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_0]] ], [ [[CALL_DRS:%.*]], [[FOR_COND_DRS]] ], [ [[CALL_COARSENED_1]], [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1]] ]
-; DRCHECK-NEXT:    br i1 [[CALL_DRS_REG2MEM_0]], label [[FOR_BODY_DRS:%.*]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS:%.*]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.outro.0.0:
-; DRCHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS_INTRO_1]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.outro.1.0:
+; DRCHECK:       "for.cond.divergent.entry.drs.%d0.intro.0":
+; DRCHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0"
+; DRCHECK:       "for.cond.divergent.entry.drs.%d0.intro.1":
+; DRCHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0"
+; DRCHECK:       "for.cond.divergent.entry.drs.%d0":
+; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, %"for.cond.divergent.entry.drs.%d0.intro.0" ], [ [[DR_COARSENED_IDENT_0]], %"for.cond.drs.%d0" ], [ 1, %"for.cond.divergent.entry.drs.%d0.intro.1" ]
+; DRCHECK-NEXT:    %"call.drs.%d0.reg2mem.0" = phi i1 [ [[CALL]], %"for.cond.divergent.entry.drs.%d0.intro.0" ], [ %"call.drs.%d0", %"for.cond.drs.%d0" ], [ [[CALL_COARSENED_1]], %"for.cond.divergent.entry.drs.%d0.intro.1" ]
+; DRCHECK-NEXT:    %"conv6.drs.%d0.reg2mem.0" = phi i32 [ [[CONV6]], %"for.cond.divergent.entry.drs.%d0.intro.0" ], [ %"conv6.drs.%d0.reg2mem.0", %"for.cond.drs.%d0" ], [ [[CONV6_COARSENED_1]], %"for.cond.divergent.entry.drs.%d0.intro.1" ]
+; DRCHECK-NEXT:    br i1 %"call.drs.%d0.reg2mem.0", label %"for.body.drs.%d0", label %"omp.inner.for.inc.divergent.exit.drs.%d0"
+; DRCHECK:       "omp.inner.for.inc.divergent.exit.drs.%d0.outro.0":
+; DRCHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0.intro.1"
+; DRCHECK:       "omp.inner.for.inc.divergent.exit.drs.%d0.outro.1":
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK_ORIGINAL_END_CHECK]]
-; DRCHECK:       for.body.drs:
+; DRCHECK:       "for.body.drs.%d0":
 ; DRCHECK-NEXT:    tail call void @_Z4use2Pi(ptr noundef [[A]]) #[[ATTR6]]
-; DRCHECK-NEXT:    br label [[FOR_COND_DRS]], !llvm.loop [[LOOP18]]
-; DRCHECK:       for.cond.drs:
-; DRCHECK-NEXT:    [[CALL_DRS]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_DRS_REG2MEM_0]]) #[[ATTR6]]
-; DRCHECK-NEXT:    br label [[FOR_COND_DIVERGENT_ENTRY_DRS]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs:
-; DRCHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_0_0:%.*]] [
-; DRCHECK-NEXT:    i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_OUTRO_1_0:%.*]]
+; DRCHECK-NEXT:    br label %"for.cond.drs.%d0", !llvm.loop [[LOOP18]]
+; DRCHECK:       "for.cond.drs.%d0":
+; DRCHECK-NEXT:    %"call.drs.%d0" = tail call noundef zeroext i1 @_Z5test1i(i32 noundef %"conv6.drs.%d0.reg2mem.0") #[[ATTR6]]
+; DRCHECK-NEXT:    br label %"for.cond.divergent.entry.drs.%d0"
+; DRCHECK:       "omp.inner.for.inc.divergent.exit.drs.%d0":
+; DRCHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label %"omp.inner.for.inc.divergent.exit.drs.%d0.outro.0" [
+; DRCHECK-NEXT:    i32 1, label %"omp.inner.for.inc.divergent.exit.drs.%d0.outro.1"
 ; DRCHECK-NEXT:    ]
 ; DRCHECK:       for.cond.preheader.epilogue:
 ; DRCHECK-NEXT:    [[DOTOMP_IV_014_EPILOGUE:%.*]] = phi i64 [ [[ADD7]], [[OMP_INNER_FOR_INCEPILOGUE_START_CHECK]] ], [ [[ADD7_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[FOR_COND_PREHEADER_LR_PH]] ]
