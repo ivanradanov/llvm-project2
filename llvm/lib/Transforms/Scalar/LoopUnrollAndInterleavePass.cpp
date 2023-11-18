@@ -275,23 +275,9 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
 
 void LoopUnrollAndInterleave::populateDivergentRegions() {
 
-  auto AddExisting = [&](BasicBlock *TheBlock, BasicBlock *BB1,
-                         BasicBlock *BB2 = nullptr) {
-    for (auto &DR : llvm::make_filter_range(
-             DivergentRegions, [TheBlock](DivergentRegion &DR) {
-               return DR.Blocks.contains(TheBlock);
-             })) {
-      DR.Blocks.insert(BB1);
-      if (BB2)
-        DR.Blocks.insert(BB2);
-    }
-  };
-
   BBSet ConvergingBlocks;
   BBSet EntryBlocks;
 
-  SmallMapVector<BasicBlock *, SmallPtrSet<DivergentRegion *, 3>, 8>
-      SharingConverge;
   for (Instruction *Term : DivergentBranches) {
     BasicBlock *Entry = Term->getParent();
     auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
@@ -312,37 +298,19 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     ConvergingBlocks.insert(ConvergeBlock);
     EntryBlocks.insert(Entry);
     DivergentRegions.push_back(std::move(Region));
-
-    if (!SharingConverge.contains(ConvergeBlock)) {
-      SharingConverge[ConvergeBlock] = {&DivergentRegions.back()};
-    } else {
-      auto &Sharing = SharingConverge[ConvergeBlock];
-      auto *ToInsert = &DivergentRegions.back();
-      Sharing.insert(ToInsert);
-    }
   }
 
-  for (auto &P : SharingConverge) {
-    auto &Sharing = P.second;
-
-    auto *ConvergeBlock = P.first;
-    // We start from the innermost
-    for (auto *DR = Sharing.begin();; DR++) {
-      bool IsOutermost = DR + 1 == Sharing.end();
-      if (IsOutermost)
-        break;
-      auto *NewConvergeBlock =
-          ConvergeBlock->splitBasicBlockBefore(ConvergeBlock->getFirstNonPHI());
-      NewConvergeBlock->setName(ConvergeBlock->getName() + ".csplit");
-      TheLoop->addBasicBlockToLoop(NewConvergeBlock, *LI);
-      ConvergingBlocks.insert(NewConvergeBlock);
-      (*DR)->To = NewConvergeBlock;
-
-      // Insert the new converge block in the blocks of DRs that contain DR
-      AddExisting(ConvergeBlock, NewConvergeBlock);
+  auto AddExisting = [&](BasicBlock *TheBlock, BasicBlock *BB1,
+                         BasicBlock *BB2 = nullptr) {
+    for (auto &DR : llvm::make_filter_range(
+             DivergentRegions, [TheBlock](DivergentRegion &DR) {
+               return DR.Blocks.contains(TheBlock);
+             })) {
+      DR.Blocks.insert(BB1);
+      if (BB2)
+        DR.Blocks.insert(BB2);
     }
-  }
-
+  };
   auto AddExit = [&](BasicBlock *TheBlock, BasicBlock *DivergentExit,
                      BasicBlock *Convergent) {
     for (auto &DR : llvm::make_filter_range(
