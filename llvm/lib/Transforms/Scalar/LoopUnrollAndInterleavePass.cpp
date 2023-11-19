@@ -638,6 +638,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DR.DivergentRegionsLoop = cloneLoopWithPreheader(
         ExitBlock, &F->getEntryBlock(), L, *DR.DRLVMap,
         ".drs." + std::to_string(It++), LI, &DT, DR.DivergentRegionsLoopBlocks);
+    // Do not remap the preheader values, the DR blocks should refer to the
+    // original preheader
+    for (Instruction &I : *Preheader) {
+      DR.DRLVMap->erase(&I);
+    }
     remapInstructionsInBlocks(DR.DivergentRegionsLoopBlocks, *DR.DRLVMap);
   }
 
