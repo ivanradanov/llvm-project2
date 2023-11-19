@@ -467,15 +467,14 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
     auto MappedDRBlocks = mapContainer<BBSet, BasicBlock>(DR.Blocks, VMap);
 
     DR.ExecutedByCL = {};
-    // Walk the From block backwards until we get a branch - all values defined
-    // in these blocks are considered outside the DR for the purpose of this
-    // function as they will be executed by the CL (coarsened loop) before
-    // entering the DR
-    auto *OutsideBlock = DR.From;
-    do {
-      DR.ExecutedByCL.insert(OutsideBlock);
-      OutsideBlock = OutsideBlock->getSinglePredecessor();
-    } while (OutsideBlock);
+    // The blocks that dominate the Entry and are in the DR will be executed by
+    // the coarsened loop first, which means the values that are defined in them
+    // are considered to be "defined outside" the DR
+    auto *DomBlock = DR.From;
+    while (DR.Blocks.contains(DomBlock)) {
+      DR.ExecutedByCL.insert(DomBlock);
+      DomBlock = DT->getNode(DomBlock)->getIDom()->getBlock();
+    }
 
     auto MappedExecutedByCL =
         mapContainer<BBSet, BasicBlock>(DR.ExecutedByCL, VMap);
@@ -941,34 +940,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     DeleteDeadBlocks(Tmp);
   }
 
-  // If we do not use dynamic convergence then the coarsened versions of the DRs
-  // are unused and we have to delete them
-  // TODO not sure if we can have convergent flow go into a DR and exit through
-  // its exit - I think it is possible and we have to handle that case (not only
-  // here, but in the DR plumbing that we do around the exits above as well
-  if (!UseDynamicConvergence) {
-    BBSet ToDelete;
-    for (auto &DR : DivergentRegions) {
-      auto DRToDelete = DR.Blocks;
-      set_subtract(DRToDelete, DR.ExecutedByCL);
-      set_union(ToDelete, DRToDelete);
-    }
-    SmallVector<BasicBlock *> Tmp(ToDelete.begin(), ToDelete.end());
-    DeleteDeadBlocks(Tmp);
-  }
-
-  dbgs() << "before promote\n";
-  F->getParent()->dump();
-
-  // Now that we are done with the aggressive CFG restructuring and deleting
-  // dead blocks we can re-promote the regs we demoted earlier.
-  // TODO can we check we were able to promote everything without undefs?
-  DT.recalculate(*F); // TODO another recalculation...
-  for (auto &DR : DivergentRegions) {
-    DRTmpStorage.push_back(DR.IdentPtr);
-  }
-  PromoteMemToReg(DRTmpStorage, DT);
-
   // Plumbing around the coarsened and epilogue loops
 
   for (BasicBlock::iterator I = ExitBlock->begin(); isa<PHINode>(I);) {
@@ -1068,6 +1039,33 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
                      Preheader);
     }
   }
+
+  // If we do not use dynamic convergence then /some/ of the coarsened versions
+  // of the DRs are unused and we have to delete them.
+  //
+  // We can still have a case like this:
+  //
+  //    |        |
+  // NonDivBB  DivBB
+  //         \ /   \
+  //          BB   BB
+  //           \   /
+  //         ConvergeBB
+  //             |
+  //
+  // Where a non-divergent flow joins a divergent regions - this means not all
+  // coarsened versions of DRs are dead - just delete the ones unreachable from
+  // the entry
+  EliminateUnreachableBlocks(*F);
+
+  // Now that we are done with the aggressive CFG restructuring and deleting
+  // dead blocks we can re-promote the regs we demoted earlier.
+  // TODO can we check we were able to promote everything without undefs?
+  DT.recalculate(*F); // TODO another recalculation...
+  for (auto &DR : DivergentRegions) {
+    DRTmpStorage.push_back(DR.IdentPtr);
+  }
+  PromoteMemToReg(DRTmpStorage, DT);
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
