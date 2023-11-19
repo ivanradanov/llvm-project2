@@ -100,9 +100,9 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; CHECK:       omp.inner.for.inc:
 ; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP18:![0-9]+]]
 ; CHECK:       sw.bb8.drs.0:
-; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr poison, align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[MUL10_DRS_0:%.*]] = mul nsw i32 [[TMP11]], 3
-; CHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr poison, align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0:%.*]]
 ; CHECK:       sw.bb.drs.0:
 ; CHECK-NEXT:    [[TMP12:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
@@ -272,9 +272,9 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; DRCHECK:       omp.inner.for.inc:
 ; DRCHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP18:![0-9]+]]
 ; DRCHECK:       sw.bb8.drs.0:
-; DRCHECK-NEXT:    [[TMP16:%.*]] = load i32, ptr poison, align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    [[TMP16:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    [[MUL10_DRS_0:%.*]] = mul nsw i32 [[TMP16]], 3
-; DRCHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr poison, align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0:%.*]]
 ; DRCHECK:       sw.bb.drs.0:
 ; DRCHECK-NEXT:    [[TMP17:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
