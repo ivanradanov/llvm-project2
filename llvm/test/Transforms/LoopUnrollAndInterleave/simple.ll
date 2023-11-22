@@ -66,7 +66,7 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD8]], [[ADD]]
 ; CHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD8_COARSENED_1]], [[ADD]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD8]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODYEPILOGUE_START_CHECK:%.*]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
+; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], label [[OMP_INNER_FOR_BODYEPILOGUE_START_CHECK:%.*]]
 ; CHECK:       omp.inner.for.bodyepilogue.start.check:
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_INNER_FOR_BODY]]
 ; CHECK:       omp.inner.for.body:

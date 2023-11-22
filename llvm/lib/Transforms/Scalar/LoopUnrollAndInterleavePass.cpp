@@ -1023,8 +1023,20 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     EndCheckBB->setName(PrevBB->getName() + ".original.end.check");
     Instruction *EndCheckBI = EndCheckBB->getTerminator();
     IRBuilder<> EpilogueCheckBuilder(EndCheckBI);
-    EpilogueCheckBuilder.CreateCondBr(BackEdge->getCondition(), PrevBB,
-                                      ExitBlock);
+
+    // TODO Is there a canonical form? Do we know which side the exit block is
+    // on?
+    BasicBlock *TrueBB = nullptr, *FalseBB = nullptr;
+    if (BackEdge->getSuccessor(0) == ExitBlock) {
+      TrueBB = ExitBlock;
+      FalseBB = PrevBB;
+    } else {
+      assert(BackEdge->getSuccessor(1) == ExitBlock);
+      TrueBB = ExitBlock;
+      FalseBB = PrevBB;
+    }
+    EpilogueCheckBuilder.CreateCondBr(BackEdge->getCondition(), TrueBB,
+                                      FalseBB);
     EndCheckBI->eraseFromParent();
   }
 
