@@ -455,12 +455,13 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
 }
 
 void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
-
+  DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDOUIAll;
+  DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDIUOAll;
   for (auto &DR : DivergentRegions) {
-
     Loop *NCL = DR.DivergentRegionsLoop;
     ValueToValueMapTy &VMap = *DR.DRLVMap;
-    SmallVector<Instruction *> ToDemote;
+
+    SmallVector<Instruction *> &ToDemoteDOUI = ToDemoteDOUIAll[&DR] = {};
 
     // Demote values defined outside a DR used inside it in the Non Coarsened
     // Loop (NCL)
@@ -492,25 +493,16 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
           if (!UserI)
             continue;
           if (MappedDRBlocks.contains(UserI->getParent())) {
-            ToDemote.push_back(&I);
+            ToDemoteDOUI.push_back(&I);
             break;
           }
         }
       }
     }
-    for (auto *I : ToDemote) {
-      auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
-      if (!Demoted) {
-        Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
-                                   Preheader->getFirstNonPHI());
-        DemotedRegsVMap[I] = Demoted;
-      }
-      (*DR.DefinedOutsideDemotedVMap)[I] = Demoted;
-    }
 
     // Demote values defined inside a DR and used outside it in the Coarsened
     // Loop (CL)
-    ToDemote.clear();
+    SmallVector<Instruction *> &ToDemoteDIUO = ToDemoteDIUOAll[&DR] = {};
     // Find values defined outside the DR and used inside it
     for (auto *BB : DR.Blocks) {
       SmallVector<Instruction *> ToHandle;
@@ -528,12 +520,41 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
           BasicBlock *UserBB = UserI->getParent();
           if (DR.Blocks.contains(UserBB))
             continue;
-          ToDemote.push_back(&I);
+          ToDemoteDIUO.push_back(&I);
           break;
         }
       }
     }
-    for (auto *I : ToDemote) {
+  }
+  LLVM_DEBUG({
+    for (auto &DR : DivergentRegions) {
+      SmallVector<Instruction *> &ToDemoteDOUI = ToDemoteDOUIAll[&DR];
+      SmallVector<Instruction *> &ToDemoteDIUO = ToDemoteDIUOAll[&DR];
+      DBGS << "To demote DOUI for DR with entry %" << DR.Entry->getName()
+           << ":\n";
+      for (auto *I : ToDemoteDOUI) {
+        dbgs() << *I << "\n";
+      }
+      DBGS << "To demote DIUO for DR with entry %" << DR.Entry->getName()
+           << ":\n";
+      for (auto *I : ToDemoteDIUO) {
+        dbgs() << *I << "\n";
+      }
+    }
+  });
+  for (auto &DR : DivergentRegions) {
+    SmallVector<Instruction *> &ToDemoteDOUI = ToDemoteDOUIAll[&DR];
+    SmallVector<Instruction *> &ToDemoteDIUO = ToDemoteDIUOAll[&DR];
+    for (auto *I : ToDemoteDOUI) {
+      auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
+      if (!Demoted) {
+        Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
+                                   Preheader->getFirstNonPHI());
+        DemotedRegsVMap[I] = Demoted;
+      }
+      (*DR.DefinedOutsideDemotedVMap)[I] = Demoted;
+    }
+    for (auto *I : ToDemoteDIUO) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
         Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
@@ -569,8 +590,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
     return LoopUnrollResult::Unmodified;
   }
 
-  if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
+  }
 
   if (!isLegalToCoarsen(L, LI))
     return LoopUnrollResult::Unmodified;
@@ -722,9 +744,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   for (unsigned I = 0; I < UnrollFactor; I++)
     ClonedInsts.push_back({});
 
-  // TODO Currently we do not check whether the control flow may be divergent
-  // between the interleaved original "iterations" - we need to duplicate
-  // instead of interleave divergent flow
   for (BasicBlock *BB : OriginalLoopBlocks) {
     SmallVector<Instruction *> ToClone;
     for (Instruction &I : *BB) {
@@ -897,7 +916,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
         auto *OriginalValue = cast<Instruction>(ReverseDRLVMap[I]);
         Instruction *CoarsenedValue =
             cast<Instruction>((*VMaps[It])[OriginalValue]);
-        // Reload from the stashes if needed
+        if (auto *AI = cast_or_null<AllocaInst>(
+                DemotedRegsVMap.lookup(CoarsenedValue))) {
+          CoarsenedValue = IntroBuilder.CreateLoad(
+              CoarsenedValue->getType(), AI, AI->getName() + ".demoted.reload");
+        }
         IntroBuilder.CreateStore(CoarsenedValue, P.second);
       }
 
@@ -914,6 +937,10 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
           continue;
         auto *DRValue = cast<Instruction>(DivergentRegionsVMap[OriginalValue]);
         new StoreInst(DRValue, P.second, Outro);
+        // TODO we can "forward" these using phi nodes through the DR iterations
+        // and only store them in the final outro. This will significantly
+        // simplify the re-promoted values (currently we get a mess of phis with
+        // some undef's, see defined-in-used-outside-dr.ll)
       }
       if (It == UnrollFactor - 1) {
         auto *FromOutroBI = BranchInst::Create(DR.To);
@@ -1077,15 +1104,15 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   // Now that we are done with the aggressive CFG restructuring and deleting
   // dead blocks we can re-promote the regs we demoted earlier.
-  // TODO can we check we were able to promote everything without undefs?
-  DT.recalculate(*F); // TODO another recalculation...
   for (auto &DR : DivergentRegions) {
     DRTmpStorage.push_back(DR.IdentPtr);
   }
+  DT.recalculate(*F); // TODO another recalculation...
   PromoteMemToReg(DRTmpStorage, DT);
 
-  if (getenv("UNROLL_AND_INTERLEAVE_DUMP"))
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
+  }
 
   setLoopAlreadyCoarsened(L);
 
