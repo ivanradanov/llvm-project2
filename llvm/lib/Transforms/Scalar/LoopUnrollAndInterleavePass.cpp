@@ -170,9 +170,7 @@ public:
       : ORE(ORE), UnrollFactor(UnrollFactor),
         UseDynamicConvergence(UseDynamicConvergence) {}
   LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
-                                   ScalarEvolution &SE,
-                                   const TargetTransformInfo &TTI,
-                                   PostDominatorTree &PDT);
+                                   ScalarEvolution &SE, PostDominatorTree &PDT);
 };
 
 static bool isWorkShareLoop(Loop *L) {
@@ -566,9 +564,10 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
   }
 }
 
-LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
-    Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
-    const TargetTransformInfo &TTI, PostDominatorTree &PDT) {
+LoopUnrollResult
+LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
+                                         LoopInfo *LI, ScalarEvolution &SE,
+                                         PostDominatorTree &PDT) {
   this->LI = LI;
   this->TheLoop = L;
   this->DT = &DT;
@@ -582,11 +581,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
 
   if (getLoopAlreadyCoarsened(L)) {
     LLVM_DEBUG(DBGS_FAIL << "Already coarsened\n");
-    return LoopUnrollResult::Unmodified;
-  }
-
-  if (!isWorkShareLoop(L)) {
-    LLVM_DEBUG(DBGS_FAIL << "Not work share loop\n");
     return LoopUnrollResult::Unmodified;
   }
 
@@ -1115,6 +1109,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollLoop(
   }
 
   setLoopAlreadyCoarsened(L);
+  setLoopAlreadyCoarsened(EpilogueLoop);
 
   LLVM_DEBUG(DBGS << "SUCCESS\n");
 
@@ -1140,6 +1135,11 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
     return PreservedAnalyses::all();
   }
 
+  if (!isWorkShareLoop(&L)) {
+    LLVM_DEBUG(DBGS_FAIL << "Not work share loop\n");
+    return PreservedAnalyses::all();
+  }
+
   bool UseDynamicConvergence = UseDynamicConvergenceOpt;
   if (char *Env = getenv("UNROLL_AND_INTERLEAVE_DYNAMIC_CONVERGENCE")) {
     unsigned Int = 0;
@@ -1151,10 +1151,25 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
   auto PDT = PostDominatorTree(*F);
   bool Changed =
       LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence)
-          .tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, PDT) !=
+          .tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, PDT) !=
       LoopUnrollResult::Unmodified;
   if (!Changed)
     return PreservedAnalyses::all();
 
   return PreservedAnalyses::none();
+}
+
+bool llvm::loopUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
+                                   unsigned UnrollFactor,
+                                   bool UseDynamicConvergence, Loop *L,
+                                   DominatorTree &DT, LoopInfo &LI,
+                                   ScalarEvolution &SE,
+                                   PostDominatorTree &PDT) {
+  if (UnrollFactor <= 1) {
+    LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
+    return false;
+  }
+  return LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence)
+             .tryToUnrollLoop(L, DT, &LI, SE, PDT) !=
+         LoopUnrollResult::Unmodified;
 }

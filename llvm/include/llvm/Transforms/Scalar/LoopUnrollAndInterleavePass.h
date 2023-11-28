@@ -10,9 +10,9 @@
 #define LLVM_TRANSFORMS_SCALAR_LOOPUNROLLANDINTERLEAVEPASS_H
 
 #include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/Analysis/OptimizationRemarkEmitter.h"
+#include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Support/CommandLine.h"
-#include <optional>
 
 namespace llvm {
 
@@ -20,7 +20,8 @@ class Function;
 class Loop;
 class LPMUpdater;
 
-class LoopUnrollAndInterleavePass : public PassInfoMixin<LoopUnrollAndInterleavePass> {
+class LoopUnrollAndInterleavePass
+    : public PassInfoMixin<LoopUnrollAndInterleavePass> {
 
 public:
   explicit LoopUnrollAndInterleavePass() {}
@@ -28,6 +29,11 @@ public:
   PreservedAnalyses run(Loop &L, LoopAnalysisManager &AM,
                         LoopStandardAnalysisResults &AR, LPMUpdater &U);
 };
+
+bool loopUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
+                             unsigned UnrollFactor, bool UseDynamicConvergence,
+                             Loop *L, DominatorTree &DT, LoopInfo &LI,
+                             ScalarEvolution &SE, PostDominatorTree &PDT);
 
 } // end namespace llvm
 

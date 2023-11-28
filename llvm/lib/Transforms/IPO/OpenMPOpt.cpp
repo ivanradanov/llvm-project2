@@ -28,9 +28,9 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/CallGraph.h"
-#include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Frontend/OpenMP/OMPDeviceConstants.h"
@@ -38,6 +38,7 @@
 #include "llvm/IR/Assumptions.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -54,8 +55,10 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/Attributor.h"
+#include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/CallGraphUpdater.h"
+#include "llvm/Transforms/Utils/LoopSimplify.h"
 
 #include <algorithm>
 #include <optional>
@@ -147,6 +150,14 @@ static cl::opt<unsigned>
     SharedMemoryLimit("openmp-opt-shared-limit", cl::Hidden,
                       cl::desc("Maximum amount of shared memory to use."),
                       cl::init(std::numeric_limits<unsigned>::max()));
+
+static cl::opt<int> UnrollFactorOpt("openmp-opt-coarsen-factor", cl::init(1),
+                                    cl::Hidden,
+                                    cl::desc("Factor to coarsen with"));
+
+static cl::opt<bool> UseDynamicConvergenceOpt(
+    "openmp-opt-coarsen-use-dynamic-convergence", cl::init(false), cl::Hidden,
+    cl::desc("Runtime check for convergence between coarsened iterations"));
 
 STATISTIC(NumOpenMPRuntimeCallsDeduplicated,
           "Number of OpenMP runtime calls deduplicated");
@@ -955,6 +966,8 @@ struct OpenMPOpt {
 
       if (remarksEnabled())
         analysisGlobalization();
+
+      Changed |= coarsenKernels();
     } else {
       if (PrintICVValues)
         printICVs();
@@ -977,6 +990,7 @@ struct OpenMPOpt {
           Changed = true;
         }
       }
+      Changed |= coarsenKernels();
     }
 
     if (OMPInfoCache.OpenMPPostLink)
@@ -1047,6 +1061,77 @@ struct OpenMPOpt {
   }
 
 private:
+  bool coarsenKernels() {
+
+    unsigned UnrollFactor = UnrollFactorOpt;
+    if (char *Env = getenv("OMP_OPT_COARSEN_FACTOR"))
+      StringRef(Env).getAsInteger(10, UnrollFactor);
+    if (UnrollFactor <= 1) {
+      LLVM_DEBUG(dbgs() << TAG << "Invalid coarsening factor - ignoring\n");
+      return false;
+    }
+    bool UseDynamicConvergence = UseDynamicConvergenceOpt;
+    if (char *Env = getenv("OMP_OPT_DYNAMIC_CONVERGENCE")) {
+      unsigned Int = 0;
+      StringRef(Env).getAsInteger(10, Int);
+      UseDynamicConvergence = Int;
+    }
+
+    bool Changed = false;
+    OMPInformationCache::RuntimeFunctionInfo &KernelParallelRFI =
+        OMPInfoCache.RFIs[OMPRTL___kmpc_parallel_51];
+    if (!KernelParallelRFI)
+      return Changed;
+    for (Function *F : SCC) {
+      // Check if the function is a use in a __kmpc_parallel_51 call
+      bool KernelParallelUse = false;
+
+      OMPInformationCache::foreachUse(*F, [&](Use &U) {
+        if (auto *CB = dyn_cast<CallBase>(U.getUser()))
+          if (CB->isCallee(&U))
+            return;
+
+        // Find wrapper functions that represent parallel kernels.
+        CallInst *CI =
+            OpenMPOpt::getCallIfRegularCall(*U.getUser(), &KernelParallelRFI);
+        const unsigned int NonWrapperFunctionArgNo = 5;
+        // TODO what is the wrapper function and why is it used in some opts
+        // here
+        const unsigned int WrapperFunctionArgNo = 6;
+        if (!KernelParallelUse && CI &&
+            CI->getArgOperandNo(&U) == NonWrapperFunctionArgNo) {
+          KernelParallelUse = true;
+          return;
+        }
+      });
+      if (!KernelParallelUse)
+        continue;
+
+      // TODO the coarsening transformation doesnt corrently handle debug info
+      // correctly
+      stripDebugInfo(*F);
+
+      // TODO we need to invalidate this after (or preserve)
+      auto *DT =
+          OMPInfoCache.getAnalysisResultForFunction<DominatorTreeAnalysis>(*F);
+      auto PDT = PostDominatorTree(*F);
+      // TODO we need to invalidate this after (or preserve)
+      auto *SE =
+          OMPInfoCache.getAnalysisResultForFunction<ScalarEvolutionAnalysis>(
+              *F);
+      // TODO we need to invalidate this after (I think we preserve this but
+      // make sure)
+      auto *LI = OMPInfoCache.getAnalysisResultForFunction<LoopAnalysis>(*F);
+      auto &ORE = OREGetter(F);
+      for (auto *L : LI->getTopLevelLoops()) {
+        simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/false);
+        loopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence, L,
+                                *DT, *LI, *SE, PDT);
+      }
+    }
+    return false;
+  }
+
   /// Merge parallel regions when it is safe.
   bool mergeParallelRegions() {
     const unsigned CallbackCalleeOperand = 2;
