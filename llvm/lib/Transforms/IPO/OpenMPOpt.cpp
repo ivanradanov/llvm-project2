@@ -39,6 +39,7 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -158,6 +159,15 @@ static cl::opt<int> UnrollFactorOpt("openmp-opt-coarsen-factor", cl::init(1),
 static cl::opt<bool> UseDynamicConvergenceOpt(
     "openmp-opt-coarsen-use-dynamic-convergence", cl::init(false), cl::Hidden,
     cl::desc("Runtime check for convergence between coarsened iterations"));
+
+static cl::opt<bool> CoalescingFriendlyCoarseningOpt(
+    "openmp-opt-coalescing-friendly-coarsening", cl::init(true), cl::Hidden,
+    cl::desc("Whether to offset coarsened iterations by the wavefront size"));
+
+static cl::opt<bool> CoarseningIncreaseDistributeChunkingOpt(
+    "openmp-opt-coarsening-increase-distribute-chunking", cl::init(true),
+    cl::Hidden,
+    cl::desc("Whether to offset coarsened iterations by the wavefront size"));
 
 STATISTIC(NumOpenMPRuntimeCallsDeduplicated,
           "Number of OpenMP runtime calls deduplicated");
@@ -1070,12 +1080,103 @@ private:
       LLVM_DEBUG(dbgs() << TAG << "Invalid coarsening factor - ignoring\n");
       return false;
     }
-    bool UseDynamicConvergence = UseDynamicConvergenceOpt;
-    if (char *Env = getenv("OMP_OPT_DYNAMIC_CONVERGENCE")) {
-      unsigned Int = 0;
-      StringRef(Env).getAsInteger(10, Int);
-      UseDynamicConvergence = Int;
-    }
+
+    auto OptEnvToggle = [](const char *EnvVar, auto &Opt) -> bool {
+      if (char *Env = getenv(EnvVar)) {
+        unsigned Int = 0;
+        StringRef(Env).getAsInteger(10, Int);
+        return Int;
+      }
+      return Opt;
+    };
+    bool UseDynamicConvergence =
+        OptEnvToggle("OMP_OPT_DYNAMIC_CONVERGENCE", UseDynamicConvergenceOpt);
+    bool CoalescingFriendlyCoarsening =
+        OptEnvToggle("OMP_OPT_COALESCING_FRIENDLY_COARSENING",
+                     CoalescingFriendlyCoarseningOpt);
+    bool CoarseningIncreaseDistributeChunking =
+        OptEnvToggle("OMP_OPT_COARSENING_INCREASE_DISTRIBUTE_CHUNKING",
+                     CoarseningIncreaseDistributeChunkingOpt);
+
+    // TODO there has to be a smarter way to go about this
+    auto HandleDistributeCall = [&](Function *F, unsigned UnrollFactor) {
+      for (BasicBlock &BB : *F)
+        for (Instruction &I : BB)
+          if (CallBase *CB = dyn_cast<CallBase>(&I)) {
+            auto It =
+                OMPInfoCache.RuntimeFunctionIDMap.find(CB->getCalledFunction());
+            if (It == OMPInfoCache.RuntimeFunctionIDMap.end())
+              continue;
+            auto RF = It->getSecond();
+            switch (RF) {
+            case OMPRTL___kmpc_distribute_static_init_4:
+            case OMPRTL___kmpc_distribute_static_init_4u:
+            case OMPRTL___kmpc_distribute_static_init_8:
+            case OMPRTL___kmpc_distribute_static_init_8u: {
+              static int StaticInitChunkArgNo = 8;
+              auto *OriginalChunk = CB->getArgOperand(StaticInitChunkArgNo);
+              Value *NewChunk = nullptr;
+              if (auto *Const = dyn_cast<ConstantInt>(OriginalChunk)) {
+                NewChunk = ConstantInt::get(OriginalChunk->getType(),
+                                            Const->getValue() * UnrollFactor);
+              } else {
+                Instruction *Inst;
+                NewChunk = Inst = BinaryOperator::CreateMul(
+                    OriginalChunk,
+                    ConstantInt::get(OriginalChunk->getType(), UnrollFactor));
+                Inst->insertBefore(CB);
+              }
+              CB->setArgOperand(StaticInitChunkArgNo, NewChunk);
+              break;
+            }
+            case OMPRTL___kmpc_for_static_init_4:
+            case OMPRTL___kmpc_for_static_init_4u:
+            case OMPRTL___kmpc_for_static_init_8:
+            case OMPRTL___kmpc_for_static_init_8u: {
+              llvm_unreachable("Why");
+              break;
+            }
+            default:
+              break;
+            }
+          }
+    };
+    // TODO there has to be a smarter way to go about this
+    auto HandleForCall = [&](Function *F) {
+      for (BasicBlock &BB : *F)
+        for (Instruction &I : BB)
+          if (CallBase *CB = dyn_cast<CallBase>(&I)) {
+            auto It =
+                OMPInfoCache.RuntimeFunctionIDMap.find(CB->getCalledFunction());
+            if (It == OMPInfoCache.RuntimeFunctionIDMap.end())
+              continue;
+            auto *StrideType = IntegerType::getInt64Ty(F->getContext());
+            auto RF = It->getSecond();
+            switch (RF) {
+            case OMPRTL___kmpc_distribute_static_init_4:
+            case OMPRTL___kmpc_distribute_static_init_4u:
+            case OMPRTL___kmpc_distribute_static_init_8:
+            case OMPRTL___kmpc_distribute_static_init_8u: {
+              llvm_unreachable("Why");
+              break;
+            }
+            case OMPRTL___kmpc_for_static_init_4:
+            case OMPRTL___kmpc_for_static_init_4u:
+              StrideType = IntegerType::getInt32Ty(F->getContext());
+              [[fallthrough]];
+            case OMPRTL___kmpc_for_static_init_8:
+            case OMPRTL___kmpc_for_static_init_8u: {
+              static int StaticInitStrideArgNo = 6;
+              auto *Pstride = CB->getArgOperand(StaticInitStrideArgNo);
+              // TODO get warp size, not const 64
+              new StoreInst(ConstantInt::get(StrideType, 64), Pstride, CB);
+              break;
+            }
+            default:
+              break;
+            }
+          }
+    };
 
     bool Changed = false;
     OMPInformationCache::RuntimeFunctionInfo &KernelParallelRFI =
@@ -1085,7 +1186,7 @@ private:
     for (Function *F : SCC) {
       // Check if the function is a use in a __kmpc_parallel_51 call
       bool KernelParallelUse = false;
-      SmallVector<Use *, 1> Uses;
+      SmallVector<CallInst *, 1> Uses;
 
       OMPInformationCache::foreachUse(*F, [&](Use &U) {
         if (auto *CB = dyn_cast<CallBase>(U.getUser()))
@@ -1102,7 +1203,7 @@ private:
         if (!KernelParallelUse && CI &&
             CI->getArgOperandNo(&U) == NonWrapperFunctionArgNo) {
           KernelParallelUse = true;
-          Uses.push_back(&U);
+          Uses.push_back(CI);
           return;
         }
       });
@@ -1132,7 +1233,14 @@ private:
             ORE, UnrollFactor, UseDynamicConvergence, L, *DT, *LI, *SE, PDT);
       }
       if (ThisKernelChanged) {
-        for (auto *U : Uses) {
+        if (CoalescingFriendlyCoarsening) {
+          HandleForCall(F);
+        }
+        if (CoarseningIncreaseDistributeChunking) {
+          for (auto *CI : Uses) {
+            auto *DistributeF = CI->getFunction();
+            HandleDistributeCall(DistributeF, UnrollFactor);
+          }
         }
       }
       Changed |= ThisKernelChanged;
