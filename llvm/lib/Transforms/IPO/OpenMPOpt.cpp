@@ -1075,7 +1075,7 @@ private:
   bool coarsenKernels() {
 
     unsigned CoarseningFactor = CoarseningFactorOpt;
-    if (char *Env = getenv("OMP_OPT_COARSEN_FACTOR"))
+    if (char *Env = getenv("OMP_OPT_COARSENING_FACTOR"))
       StringRef(Env).getAsInteger(10, CoarseningFactor);
     if (CoarseningFactor <= 1) {
       LLVM_DEBUG(dbgs() << TAG << "Invalid coarsening factor - ignoring\n");
