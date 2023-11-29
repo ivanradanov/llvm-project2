@@ -1085,6 +1085,7 @@ private:
     for (Function *F : SCC) {
       // Check if the function is a use in a __kmpc_parallel_51 call
       bool KernelParallelUse = false;
+      SmallVector<Use *, 1> Uses;
 
       OMPInformationCache::foreachUse(*F, [&](Use &U) {
         if (auto *CB = dyn_cast<CallBase>(U.getUser()))
@@ -1101,6 +1102,7 @@ private:
         if (!KernelParallelUse && CI &&
             CI->getArgOperandNo(&U) == NonWrapperFunctionArgNo) {
           KernelParallelUse = true;
+          Uses.push_back(&U);
           return;
         }
       });
@@ -1123,13 +1125,19 @@ private:
       // make sure)
       auto *LI = OMPInfoCache.getAnalysisResultForFunction<LoopAnalysis>(*F);
       auto &ORE = OREGetter(F);
+      bool ThisKernelChanged = false;
       for (auto *L : LI->getTopLevelLoops()) {
         simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/false);
-        loopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence, L,
-                                *DT, *LI, *SE, PDT);
+        ThisKernelChanged |= loopUnrollAndInterleave(
+            ORE, UnrollFactor, UseDynamicConvergence, L, *DT, *LI, *SE, PDT);
       }
+      if (ThisKernelChanged) {
+        for (auto *U : Uses) {
+        }
+      }
+      Changed |= ThisKernelChanged;
     }
-    return false;
+    return Changed;
   }
 
   /// Merge parallel regions when it is safe.

@@ -749,24 +749,6 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
       (*ReverseVMaps[0])[I] = I;
 
       bool IsTerminator = I->isTerminator();
-      bool IsConvergentToDivergentBr = false;
-      Instruction *DivergentCond = nullptr;
-      if (IsTerminator && UseDynamicConvergence) {
-        BranchInst *BI = dyn_cast<BranchInst>(I);
-        if (ConvergentToDivergentEdges.contains(BI)) {
-          assert(BI && !BI->isConditional());
-          IsConvergentToDivergentBr = true;
-          auto *DivBr = BI->getSuccessor(0)->getTerminator();
-          if (auto *Sw = dyn_cast<SwitchInst>(DivBr))
-            DivergentCond = cast<Instruction>(Sw->getCondition());
-          else if (auto *BI = dyn_cast<BranchInst>(DivBr))
-            DivergentCond = cast<Instruction>(BI->getCondition());
-          else
-            llvm_unreachable(
-                "Divergent branches must be either branch or switch insts");
-        }
-      }
-
       for (unsigned It = 1; It < UnrollFactor; It++) {
         if (IsTerminator) {
           // Do not clone terminators - we use the control flow of the
@@ -784,36 +766,51 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
         (*ReverseVMaps[It])[Cloned] = I;
         LastI = Cloned;
       }
+    }
+  }
+  if (UseDynamicConvergence) {
+    for (auto *BI : ConvergentToDivergentEdges) {
+      Instruction *DivergentCond = nullptr;
+      assert(BI && !BI->isConditional());
+      auto *DivBr = BI->getSuccessor(0)->getTerminator();
+      if (auto *Sw = dyn_cast<SwitchInst>(DivBr))
+        DivergentCond = cast<Instruction>(Sw->getCondition());
+      else if (auto *BI = dyn_cast<BranchInst>(DivBr))
+        DivergentCond = cast<Instruction>(BI->getCondition());
+      else
+        llvm_unreachable(
+            "Divergent branches must be either branch or switch insts");
 
       // The current state:
       //
       // ConvergentBlock:
       //   ...
-      //   br %DivergentEntry ( = I)
+      //   br %DivergentEntry ( = BI)
       // DivergentEntry:
       //   ...
       //   br %cond %... ( = DivBr)
       //
-      // We change `I` to be a conditional branch with the condition of whether
+      // We change `BI` to be a conditional branch with the condition of whether
       // all the coarsened iterations agreed on the `DivBr` condition
-      if (IsConvergentToDivergentBr) {
-        Value *AllSame = ConstantInt::get(IntegerType::getInt1Ty(Ctx), true);
-        Value *Cond = DivergentCond;
-        IRBuilder<> Builder(I);
-        for (unsigned It = 1; It < UnrollFactor; It++) {
-          // The condition has to be an instruction otherwise it cannot be
-          // divergent
-          auto *CoarsenedCond = cast<Instruction>((*VMaps[It])[Cond]);
-          auto *Same = Builder.CreateCmp(CmpInst::Predicate::ICMP_EQ,
-                                         CoarsenedCond, Cond);
+      Value *AllSame = nullptr;
+      Value *Cond = DivergentCond;
+      IRBuilder<> Builder(BI);
+      for (unsigned It = 1; It < UnrollFactor; It++) {
+        // The condition has to be an instruction otherwise it cannot be
+        // divergent
+        auto *CoarsenedCond = cast<Instruction>((*VMaps[It])[Cond]);
+        auto *Same =
+            Builder.CreateCmp(CmpInst::Predicate::ICMP_EQ, CoarsenedCond, Cond);
+        if (AllSame)
           AllSame = Builder.CreateAnd(Same, AllSame);
-        }
-        // If the branches agree on the condition, branch to the convergent
-        // region, else, we branch to the divergent region (we will insert that
-        // successor later)
-        Builder.CreateCondBr(AllSame, I->getSuccessor(0), I->getSuccessor(0));
-        I->eraseFromParent();
+        else
+          AllSame = Same;
       }
+      // If the branches agree on the condition, branch to the convergent
+      // region, else, we branch to the divergent region (we will insert that
+      // successor later)
+      Builder.CreateCondBr(AllSame, BI->getSuccessor(0), BI->getSuccessor(0));
+      BI->eraseFromParent();
     }
   }
 

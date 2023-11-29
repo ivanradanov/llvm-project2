@@ -79,7 +79,7 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    store i32 [[ADD6_EPILOGUE]], ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[ADD8_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_017_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD8_EPILOGUE]], [[ADD]]
-; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]]
+; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP18:![0-9]+]]
 ; CHECK:       omp.loop.exit.loopexit:
 ; CHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; CHECK:       omp.loop.exit:

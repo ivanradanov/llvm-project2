@@ -216,10 +216,10 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK-NEXT:    br label [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0]]
 ; CHECK:       for.cond.cleanup12.i.divergent.entry.drs.0:
 ; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ], [ [[DR_COARSENED_IDENT_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
-; CHECK-NEXT:    [[I_05_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[INC27_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[DOTOMP_IV_07_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_07_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
-; CHECK-NEXT:    [[CMP23_NOT_I_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP23_NOT_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP23_NOT_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[CMP23_NOT_I_DRS_0:%.*]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    [[ADD14_I_DRS_0_REG2MEM_0]] = phi i32 [ [[ADD14_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[ADD14_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[ADD14_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
+; CHECK-NEXT:    [[I_05_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[INC27_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
+; CHECK-NEXT:    [[CMP23_NOT_I_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP23_NOT_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP23_NOT_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[CMP23_NOT_I_DRS_0:%.*]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    br i1 [[CMP23_NOT_I_DRS_0_REG2MEM_0]], label [[CLEANUP28_I_DRS_0:%.*]], label [[FOR_COND_I_DRS_0:%.*]]
 ; CHECK:       for.cond.i.drs.0:
 ; CHECK-NEXT:    [[INC27_I_DRS_0]] = add nuw i32 [[I_05_I_DRS_0_REG2MEM_0]], 1
@@ -291,7 +291,7 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK:       if.end33.i.epilogue:
 ; CHECK-NEXT:    [[ADD34_I_EPILOGUE]] = add i32 [[DOTOMP_IV_07_I_EPILOGUE]], [[TMP3]]
 ; CHECK-NEXT:    [[CMP6_I_EPILOGUE:%.*]] = icmp ult i32 [[ADD34_I_EPILOGUE]], [[CONV5_I]]
-; CHECK-NEXT:    br i1 [[CMP6_I_EPILOGUE]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT]]
+; CHECK-NEXT:    br i1 [[CMP6_I_EPILOGUE]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT]], !llvm.loop [[LOOP30:![0-9]+]]
 ; CHECK:       for.cond.cleanup12.i.epilogue:
 ; CHECK-NEXT:    [[DISTANCE_0_LCSSA_I_EPILOGUE:%.*]] = phi i32 [ 0, [[FOR_COND10_PREHEADER_I_EPILOGUE]] ], [ [[SPEC_SELECT_I_LCSSA_EPILOGUE]], [[FOR_COND_CLEANUP12_I_LOOPEXIT_EPILOGUE]] ]
 ; CHECK-NEXT:    [[CMP23_NOT_I_EPILOGUE]] = icmp slt i32 [[DISTANCE_0_LCSSA_I_EPILOGUE]], [[COARSE_MATCH_THRESHOLD_ADDR_SROA_0_0_EXTRACT_TRUNC]]
@@ -395,8 +395,7 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[CMP23_NOT_I:%.*]] = icmp slt i32 [[DISTANCE_0_LCSSA_I]], [[COARSE_MATCH_THRESHOLD_ADDR_SROA_0_0_EXTRACT_TRUNC]]
 ; DRCHECK-NEXT:    [[CMP23_NOT_I_COARSENED_1:%.*]] = icmp slt i32 [[DISTANCE_0_LCSSA_I_COARSENED_1]], [[COARSE_MATCH_THRESHOLD_ADDR_SROA_0_0_EXTRACT_TRUNC]]
 ; DRCHECK-NEXT:    [[TMP14:%.*]] = icmp eq i1 [[CMP23_NOT_I_COARSENED_1]], [[CMP23_NOT_I]]
-; DRCHECK-NEXT:    [[TMP15:%.*]] = and i1 [[TMP14]], true
-; DRCHECK-NEXT:    br i1 [[TMP15]], label [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY:%.*]], label [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0:%.*]]
+; DRCHECK-NEXT:    br i1 [[TMP14]], label [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY:%.*]], label [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0:%.*]]
 ; DRCHECK:       for.cond.cleanup12.i.divergent.entry:
 ; DRCHECK-NEXT:    br i1 [[CMP23_NOT_I]], label [[CLEANUP28_I:%.*]], label [[FOR_COND_I]]
 ; DRCHECK:       for.body13.i:
@@ -410,7 +409,7 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[IDXPROM_I_COARSENED_1:%.*]] = zext i32 [[ADD15_I_COARSENED_1]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I]]
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_COARSENED_1:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_COARSENED_1]]
-; DRCHECK-NEXT:    [[TMP16:%.*]] = load i8, ptr [[ARRAYIDX_I]], align 1, !tbaa [[TBAA23:![0-9]+]], !noalias !14
+; DRCHECK-NEXT:    [[TMP15:%.*]] = load i8, ptr [[ARRAYIDX_I]], align 1, !tbaa [[TBAA23:![0-9]+]], !noalias !14
 ; DRCHECK-NEXT:    [[DOTCOARSENED_1:%.*]] = load i8, ptr [[ARRAYIDX_I_COARSENED_1]], align 1, !tbaa [[TBAA23]], !noalias !24
 ; DRCHECK-NEXT:    [[ADD17_I:%.*]] = add nuw nsw i32 [[J_03_I]], [[I_05_I]]
 ; DRCHECK-NEXT:    [[ADD17_I_COARSENED_1:%.*]] = add nuw nsw i32 [[J_03_I_COARSENED_1]], [[I_05_I_COARSENED_1]]
@@ -418,9 +417,9 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[IDXPROM18_I_COARSENED_1:%.*]] = zext i32 [[ADD17_I_COARSENED_1]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX19_I:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I]]
 ; DRCHECK-NEXT:    [[ARRAYIDX19_I_COARSENED_1:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_COARSENED_1]]
-; DRCHECK-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ARRAYIDX19_I]], align 1, !tbaa [[TBAA23]], !noalias !14
+; DRCHECK-NEXT:    [[TMP16:%.*]] = load i8, ptr [[ARRAYIDX19_I]], align 1, !tbaa [[TBAA23]], !noalias !14
 ; DRCHECK-NEXT:    [[DOTCOARSENED_11:%.*]] = load i8, ptr [[ARRAYIDX19_I_COARSENED_1]], align 1, !tbaa [[TBAA23]], !noalias !24
-; DRCHECK-NEXT:    [[CMP21_NOT_I:%.*]] = icmp ne i8 [[TMP16]], [[TMP17]]
+; DRCHECK-NEXT:    [[CMP21_NOT_I:%.*]] = icmp ne i8 [[TMP15]], [[TMP16]]
 ; DRCHECK-NEXT:    [[CMP21_NOT_I_COARSENED_1:%.*]] = icmp ne i8 [[DOTCOARSENED_1]], [[DOTCOARSENED_11]]
 ; DRCHECK-NEXT:    [[INC_I:%.*]] = zext i1 [[CMP21_NOT_I]] to i32
 ; DRCHECK-NEXT:    [[INC_I_COARSENED_1:%.*]] = zext i1 [[CMP21_NOT_I_COARSENED_1]] to i32
@@ -464,12 +463,12 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[ADD15_I_DRS_0:%.*]] = add i32 [[ADD14_I_DRS_0_REG2MEM_0:%.*]], [[J_03_I_DRS_0]]
 ; DRCHECK-NEXT:    [[IDXPROM_I_DRS_0:%.*]] = zext i32 [[ADD15_I_DRS_0]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_DRS_0:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_DRS_0]]
-; DRCHECK-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias !14
+; DRCHECK-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ARRAYIDX_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias !14
 ; DRCHECK-NEXT:    [[ADD17_I_DRS_0:%.*]] = add nuw nsw i32 [[J_03_I_DRS_0]], [[INC27_I_DRS_0:%.*]]
 ; DRCHECK-NEXT:    [[IDXPROM18_I_DRS_0:%.*]] = zext i32 [[ADD17_I_DRS_0]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX19_I_DRS_0:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_DRS_0]]
-; DRCHECK-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX19_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias !14
-; DRCHECK-NEXT:    [[CMP21_NOT_I_DRS_0:%.*]] = icmp ne i8 [[TMP18]], [[TMP19]]
+; DRCHECK-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX19_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias !14
+; DRCHECK-NEXT:    [[CMP21_NOT_I_DRS_0:%.*]] = icmp ne i8 [[TMP17]], [[TMP18]]
 ; DRCHECK-NEXT:    [[INC_I_DRS_0:%.*]] = zext i1 [[CMP21_NOT_I_DRS_0]] to i32
 ; DRCHECK-NEXT:    [[SPEC_SELECT_I_DRS_0]] = add nuw nsw i32 [[DISTANCE_02_I_DRS_0]], [[INC_I_DRS_0]]
 ; DRCHECK-NEXT:    [[INC22_I_DRS_0]] = add nuw nsw i32 [[J_03_I_DRS_0]], 1
@@ -484,10 +483,10 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    br label [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0]]
 ; DRCHECK:       for.cond.cleanup12.i.divergent.entry.drs.0:
 ; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ], [ [[DR_COARSENED_IDENT_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
-; DRCHECK-NEXT:    [[I_05_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[I_05_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I_05_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[INC27_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[DOTOMP_IV_07_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_07_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
-; DRCHECK-NEXT:    [[CMP23_NOT_I_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP23_NOT_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP23_NOT_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[CMP23_NOT_I_DRS_0:%.*]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    [[ADD14_I_DRS_0_REG2MEM_0]] = phi i32 [ [[ADD14_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[ADD14_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[ADD14_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
+; DRCHECK-NEXT:    [[I_05_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[I_05_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I_05_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[INC27_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
+; DRCHECK-NEXT:    [[CMP23_NOT_I_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP23_NOT_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP23_NOT_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[CMP23_NOT_I_DRS_0:%.*]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    br i1 [[CMP23_NOT_I_DRS_0_REG2MEM_0]], label [[CLEANUP28_I_DRS_0:%.*]], label [[FOR_COND_I_DRS_0:%.*]]
 ; DRCHECK:       for.cond.i.drs.0:
 ; DRCHECK-NEXT:    [[INC27_I_DRS_0]] = add nuw i32 [[I_05_I_DRS_0_REG2MEM_0]], 1
@@ -529,12 +528,12 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[ADD15_I_EPILOGUE:%.*]] = add i32 [[ADD14_I_EPILOGUE]], [[J_03_I_EPILOGUE]]
 ; DRCHECK-NEXT:    [[IDXPROM_I_EPILOGUE:%.*]] = zext i32 [[ADD15_I_EPILOGUE]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_EPILOGUE:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_EPILOGUE]]
-; DRCHECK-NEXT:    [[TMP20:%.*]] = load i8, ptr [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias !14
+; DRCHECK-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias !14
 ; DRCHECK-NEXT:    [[ADD17_I_EPILOGUE:%.*]] = add nuw nsw i32 [[J_03_I_EPILOGUE]], [[I_05_I_EPILOGUE]]
 ; DRCHECK-NEXT:    [[IDXPROM18_I_EPILOGUE:%.*]] = zext i32 [[ADD17_I_EPILOGUE]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX19_I_EPILOGUE:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_EPILOGUE]]
-; DRCHECK-NEXT:    [[TMP21:%.*]] = load i8, ptr [[ARRAYIDX19_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias !14
-; DRCHECK-NEXT:    [[CMP21_NOT_I_EPILOGUE:%.*]] = icmp ne i8 [[TMP20]], [[TMP21]]
+; DRCHECK-NEXT:    [[TMP20:%.*]] = load i8, ptr [[ARRAYIDX19_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias !14
+; DRCHECK-NEXT:    [[CMP21_NOT_I_EPILOGUE:%.*]] = icmp ne i8 [[TMP19]], [[TMP20]]
 ; DRCHECK-NEXT:    [[INC_I_EPILOGUE:%.*]] = zext i1 [[CMP21_NOT_I_EPILOGUE]] to i32
 ; DRCHECK-NEXT:    [[SPEC_SELECT_I_EPILOGUE]] = add nuw nsw i32 [[DISTANCE_02_I_EPILOGUE]], [[INC_I_EPILOGUE]]
 ; DRCHECK-NEXT:    [[INC22_I_EPILOGUE]] = add nuw nsw i32 [[J_03_I_EPILOGUE]], 1
@@ -559,7 +558,7 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK:       if.end33.i.epilogue:
 ; DRCHECK-NEXT:    [[ADD34_I_EPILOGUE]] = add i32 [[DOTOMP_IV_07_I_EPILOGUE]], [[TMP3]]
 ; DRCHECK-NEXT:    [[CMP6_I_EPILOGUE:%.*]] = icmp ult i32 [[ADD34_I_EPILOGUE]], [[CONV5_I]]
-; DRCHECK-NEXT:    br i1 [[CMP6_I_EPILOGUE]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT]]
+; DRCHECK-NEXT:    br i1 [[CMP6_I_EPILOGUE]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT]], !llvm.loop [[LOOP30:![0-9]+]]
 ; DRCHECK:       for.cond.cleanup12.i.epilogue:
 ; DRCHECK-NEXT:    [[DISTANCE_0_LCSSA_I_EPILOGUE:%.*]] = phi i32 [ 0, [[FOR_COND10_PREHEADER_I_EPILOGUE]] ], [ [[SPEC_SELECT_I_LCSSA_EPILOGUE]], [[FOR_COND_CLEANUP12_I_LOOPEXIT_EPILOGUE]] ]
 ; DRCHECK-NEXT:    [[CMP23_NOT_I_EPILOGUE]] = icmp slt i32 [[DISTANCE_0_LCSSA_I_EPILOGUE]], [[COARSE_MATCH_THRESHOLD_ADDR_SROA_0_0_EXTRACT_TRUNC]]
@@ -723,27 +722,27 @@ define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_
 ; CHECK-NEXT:    [[DOTOMP_IS_LAST_I:%.*]] = alloca i32, align 4, addrspace(5)
 ; CHECK-NEXT:    [[TMP0:%.*]] = addrspacecast ptr [[D_BATCH_RESULT]] to ptr addrspace(1)
 ; CHECK-NEXT:    [[DOTGLOBAL_TID__VAL:%.*]] = load i32, ptr [[DOTGLOBAL_TID_]], align 4, !tbaa [[TBAA17]]
-; CHECK-NEXT:    tail call void @llvm.experimental.noalias.scope.decl(metadata [[META30:![0-9]+]])
+; CHECK-NEXT:    tail call void @llvm.experimental.noalias.scope.decl(metadata [[META31:![0-9]+]])
 ; CHECK-NEXT:    [[DOTOMP_LB_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_LB_I]] to ptr
 ; CHECK-NEXT:    [[DOTOMP_UB_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_UB_I]] to ptr
 ; CHECK-NEXT:    [[DOTOMP_STRIDE_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_STRIDE_I]] to ptr
 ; CHECK-NEXT:    [[DOTOMP_IS_LAST_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_IS_LAST_I]] to ptr
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR7]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR7]], !noalias !30
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR7]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR7]], !noalias !31
 ; CHECK-NEXT:    [[CONV_I:%.*]] = trunc i64 [[DOTPREVIOUS_LB_]] to i32
 ; CHECK-NEXT:    [[CONV2_I:%.*]] = trunc i64 [[DOTPREVIOUS_UB_]] to i32
-; CHECK-NEXT:    store i32 [[CONV_I]], ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; CHECK-NEXT:    store i32 [[CONV2_I]], ptr addrspace(5) [[DOTOMP_UB_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR7]], !noalias !30
-; CHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR7]], !noalias !30
-; CHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; CHECK-NEXT:    call void @__kmpc_for_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB12:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]], i32 33, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_LB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_UB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I]], i32 1, i32 1) #[[ATTR1]], !noalias !30
-; CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !30
+; CHECK-NEXT:    store i32 [[CONV_I]], ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; CHECK-NEXT:    store i32 [[CONV2_I]], ptr addrspace(5) [[DOTOMP_UB_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR7]], !noalias !31
+; CHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR7]], !noalias !31
+; CHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; CHECK-NEXT:    call void @__kmpc_for_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB12:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]], i32 33, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_LB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_UB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I]], i32 1, i32 1) #[[ATTR1]], !noalias !31
+; CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !31
 ; CHECK-NEXT:    [[CMP_NOT1_I:%.*]] = icmp sgt i32 [[TMP1]], [[CONV2_I]]
 ; CHECK-NEXT:    br i1 [[CMP_NOT1_I]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT:%.*]], label [[OMP_INNER_FOR_BODY_LR_PH_I:%.*]]
 ; CHECK:       omp.inner.for.body.lr.ph.i:
-; CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !30
+; CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !31
 ; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i32 [[TMP2]], 2
 ; CHECK-NEXT:    [[TMP3:%.*]] = mul i32 [[TMP2]], 1
 ; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i32 [[TMP1]], [[TMP3]]
@@ -764,8 +763,8 @@ define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_
 ; CHECK-NEXT:    [[IDXPROM_I_COARSENED_1:%.*]] = sext i32 [[DOTOMP_IV_02_I_COARSENED_1]] to i64
 ; CHECK-NEXT:    [[ARRAYIDX_I:%.*]] = getelementptr inbounds [1024 x i8], ptr addrspace(1) [[TMP0]], i64 0, i64 [[IDXPROM_I]]
 ; CHECK-NEXT:    [[ARRAYIDX_I_COARSENED_1:%.*]] = getelementptr inbounds [1024 x i8], ptr addrspace(1) [[TMP0]], i64 0, i64 [[IDXPROM_I_COARSENED_1]]
-; CHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I]], align 1, !tbaa [[TBAA21]], !alias.scope !30
-; CHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_COARSENED_1]], align 1, !tbaa [[TBAA21]], !alias.scope !33
+; CHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I]], align 1, !tbaa [[TBAA21]], !alias.scope !31
+; CHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_COARSENED_1]], align 1, !tbaa [[TBAA21]], !alias.scope !34
 ; CHECK-NEXT:    [[ADD4_I]] = add nsw i32 [[DOTOMP_IV_02_I]], [[COARSENED_STEP]]
 ; CHECK-NEXT:    [[ADD4_I_COARSENED_1]] = add nsw i32 [[DOTOMP_IV_02_I_COARSENED_1]], [[COARSENED_STEP]]
 ; CHECK-NEXT:    [[CMP_NOT_I:%.*]] = icmp sgt i32 [[ADD4_I]], [[CONV2_I]]
@@ -780,18 +779,18 @@ define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_
 ; CHECK-NEXT:    [[DOTOMP_IV_02_I_EPILOGUE:%.*]] = phi i32 [ [[ADD4_I]], [[OMP_INNER_FOR_BODY_IEPILOGUE_START_CHECK]] ], [ [[ADD4_I_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_I_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ]
 ; CHECK-NEXT:    [[IDXPROM_I_EPILOGUE:%.*]] = sext i32 [[DOTOMP_IV_02_I_EPILOGUE]] to i64
 ; CHECK-NEXT:    [[ARRAYIDX_I_EPILOGUE:%.*]] = getelementptr inbounds [1024 x i8], ptr addrspace(1) [[TMP0]], i64 0, i64 [[IDXPROM_I_EPILOGUE]]
-; CHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA21]], !alias.scope !30
+; CHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA21]], !alias.scope !31
 ; CHECK-NEXT:    [[ADD4_I_EPILOGUE]] = add nsw i32 [[DOTOMP_IV_02_I_EPILOGUE]], [[TMP2]]
 ; CHECK-NEXT:    [[CMP_NOT_I_EPILOGUE:%.*]] = icmp sgt i32 [[ADD4_I_EPILOGUE]], [[CONV2_I]]
-; CHECK-NEXT:    br i1 [[CMP_NOT_I_EPILOGUE]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT_LOOPEXIT]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]]
+; CHECK-NEXT:    br i1 [[CMP_NOT_I_EPILOGUE]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT_LOOPEXIT]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], !llvm.loop [[LOOP37:![0-9]+]]
 ; CHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined_debug__.exit.loopexit:
 ; CHECK-NEXT:    br label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT]]
 ; CHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined_debug__.exit:
-; CHECK-NEXT:    tail call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]]) #[[ATTR1]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR1]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR1]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR1]], !noalias !30
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR1]], !noalias !30
+; CHECK-NEXT:    tail call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]]) #[[ATTR1]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR1]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR1]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR1]], !noalias !31
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR1]], !noalias !31
 ; CHECK-NEXT:    ret void
 ;
 ; DRCHECK-LABEL: define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined(
@@ -803,27 +802,27 @@ define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_
 ; DRCHECK-NEXT:    [[DOTOMP_IS_LAST_I:%.*]] = alloca i32, align 4, addrspace(5)
 ; DRCHECK-NEXT:    [[TMP0:%.*]] = addrspacecast ptr [[D_BATCH_RESULT]] to ptr addrspace(1)
 ; DRCHECK-NEXT:    [[DOTGLOBAL_TID__VAL:%.*]] = load i32, ptr [[DOTGLOBAL_TID_]], align 4, !tbaa [[TBAA17]]
-; DRCHECK-NEXT:    tail call void @llvm.experimental.noalias.scope.decl(metadata [[META30:![0-9]+]])
+; DRCHECK-NEXT:    tail call void @llvm.experimental.noalias.scope.decl(metadata [[META31:![0-9]+]])
 ; DRCHECK-NEXT:    [[DOTOMP_LB_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_LB_I]] to ptr
 ; DRCHECK-NEXT:    [[DOTOMP_UB_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_UB_I]] to ptr
 ; DRCHECK-NEXT:    [[DOTOMP_STRIDE_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_STRIDE_I]] to ptr
 ; DRCHECK-NEXT:    [[DOTOMP_IS_LAST_ASCAST_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_IS_LAST_I]] to ptr
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR7]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR7]], !noalias !30
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR7]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR7]], !noalias !31
 ; DRCHECK-NEXT:    [[CONV_I:%.*]] = trunc i64 [[DOTPREVIOUS_LB_]] to i32
 ; DRCHECK-NEXT:    [[CONV2_I:%.*]] = trunc i64 [[DOTPREVIOUS_UB_]] to i32
-; DRCHECK-NEXT:    store i32 [[CONV_I]], ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; DRCHECK-NEXT:    store i32 [[CONV2_I]], ptr addrspace(5) [[DOTOMP_UB_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR7]], !noalias !30
-; DRCHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR7]], !noalias !30
-; DRCHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I]], align 4, !tbaa [[TBAA17]], !noalias !30
-; DRCHECK-NEXT:    call void @__kmpc_for_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB12:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]], i32 33, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_LB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_UB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I]], i32 1, i32 1) #[[ATTR1]], !noalias !30
-; DRCHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !30
+; DRCHECK-NEXT:    store i32 [[CONV_I]], ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; DRCHECK-NEXT:    store i32 [[CONV2_I]], ptr addrspace(5) [[DOTOMP_UB_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR7]], !noalias !31
+; DRCHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR7]], !noalias !31
+; DRCHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I]], align 4, !tbaa [[TBAA17]], !noalias !31
+; DRCHECK-NEXT:    call void @__kmpc_for_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB12:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]], i32 33, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_LB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_UB_ASCAST_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I]], i32 1, i32 1) #[[ATTR1]], !noalias !31
+; DRCHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_LB_I]], align 4, !tbaa [[TBAA17]], !noalias !31
 ; DRCHECK-NEXT:    [[CMP_NOT1_I:%.*]] = icmp sgt i32 [[TMP1]], [[CONV2_I]]
 ; DRCHECK-NEXT:    br i1 [[CMP_NOT1_I]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT:%.*]], label [[OMP_INNER_FOR_BODY_LR_PH_I:%.*]]
 ; DRCHECK:       omp.inner.for.body.lr.ph.i:
-; DRCHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !30
+; DRCHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I]], align 4, !tbaa [[TBAA17]], !noalias !31
 ; DRCHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i32 [[TMP2]], 2
 ; DRCHECK-NEXT:    [[TMP3:%.*]] = mul i32 [[TMP2]], 1
 ; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i32 [[TMP1]], [[TMP3]]
@@ -844,8 +843,8 @@ define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_
 ; DRCHECK-NEXT:    [[IDXPROM_I_COARSENED_1:%.*]] = sext i32 [[DOTOMP_IV_02_I_COARSENED_1]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I:%.*]] = getelementptr inbounds [1024 x i8], ptr addrspace(1) [[TMP0]], i64 0, i64 [[IDXPROM_I]]
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_COARSENED_1:%.*]] = getelementptr inbounds [1024 x i8], ptr addrspace(1) [[TMP0]], i64 0, i64 [[IDXPROM_I_COARSENED_1]]
-; DRCHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I]], align 1, !tbaa [[TBAA23]], !alias.scope !30
-; DRCHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_COARSENED_1]], align 1, !tbaa [[TBAA23]], !alias.scope !33
+; DRCHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I]], align 1, !tbaa [[TBAA23]], !alias.scope !31
+; DRCHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_COARSENED_1]], align 1, !tbaa [[TBAA23]], !alias.scope !34
 ; DRCHECK-NEXT:    [[ADD4_I]] = add nsw i32 [[DOTOMP_IV_02_I]], [[COARSENED_STEP]]
 ; DRCHECK-NEXT:    [[ADD4_I_COARSENED_1]] = add nsw i32 [[DOTOMP_IV_02_I_COARSENED_1]], [[COARSENED_STEP]]
 ; DRCHECK-NEXT:    [[CMP_NOT_I:%.*]] = icmp sgt i32 [[ADD4_I]], [[CONV2_I]]
@@ -860,18 +859,18 @@ define internal void @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_
 ; DRCHECK-NEXT:    [[DOTOMP_IV_02_I_EPILOGUE:%.*]] = phi i32 [ [[ADD4_I]], [[OMP_INNER_FOR_BODY_IEPILOGUE_START_CHECK]] ], [ [[ADD4_I_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_I_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ]
 ; DRCHECK-NEXT:    [[IDXPROM_I_EPILOGUE:%.*]] = sext i32 [[DOTOMP_IV_02_I_EPILOGUE]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_EPILOGUE:%.*]] = getelementptr inbounds [1024 x i8], ptr addrspace(1) [[TMP0]], i64 0, i64 [[IDXPROM_I_EPILOGUE]]
-; DRCHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !alias.scope !30
+; DRCHECK-NEXT:    store i8 0, ptr addrspace(1) [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !alias.scope !31
 ; DRCHECK-NEXT:    [[ADD4_I_EPILOGUE]] = add nsw i32 [[DOTOMP_IV_02_I_EPILOGUE]], [[TMP2]]
 ; DRCHECK-NEXT:    [[CMP_NOT_I_EPILOGUE:%.*]] = icmp sgt i32 [[ADD4_I_EPILOGUE]], [[CONV2_I]]
-; DRCHECK-NEXT:    br i1 [[CMP_NOT_I_EPILOGUE]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT_LOOPEXIT]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]]
+; DRCHECK-NEXT:    br i1 [[CMP_NOT_I_EPILOGUE]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT_LOOPEXIT]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], !llvm.loop [[LOOP37:![0-9]+]]
 ; DRCHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined_debug__.exit.loopexit:
 ; DRCHECK-NEXT:    br label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_DEBUG___OMP_OUTLINED_DEBUG___EXIT]]
 ; DRCHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined_debug__.exit:
-; DRCHECK-NEXT:    tail call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]]) #[[ATTR1]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR1]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR1]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR1]], !noalias !30
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR1]], !noalias !30
+; DRCHECK-NEXT:    tail call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14:[0-9]+]] to ptr), i32 [[DOTGLOBAL_TID__VAL]]) #[[ATTR1]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I]]) #[[ATTR1]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I]]) #[[ATTR1]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_UB_I]]) #[[ATTR1]], !noalias !31
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_LB_I]]) #[[ATTR1]], !noalias !31
 ; DRCHECK-NEXT:    ret void
 ;
 entry:
@@ -936,39 +935,39 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_208beb0_main_l
 ; CHECK-NEXT:    [[DOTOMP_STRIDE_I_I_I:%.*]] = alloca i32, align 4, addrspace(5)
 ; CHECK-NEXT:    [[DOTOMP_IS_LAST_I_I_I:%.*]] = alloca i32, align 4, addrspace(5)
 ; CHECK-NEXT:    [[CAPTURED_VARS_ADDRS_I_I_I:%.*]] = alloca [4 x ptr], align 8, addrspace(5)
-; CHECK-NEXT:    [[TMP0:%.*]] = tail call i32 @__kmpc_target_init(ptr addrspacecast (ptr addrspace(1) @__omp_offloading_58_208beb0_main_l83_kernel_environment to ptr)) #[[ATTR1]], !noalias !36
+; CHECK-NEXT:    [[TMP0:%.*]] = tail call i32 @__kmpc_target_init(ptr addrspacecast (ptr addrspace(1) @__omp_offloading_58_208beb0_main_l83_kernel_environment to ptr)) #[[ATTR1]], !noalias !38
 ; CHECK-NEXT:    [[EXEC_USER_CODE_I:%.*]] = icmp eq i32 [[TMP0]], -1
 ; CHECK-NEXT:    br i1 [[EXEC_USER_CODE_I]], label [[USER_CODE_ENTRY_I:%.*]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___EXIT:%.*]]
 ; CHECK:       user_code.entry.i:
-; CHECK-NEXT:    [[TMP1:%.*]] = tail call i32 @__kmpc_global_thread_num(ptr addrspacecast (ptr addrspace(1) @[[GLOB15:[0-9]+]] to ptr)) #[[ATTR1]], !noalias !36
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !36
+; CHECK-NEXT:    [[TMP1:%.*]] = tail call i32 @__kmpc_global_thread_num(ptr addrspacecast (ptr addrspace(1) @[[GLOB15:[0-9]+]] to ptr)) #[[ATTR1]], !noalias !38
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !38
 ; CHECK-NEXT:    [[DOTOMP_COMB_LB_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]] to ptr
 ; CHECK-NEXT:    [[DOTOMP_COMB_UB_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]] to ptr
 ; CHECK-NEXT:    [[DOTOMP_STRIDE_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]] to ptr
 ; CHECK-NEXT:    [[DOTOMP_IS_LAST_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]] to ptr
 ; CHECK-NEXT:    [[CAPTURED_VARS_ADDRS_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]] to ptr
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR7]], !noalias !39
-; CHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR7]], !noalias !39
-; CHECK-NEXT:    store i32 1023, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR7]], !noalias !39
-; CHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR7]], !noalias !39
-; CHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; CHECK-NEXT:    [[NVPTX_NUM_THREADS_I_I_I:%.*]] = tail call i32 @__kmpc_get_hardware_num_threads_in_block() #[[ATTR1]], !noalias !39
-; CHECK-NEXT:    call void @__kmpc_distribute_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB11:[0-9]+]] to ptr), i32 [[TMP1]], i32 91, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_LB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_UB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I_I_I]], i32 1, i32 [[NVPTX_NUM_THREADS_I_I_I]]) #[[ATTR1]], !noalias !39
-; CHECK-NEXT:    [[DOTOMP_COMB_LB_PROMOTED_I_I_I:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !noalias !39
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR7]], !noalias !41
+; CHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR7]], !noalias !41
+; CHECK-NEXT:    store i32 1023, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR7]], !noalias !41
+; CHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR7]], !noalias !41
+; CHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; CHECK-NEXT:    [[NVPTX_NUM_THREADS_I_I_I:%.*]] = tail call i32 @__kmpc_get_hardware_num_threads_in_block() #[[ATTR1]], !noalias !41
+; CHECK-NEXT:    call void @__kmpc_distribute_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB11:[0-9]+]] to ptr), i32 [[TMP1]], i32 91, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_LB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_UB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I_I_I]], i32 1, i32 [[NVPTX_NUM_THREADS_I_I_I]]) #[[ATTR1]], !noalias !41
+; CHECK-NEXT:    [[DOTOMP_COMB_LB_PROMOTED_I_I_I:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !noalias !41
 ; CHECK-NEXT:    [[CMP22_I_I_I:%.*]] = icmp slt i32 [[DOTOMP_COMB_LB_PROMOTED_I_I_I]], 1024
 ; CHECK-NEXT:    br i1 [[CMP22_I_I_I]], label [[OMP_INNER_FOR_BODY_LR_PH_I_I_I:%.*]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_EXIT_I:%.*]]
 ; CHECK:       omp.inner.for.body.lr.ph.i.i.i:
 ; CHECK-NEXT:    [[KBATCHSIZE_CASTED_SROA_0_0_INSERT_EXT_I:%.*]] = and i64 [[KBATCHSIZE]], 4294967295
-; CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !noalias !39
-; CHECK-NEXT:    [[COND_I_I_I:%.*]] = tail call i32 @llvm.smin.i32(i32 [[TMP2]], i32 1023), !range [[RNG43:![0-9]+]]
+; CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !noalias !41
+; CHECK-NEXT:    [[COND_I_I_I:%.*]] = tail call i32 @llvm.smin.i32(i32 [[TMP2]], i32 1023), !range [[RNG45:![0-9]+]]
 ; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds [4 x ptr], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], i32 0, i32 1
 ; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds [4 x ptr], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], i32 0, i32 2
 ; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [4 x ptr], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], i32 0, i32 3
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[KBATCHSIZE_CASTED_SROA_0_0_INSERT_EXT_I]] to ptr
-; CHECK-NEXT:    [[TMP7:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !noalias !39
+; CHECK-NEXT:    [[TMP7:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !noalias !41
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_I_I_I:%.*]]
 ; CHECK:       omp.inner.for.body.i.i.i:
 ; CHECK-NEXT:    [[STOREMERGE4_I_I_I:%.*]] = phi i32 [ [[COND_I_I_I]], [[OMP_INNER_FOR_BODY_LR_PH_I_I_I]] ], [ [[COND9_I_I_I:%.*]], [[OMP_INNER_FOR_BODY_I_I_I]] ]
@@ -976,12 +975,12 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_208beb0_main_l
 ; CHECK-NEXT:    [[TMP8:%.*]] = zext i32 [[ADD313_I_I_I]] to i64
 ; CHECK-NEXT:    [[TMP9:%.*]] = zext i32 [[STOREMERGE4_I_I_I]] to i64
 ; CHECK-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP8]] to ptr
-; CHECK-NEXT:    store ptr [[TMP10]], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], align 8, !tbaa [[TBAA44:![0-9]+]], !noalias !39
+; CHECK-NEXT:    store ptr [[TMP10]], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], align 8, !tbaa [[TBAA46:![0-9]+]], !noalias !41
 ; CHECK-NEXT:    [[TMP11:%.*]] = inttoptr i64 [[TMP9]] to ptr
-; CHECK-NEXT:    store ptr [[TMP11]], ptr addrspace(5) [[TMP3]], align 8, !tbaa [[TBAA44]], !noalias !39
-; CHECK-NEXT:    store ptr [[D_BATCH_RESULT]], ptr addrspace(5) [[TMP4]], align 8, !tbaa [[TBAA44]], !noalias !39
-; CHECK-NEXT:    store ptr [[TMP6]], ptr addrspace(5) [[TMP5]], align 8, !tbaa [[TBAA44]], !noalias !39
-; CHECK-NEXT:    call void @__kmpc_parallel_51(ptr addrspacecast (ptr addrspace(1) @[[GLOB15]] to ptr), i32 [[TMP1]], i32 1, i32 -1, i32 -1, ptr nonnull @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined, ptr null, ptr nonnull [[CAPTURED_VARS_ADDRS_ASCAST_I_I_I]], i64 4) #[[ATTR1]], !noalias !46
+; CHECK-NEXT:    store ptr [[TMP11]], ptr addrspace(5) [[TMP3]], align 8, !tbaa [[TBAA46]], !noalias !41
+; CHECK-NEXT:    store ptr [[D_BATCH_RESULT]], ptr addrspace(5) [[TMP4]], align 8, !tbaa [[TBAA46]], !noalias !41
+; CHECK-NEXT:    store ptr [[TMP6]], ptr addrspace(5) [[TMP5]], align 8, !tbaa [[TBAA46]], !noalias !41
+; CHECK-NEXT:    call void @__kmpc_parallel_51(ptr addrspacecast (ptr addrspace(1) @[[GLOB15]] to ptr), i32 [[TMP1]], i32 1, i32 -1, i32 -1, ptr nonnull @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined, ptr null, ptr nonnull [[CAPTURED_VARS_ADDRS_ASCAST_I_I_I]], i64 4) #[[ATTR1]], !noalias !48
 ; CHECK-NEXT:    [[ADD3_I_I_I]] = add nsw i32 [[ADD313_I_I_I]], [[TMP7]]
 ; CHECK-NEXT:    [[ADD4_I_I_I:%.*]] = add nsw i32 [[STOREMERGE4_I_I_I]], [[TMP7]]
 ; CHECK-NEXT:    [[COND9_I_I_I]] = call i32 @llvm.smin.i32(i32 [[ADD4_I_I_I]], i32 1023)
@@ -990,12 +989,12 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_208beb0_main_l
 ; CHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined.exit.i.loopexit:
 ; CHECK-NEXT:    br label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_EXIT_I]]
 ; CHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined.exit.i:
-; CHECK-NEXT:    call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14]] to ptr), i32 [[TMP1]]) #[[ATTR1]], !noalias !46
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR1]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR1]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR1]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR1]], !noalias !39
-; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !36
+; CHECK-NEXT:    call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14]] to ptr), i32 [[TMP1]]) #[[ATTR1]], !noalias !48
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR1]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR1]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR1]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR1]], !noalias !41
+; CHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !38
 ; CHECK-NEXT:    call void @__kmpc_target_deinit() #[[ATTR1]]
 ; CHECK-NEXT:    br label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___EXIT]]
 ; CHECK:       __omp_offloading_58_208beb0_main_l83_debug__.exit:
@@ -1009,39 +1008,39 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_208beb0_main_l
 ; DRCHECK-NEXT:    [[DOTOMP_STRIDE_I_I_I:%.*]] = alloca i32, align 4, addrspace(5)
 ; DRCHECK-NEXT:    [[DOTOMP_IS_LAST_I_I_I:%.*]] = alloca i32, align 4, addrspace(5)
 ; DRCHECK-NEXT:    [[CAPTURED_VARS_ADDRS_I_I_I:%.*]] = alloca [4 x ptr], align 8, addrspace(5)
-; DRCHECK-NEXT:    [[TMP0:%.*]] = tail call i32 @__kmpc_target_init(ptr addrspacecast (ptr addrspace(1) @__omp_offloading_58_208beb0_main_l83_kernel_environment to ptr)) #[[ATTR1]], !noalias !36
+; DRCHECK-NEXT:    [[TMP0:%.*]] = tail call i32 @__kmpc_target_init(ptr addrspacecast (ptr addrspace(1) @__omp_offloading_58_208beb0_main_l83_kernel_environment to ptr)) #[[ATTR1]], !noalias !38
 ; DRCHECK-NEXT:    [[EXEC_USER_CODE_I:%.*]] = icmp eq i32 [[TMP0]], -1
 ; DRCHECK-NEXT:    br i1 [[EXEC_USER_CODE_I]], label [[USER_CODE_ENTRY_I:%.*]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___EXIT:%.*]]
 ; DRCHECK:       user_code.entry.i:
-; DRCHECK-NEXT:    [[TMP1:%.*]] = tail call i32 @__kmpc_global_thread_num(ptr addrspacecast (ptr addrspace(1) @[[GLOB15:[0-9]+]] to ptr)) #[[ATTR1]], !noalias !36
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !36
+; DRCHECK-NEXT:    [[TMP1:%.*]] = tail call i32 @__kmpc_global_thread_num(ptr addrspacecast (ptr addrspace(1) @[[GLOB15:[0-9]+]] to ptr)) #[[ATTR1]], !noalias !38
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !38
 ; DRCHECK-NEXT:    [[DOTOMP_COMB_LB_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]] to ptr
 ; DRCHECK-NEXT:    [[DOTOMP_COMB_UB_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]] to ptr
 ; DRCHECK-NEXT:    [[DOTOMP_STRIDE_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]] to ptr
 ; DRCHECK-NEXT:    [[DOTOMP_IS_LAST_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]] to ptr
 ; DRCHECK-NEXT:    [[CAPTURED_VARS_ADDRS_ASCAST_I_I_I:%.*]] = addrspacecast ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]] to ptr
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR7]], !noalias !39
-; DRCHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR7]], !noalias !39
-; DRCHECK-NEXT:    store i32 1023, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR7]], !noalias !39
-; DRCHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR7]], !noalias !39
-; DRCHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !39
-; DRCHECK-NEXT:    [[NVPTX_NUM_THREADS_I_I_I:%.*]] = tail call i32 @__kmpc_get_hardware_num_threads_in_block() #[[ATTR1]], !noalias !39
-; DRCHECK-NEXT:    call void @__kmpc_distribute_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB11:[0-9]+]] to ptr), i32 [[TMP1]], i32 91, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_LB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_UB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I_I_I]], i32 1, i32 [[NVPTX_NUM_THREADS_I_I_I]]) #[[ATTR1]], !noalias !39
-; DRCHECK-NEXT:    [[DOTOMP_COMB_LB_PROMOTED_I_I_I:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !noalias !39
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR7]], !noalias !41
+; DRCHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR7]], !noalias !41
+; DRCHECK-NEXT:    store i32 1023, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR7]], !noalias !41
+; DRCHECK-NEXT:    store i32 1, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR7]], !noalias !41
+; DRCHECK-NEXT:    store i32 0, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]], align 4, !tbaa [[TBAA17]], !noalias !41
+; DRCHECK-NEXT:    [[NVPTX_NUM_THREADS_I_I_I:%.*]] = tail call i32 @__kmpc_get_hardware_num_threads_in_block() #[[ATTR1]], !noalias !41
+; DRCHECK-NEXT:    call void @__kmpc_distribute_static_init_4(ptr addrspacecast (ptr addrspace(1) @[[GLOB11:[0-9]+]] to ptr), i32 [[TMP1]], i32 91, ptr nocapture nonnull [[DOTOMP_IS_LAST_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_LB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_COMB_UB_ASCAST_I_I_I]], ptr nocapture nonnull [[DOTOMP_STRIDE_ASCAST_I_I_I]], i32 1, i32 [[NVPTX_NUM_THREADS_I_I_I]]) #[[ATTR1]], !noalias !41
+; DRCHECK-NEXT:    [[DOTOMP_COMB_LB_PROMOTED_I_I_I:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]], align 4, !noalias !41
 ; DRCHECK-NEXT:    [[CMP22_I_I_I:%.*]] = icmp slt i32 [[DOTOMP_COMB_LB_PROMOTED_I_I_I]], 1024
 ; DRCHECK-NEXT:    br i1 [[CMP22_I_I_I]], label [[OMP_INNER_FOR_BODY_LR_PH_I_I_I:%.*]], label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_EXIT_I:%.*]]
 ; DRCHECK:       omp.inner.for.body.lr.ph.i.i.i:
 ; DRCHECK-NEXT:    [[KBATCHSIZE_CASTED_SROA_0_0_INSERT_EXT_I:%.*]] = and i64 [[KBATCHSIZE]], 4294967295
-; DRCHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !noalias !39
-; DRCHECK-NEXT:    [[COND_I_I_I:%.*]] = tail call i32 @llvm.smin.i32(i32 [[TMP2]], i32 1023), !range [[RNG43:![0-9]+]]
+; DRCHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]], align 4, !noalias !41
+; DRCHECK-NEXT:    [[COND_I_I_I:%.*]] = tail call i32 @llvm.smin.i32(i32 [[TMP2]], i32 1023), !range [[RNG45:![0-9]+]]
 ; DRCHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds [4 x ptr], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], i32 0, i32 1
 ; DRCHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds [4 x ptr], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], i32 0, i32 2
 ; DRCHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [4 x ptr], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], i32 0, i32 3
 ; DRCHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[KBATCHSIZE_CASTED_SROA_0_0_INSERT_EXT_I]] to ptr
-; DRCHECK-NEXT:    [[TMP7:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !noalias !39
+; DRCHECK-NEXT:    [[TMP7:%.*]] = load i32, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]], align 4, !noalias !41
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_I_I_I:%.*]]
 ; DRCHECK:       omp.inner.for.body.i.i.i:
 ; DRCHECK-NEXT:    [[STOREMERGE4_I_I_I:%.*]] = phi i32 [ [[COND_I_I_I]], [[OMP_INNER_FOR_BODY_LR_PH_I_I_I]] ], [ [[COND9_I_I_I:%.*]], [[OMP_INNER_FOR_BODY_I_I_I]] ]
@@ -1049,12 +1048,12 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_208beb0_main_l
 ; DRCHECK-NEXT:    [[TMP8:%.*]] = zext i32 [[ADD313_I_I_I]] to i64
 ; DRCHECK-NEXT:    [[TMP9:%.*]] = zext i32 [[STOREMERGE4_I_I_I]] to i64
 ; DRCHECK-NEXT:    [[TMP10:%.*]] = inttoptr i64 [[TMP8]] to ptr
-; DRCHECK-NEXT:    store ptr [[TMP10]], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], align 8, !tbaa [[TBAA44:![0-9]+]], !noalias !39
+; DRCHECK-NEXT:    store ptr [[TMP10]], ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]], align 8, !tbaa [[TBAA46:![0-9]+]], !noalias !41
 ; DRCHECK-NEXT:    [[TMP11:%.*]] = inttoptr i64 [[TMP9]] to ptr
-; DRCHECK-NEXT:    store ptr [[TMP11]], ptr addrspace(5) [[TMP3]], align 8, !tbaa [[TBAA44]], !noalias !39
-; DRCHECK-NEXT:    store ptr [[D_BATCH_RESULT]], ptr addrspace(5) [[TMP4]], align 8, !tbaa [[TBAA44]], !noalias !39
-; DRCHECK-NEXT:    store ptr [[TMP6]], ptr addrspace(5) [[TMP5]], align 8, !tbaa [[TBAA44]], !noalias !39
-; DRCHECK-NEXT:    call void @__kmpc_parallel_51(ptr addrspacecast (ptr addrspace(1) @[[GLOB15]] to ptr), i32 [[TMP1]], i32 1, i32 -1, i32 -1, ptr nonnull @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined, ptr null, ptr nonnull [[CAPTURED_VARS_ADDRS_ASCAST_I_I_I]], i64 4) #[[ATTR1]], !noalias !46
+; DRCHECK-NEXT:    store ptr [[TMP11]], ptr addrspace(5) [[TMP3]], align 8, !tbaa [[TBAA46]], !noalias !41
+; DRCHECK-NEXT:    store ptr [[D_BATCH_RESULT]], ptr addrspace(5) [[TMP4]], align 8, !tbaa [[TBAA46]], !noalias !41
+; DRCHECK-NEXT:    store ptr [[TMP6]], ptr addrspace(5) [[TMP5]], align 8, !tbaa [[TBAA46]], !noalias !41
+; DRCHECK-NEXT:    call void @__kmpc_parallel_51(ptr addrspacecast (ptr addrspace(1) @[[GLOB15]] to ptr), i32 [[TMP1]], i32 1, i32 -1, i32 -1, ptr nonnull @__omp_offloading_58_208beb0_main_l83_debug___omp_outlined_debug___omp_outlined, ptr null, ptr nonnull [[CAPTURED_VARS_ADDRS_ASCAST_I_I_I]], i64 4) #[[ATTR1]], !noalias !48
 ; DRCHECK-NEXT:    [[ADD3_I_I_I]] = add nsw i32 [[ADD313_I_I_I]], [[TMP7]]
 ; DRCHECK-NEXT:    [[ADD4_I_I_I:%.*]] = add nsw i32 [[STOREMERGE4_I_I_I]], [[TMP7]]
 ; DRCHECK-NEXT:    [[COND9_I_I_I]] = call i32 @llvm.smin.i32(i32 [[ADD4_I_I_I]], i32 1023)
@@ -1063,12 +1062,12 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_208beb0_main_l
 ; DRCHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined.exit.i.loopexit:
 ; DRCHECK-NEXT:    br label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___OMP_OUTLINED_EXIT_I]]
 ; DRCHECK:       __omp_offloading_58_208beb0_main_l83_debug___omp_outlined.exit.i:
-; DRCHECK-NEXT:    call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14]] to ptr), i32 [[TMP1]]) #[[ATTR1]], !noalias !46
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR1]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR1]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR1]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR1]], !noalias !39
-; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !36
+; DRCHECK-NEXT:    call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @[[GLOB14]] to ptr), i32 [[TMP1]]) #[[ATTR1]], !noalias !48
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_IS_LAST_I_I_I]]) #[[ATTR1]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_STRIDE_I_I_I]]) #[[ATTR1]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_UB_I_I_I]]) #[[ATTR1]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 4, ptr addrspace(5) [[DOTOMP_COMB_LB_I_I_I]]) #[[ATTR1]], !noalias !41
+; DRCHECK-NEXT:    call void @llvm.lifetime.end.p5(i64 32, ptr addrspace(5) [[CAPTURED_VARS_ADDRS_I_I_I]]), !noalias !38
 ; DRCHECK-NEXT:    call void @__kmpc_target_deinit() #[[ATTR1]]
 ; DRCHECK-NEXT:    br label [[__OMP_OFFLOADING_58_208BEB0_MAIN_L83_DEBUG___EXIT]]
 ; DRCHECK:       __omp_offloading_58_208beb0_main_l83_debug__.exit:
