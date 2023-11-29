@@ -973,7 +973,9 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
                     cast<BasicBlock>(EpilogueVMap[CombinedLatchExiting]));
   }
 
-  // Calc the start value for the epilogue loop, should be:
+  // Note this calculation works for both increasing and decreasing loops.
+  //
+  // Calculate the start value for the epilogue loop, should be:
   // Start + (ceil((End - Start) / Stride) / UnrollFactor) * UnrollFactor *
   // Stride.
   // I.e. when we are done with our iterations of the coarsened loop.
@@ -1002,8 +1004,6 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     assert(Incoming && !Incoming->isConditional());
     IRBuilder<> Builder(Incoming);
 
-    assert(LoopBounds->getDirection() !=
-           Loop::LoopBounds::Direction::Decreasing);
     Value *IsAtEpilogueStart = Builder.CreateCmp(
         CmpInst::Predicate::ICMP_EQ, Start, EpilogueStart, "is.epilogue.start");
     Builder.CreateCondBr(IsAtEpilogueStart, EpilogueLoop->getHeader(),
