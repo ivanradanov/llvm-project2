@@ -152,16 +152,17 @@ static cl::opt<unsigned>
                       cl::desc("Maximum amount of shared memory to use."),
                       cl::init(std::numeric_limits<unsigned>::max()));
 
-static cl::opt<int> UnrollFactorOpt("openmp-opt-coarsen-factor", cl::init(1),
-                                    cl::Hidden,
-                                    cl::desc("Factor to coarsen with"));
+static cl::opt<int> CoarseningFactorOpt("openmp-opt-coarsening-factor",
+                                        cl::init(1), cl::Hidden,
+                                        cl::desc("Factor to coarsen with"));
 
-static cl::opt<bool> UseDynamicConvergenceOpt(
-    "openmp-opt-coarsen-use-dynamic-convergence", cl::init(false), cl::Hidden,
+static cl::opt<bool> CoarseningUseDynamicConvergenceOpt(
+    "openmp-opt-coarsening-use-dynamic-convergence", cl::init(false),
+    cl::Hidden,
     cl::desc("Runtime check for convergence between coarsened iterations"));
 
-static cl::opt<bool> CoalescingFriendlyCoarseningOpt(
-    "openmp-opt-coalescing-friendly-coarsening", cl::init(true), cl::Hidden,
+static cl::opt<bool> CoarseningCoalescingFriendly(
+    "openmp-opt-coarsening-coalescing-friendly", cl::init(true), cl::Hidden,
     cl::desc("Whether to offset coarsened iterations by the wavefront size"));
 
 static cl::opt<bool> CoarseningIncreaseDistributeChunkingOpt(
@@ -1073,10 +1074,10 @@ struct OpenMPOpt {
 private:
   bool coarsenKernels() {
 
-    unsigned UnrollFactor = UnrollFactorOpt;
+    unsigned CoarseningFactor = CoarseningFactorOpt;
     if (char *Env = getenv("OMP_OPT_COARSEN_FACTOR"))
-      StringRef(Env).getAsInteger(10, UnrollFactor);
-    if (UnrollFactor <= 1) {
+      StringRef(Env).getAsInteger(10, CoarseningFactor);
+    if (CoarseningFactor <= 1) {
       LLVM_DEBUG(dbgs() << TAG << "Invalid coarsening factor - ignoring\n");
       return false;
     }
@@ -1090,11 +1091,11 @@ private:
       return Opt;
     };
     bool UseDynamicConvergence =
-        OptEnvToggle("OMP_OPT_DYNAMIC_CONVERGENCE", UseDynamicConvergenceOpt);
-    bool CoalescingFriendlyCoarsening =
-        OptEnvToggle("OMP_OPT_COALESCING_FRIENDLY_COARSENING",
-                     CoalescingFriendlyCoarseningOpt);
-    bool CoarseningIncreaseDistributeChunking =
+        OptEnvToggle("OMP_OPT_COARSENING_DYNAMIC_CONVERGENCE",
+                     CoarseningUseDynamicConvergenceOpt);
+    bool CoalescingFriendlyCoarsening = OptEnvToggle(
+        "OMP_OPT_COARSENING_COALESCING_FRIENDLY", CoarseningCoalescingFriendly);
+    bool IncreaseDistributeChunking =
         OptEnvToggle("OMP_OPT_COARSENING_INCREASE_DISTRIBUTE_CHUNKING",
                      CoarseningIncreaseDistributeChunkingOpt);
 
@@ -1229,17 +1230,18 @@ private:
       bool ThisKernelChanged = false;
       for (auto *L : LI->getTopLevelLoops()) {
         simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/false);
-        ThisKernelChanged |= loopUnrollAndInterleave(
-            ORE, UnrollFactor, UseDynamicConvergence, L, *DT, *LI, *SE, PDT);
+        ThisKernelChanged |= loopUnrollAndInterleave(ORE, CoarseningFactor,
+                                                     UseDynamicConvergence, L,
+                                                     *DT, *LI, *SE, PDT);
       }
       if (ThisKernelChanged) {
         if (CoalescingFriendlyCoarsening) {
           HandleForCall(F);
         }
-        if (CoarseningIncreaseDistributeChunking) {
+        if (IncreaseDistributeChunking) {
           for (auto *CI : Uses) {
             auto *DistributeF = CI->getFunction();
-            HandleDistributeCall(DistributeF, UnrollFactor);
+            HandleDistributeCall(DistributeF, CoarseningFactor);
           }
         }
       }
