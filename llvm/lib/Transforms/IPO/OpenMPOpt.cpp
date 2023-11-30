@@ -1211,8 +1211,7 @@ private:
       if (!KernelParallelUse)
         continue;
 
-      // TODO the coarsening transformation doesnt corrently handle debug info
-      // correctly
+      // TODO the coarsening transformation doesnt handle debug info correctly
       stripDebugInfo(*F);
 
       // TODO we need to invalidate this after (or preserve)
