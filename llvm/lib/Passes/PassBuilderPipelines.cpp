@@ -23,7 +23,6 @@
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
-#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -105,7 +104,6 @@
 #include "llvm/Transforms/Scalar/LoopRotation.h"
 #include "llvm/Transforms/Scalar/LoopSimplifyCFG.h"
 #include "llvm/Transforms/Scalar/LoopSink.h"
-#include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm/Transforms/Scalar/LoopUnrollAndJamPass.h"
 #include "llvm/Transforms/Scalar/LoopUnrollPass.h"
 #include "llvm/Transforms/Scalar/LoopVersioningLICM.h"
@@ -128,9 +126,7 @@
 #include "llvm/Transforms/Utils/CanonicalizeAliases.h"
 #include "llvm/Transforms/Utils/CountVisits.h"
 #include "llvm/Transforms/Utils/InjectTLIMappings.h"
-#include "llvm/Transforms/Utils/LCSSA.h"
 #include "llvm/Transforms/Utils/LibCallsShrinkWrap.h"
-#include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
 #include "llvm/Transforms/Utils/MoveAutoInit.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
@@ -1404,30 +1400,17 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
 
   invokeVectorizerStartEPCallbacks(OptimizePM, Level);
 
-  {
-    LoopPassManager LPM;
-    // First rotate loops that may have been un-rotated by prior passes.
-    // Disable header duplication at -Oz.
-    LPM.addPass(LoopRotatePass(Level != OptimizationLevel::Oz, LTOPreLink));
-    // Some loops may have become dead by now. Try to delete them.
-    // FIXME: see discussion in https://reviews.llvm.org/D112851,
-    //        this may need to be revisited once we run GVN before loop deletion
-    //        in the simplification pipeline.
-    LPM.addPass(LoopDeletionPass());
-    OptimizePM.addPass(createFunctionToLoopPassAdaptor(
-                           std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
-  }
-
-  {
-    LoopPassManager LPM;
-    LPM.addPass(LoopUnrollAndInterleavePass());
-    OptimizePM.addPass(createFunctionToLoopPassAdaptor(
-                           std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
-  }
-  OptimizePM.addPass(SimplifyCFGPass());
-  OptimizePM.addPass(EarlyCSEPass());
-  OptimizePM.addPass(LoopSimplifyPass());
-  OptimizePM.addPass(LCSSAPass());
+  LoopPassManager LPM;
+  // First rotate loops that may have been un-rotated by prior passes.
+  // Disable header duplication at -Oz.
+  LPM.addPass(LoopRotatePass(Level != OptimizationLevel::Oz, LTOPreLink));
+  // Some loops may have become dead by now. Try to delete them.
+  // FIXME: see discussion in https://reviews.llvm.org/D112851,
+  //        this may need to be revisited once we run GVN before loop deletion
+  //        in the simplification pipeline.
+  LPM.addPass(LoopDeletionPass());
+  OptimizePM.addPass(createFunctionToLoopPassAdaptor(
+      std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
 
   // Distribute loops to allow partial vectorization.  I.e. isolate dependences
   // into separate loop that would otherwise inhibit vectorization.  This is
