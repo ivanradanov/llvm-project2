@@ -207,7 +207,7 @@ STATISTIC(NumBytesMovedToSharedMemory,
 STATISTIC(NumBarriersEliminated, "Number of redundant barriers eliminated");
 
 #if !defined(NDEBUG)
-static constexpr auto TAG = "[" DEBUG_TYPE "]";
+static constexpr auto TAG = "[" DEBUG_TYPE "] ";
 #endif
 
 namespace KernelInfo {
@@ -1914,7 +1914,7 @@ private:
   void dumpValuesInOffloadArrays(ArrayRef<OffloadArray> OAs) {
     assert(OAs.size() == 3 && "There are three offload arrays to debug!");
 
-    LLVM_DEBUG(dbgs() << TAG << " Successfully got offload values:\n");
+    LLVM_DEBUG(dbgs() << TAG << "Successfully got offload values:\n");
     std::string ValuesStr;
     raw_string_ostream Printer(ValuesStr);
     std::string Separator = " --- ";
@@ -2980,7 +2980,7 @@ struct AAExecutionDomainFunction : public AAExecutionDomain {
       for (const BasicBlock &BB : *getAnchorScope()) {
         if (!isExecutedByInitialThreadOnly(BB))
           continue;
-        dbgs() << TAG << " Basic block @" << getAnchorScope()->getName() << " "
+        dbgs() << TAG << "Basic block @" << getAnchorScope()->getName() << " "
                << BB.getName() << " is executed by a single thread.\n";
       }
     });
