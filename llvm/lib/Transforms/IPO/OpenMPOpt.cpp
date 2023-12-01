@@ -1243,6 +1243,15 @@ private:
       if (!KernelParallelUse)
         continue;
 
+      CallBase *ForCall = nullptr;
+      IntegerType *StrideType = nullptr;
+      GetForCall(F, ForCall, StrideType);
+      if (!ForCall) {
+        LLVM_DEBUG(dbgs() << TAG << "No workshare loop in F[" << F->getName()
+                          << "]\n");
+        continue;
+      }
+
       // TODO the coarsening transformation doesnt handle debug info correctly
       stripDebugInfo(*F);
 
@@ -1258,12 +1267,9 @@ private:
       // make sure)
       auto *LI = OMPInfoCache.getAnalysisResultForFunction<LoopAnalysis>(*F);
       auto &ORE = OREGetter(F);
-      CallBase *ForCall = nullptr;
-      IntegerType *StrideType = nullptr;
-      GetForCall(F, ForCall, StrideType);
       bool ThisKernelChanged = false;
       for (auto *L : LI->getTopLevelLoops()) {
-        formLCSSA(*L, *DT, LI, SE);
+        formLCSSARecursively(*L, *DT, LI, SE);
         simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/true);
         LLVM_DEBUG(dbgs() << TAG << "Trying to coarsen F["
                           << L->getHeader()->getParent()->getName() << "] %"
