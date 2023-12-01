@@ -1452,6 +1452,11 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
 
   invokeOptimizerLastEPCallbacks(MPM, Level);
 
+  // Perform OpenMP optimizations that work better on optimized loops,
+  // especially LICM and LoopRotate (coarsening) - TODO for GPUs this should be
+  // fine but for CPUs should this be before vectorization?
+  MPM.addPass(OpenMPOptPass());
+
   // Split out cold code. Splitting is done late to avoid hiding context from
   // other optimizations and inadvertently regressing performance. The tradeoff
   // is that this has a higher code size cost than splitting early.

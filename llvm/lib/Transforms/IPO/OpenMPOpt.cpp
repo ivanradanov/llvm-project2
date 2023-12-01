@@ -31,6 +31,7 @@
 #include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Frontend/OpenMP/OMPDeviceConstants.h"
@@ -59,7 +60,9 @@
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/CallGraphUpdater.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 
 #include <algorithm>
 #include <optional>
@@ -161,8 +164,8 @@ static cl::opt<bool> CoarseningUseDynamicConvergenceOpt(
     cl::Hidden,
     cl::desc("Runtime check for convergence between coarsened iterations"));
 
-static cl::opt<bool> CoarseningCoalescingFriendly(
-    "openmp-opt-coarsening-coalescing-friendly", cl::init(true), cl::Hidden,
+static cl::opt<bool> CoarseningCoalescingFriendlyOpt(
+    "openmp-opt-coarsening-coalescing-friendly", cl::init(false), cl::Hidden,
     cl::desc("Whether to offset coarsened iterations by the wavefront size"));
 
 static cl::opt<bool> CoarseningIncreaseDistributeChunkingOpt(
@@ -1093,11 +1096,20 @@ private:
     bool UseDynamicConvergence =
         OptEnvToggle("OMP_OPT_COARSENING_DYNAMIC_CONVERGENCE",
                      CoarseningUseDynamicConvergenceOpt);
-    bool CoalescingFriendlyCoarsening = OptEnvToggle(
-        "OMP_OPT_COARSENING_COALESCING_FRIENDLY", CoarseningCoalescingFriendly);
+    bool CoalescingFriendly =
+        OptEnvToggle("OMP_OPT_COARSENING_COALESCING_FRIENDLY",
+                     CoarseningCoalescingFriendlyOpt);
     bool IncreaseDistributeChunking =
         OptEnvToggle("OMP_OPT_COARSENING_INCREASE_DISTRIBUTE_CHUNKING",
                      CoarseningIncreaseDistributeChunkingOpt);
+    if (CoalescingFriendly) {
+      // The WS loop does not honor for_static_init's UB when we have a combined
+      // distribute/for statement so we cannot make changes to it (see
+      // SemaOpenMP.cpp)
+      LLVM_DEBUG(dbgs() << TAG
+                        << "Coalescing friendly coarsening unsupported\n");
+      CoalescingFriendly = false;
+    }
 
     // TODO there has to be a smarter way to go about this
     auto HandleDistributeCall = [&](Function *F, unsigned UnrollFactor) {
@@ -1143,7 +1155,10 @@ private:
           }
     };
     // TODO there has to be a smarter way to go about this
-    auto HandleForCall = [&](Function *F) {
+    auto GetForCall = [&](Function *F, CallBase *&Call,
+                          IntegerType *&StrideType) {
+      if (Call && StrideType)
+        return;
       for (BasicBlock &BB : *F)
         for (Instruction &I : BB)
           if (CallBase *CB = dyn_cast<CallBase>(&I)) {
@@ -1151,7 +1166,7 @@ private:
                 OMPInfoCache.RuntimeFunctionIDMap.find(CB->getCalledFunction());
             if (It == OMPInfoCache.RuntimeFunctionIDMap.end())
               continue;
-            auto *StrideType = IntegerType::getInt64Ty(F->getContext());
+            StrideType = IntegerType::getInt64Ty(F->getContext());
             auto RF = It->getSecond();
             switch (RF) {
             case OMPRTL___kmpc_distribute_static_init_4:
@@ -1167,16 +1182,33 @@ private:
               [[fallthrough]];
             case OMPRTL___kmpc_for_static_init_8:
             case OMPRTL___kmpc_for_static_init_8u: {
-              static int StaticInitStrideArgNo = 6;
-              auto *Pstride = CB->getArgOperand(StaticInitStrideArgNo);
-              // TODO get warp size, not const 64
-              new StoreInst(ConstantInt::get(StrideType, 64), Pstride, CB);
+              Call = CB;
               break;
             }
             default:
               break;
             }
           }
+    };
+    auto HandleForCall = [&](Function *F, CallBase *&Call,
+                             IntegerType *&StrideType) {
+      GetForCall(F, Call, StrideType);
+      static int StaticInitStrideArgNo = 6;
+      auto *Pstride = Call->getArgOperand(StaticInitStrideArgNo);
+      // TODO get warp size, not const 64
+      new StoreInst(ConstantInt::get(StrideType, 64), Pstride, Call);
+    };
+    auto AreSame = [](Value *A, Value *B) {
+      std::function<Value *(Value *)> GetBase;
+      GetBase = [&GetBase](Value *V) {
+        if (auto *CI = dyn_cast<CastInst>(V)) {
+          return GetBase(CI->getOperand(0));
+        }
+        return V;
+      };
+      A = GetBase(A);
+      B = GetBase(B);
+      return A == B;
     };
 
     bool Changed = false;
@@ -1200,7 +1232,7 @@ private:
         const unsigned int NonWrapperFunctionArgNo = 5;
         // TODO what is the wrapper function and why is it used in some opts
         // here
-        const unsigned int WrapperFunctionArgNo = 6;
+        [[maybe_unused]] const unsigned int WrapperFunctionArgNo = 6;
         if (!KernelParallelUse && CI &&
             CI->getArgOperandNo(&U) == NonWrapperFunctionArgNo) {
           KernelParallelUse = true;
@@ -1226,16 +1258,38 @@ private:
       // make sure)
       auto *LI = OMPInfoCache.getAnalysisResultForFunction<LoopAnalysis>(*F);
       auto &ORE = OREGetter(F);
+      CallBase *ForCall = nullptr;
+      IntegerType *StrideType = nullptr;
+      GetForCall(F, ForCall, StrideType);
       bool ThisKernelChanged = false;
       for (auto *L : LI->getTopLevelLoops()) {
         simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/false);
+        LLVM_DEBUG(dbgs() << TAG << "Trying to coarsen F["
+                          << L->getHeader()->getParent()->getName() << "] %"
+                          << L->getHeader()->getName() << "\n");
+        auto Bounds = L->getBounds(*SE);
+        if (!Bounds) {
+          LLVM_DEBUG(dbgs() << TAG << "No loop bounds found\n");
+          continue;
+        }
+        auto *Ld = dyn_cast<LoadInst>(&Bounds->getInitialIVValue());
+        const unsigned int LowerBoundArgNo = 4;
+        if (!Ld || !AreSame(Ld->getPointerOperand(),
+                            ForCall->getArgOperand(LowerBoundArgNo))) {
+          LLVM_DEBUG(dbgs() << TAG << "Not an openmp loop\n");
+          continue;
+        }
+
         ThisKernelChanged |= loopUnrollAndInterleave(ORE, CoarseningFactor,
                                                      UseDynamicConvergence, L,
                                                      *DT, *LI, *SE, PDT);
+        // We should do something like this:
+        // OptimizePM.addPass(SimplifyCFGPass());
+        // OptimizePM.addPass(EarlyCSEPass());
       }
       if (ThisKernelChanged) {
-        if (CoalescingFriendlyCoarsening) {
-          HandleForCall(F);
+        if (CoalescingFriendly) {
+          HandleForCall(F, ForCall, StrideType);
         }
         if (IncreaseDistributeChunking) {
           for (auto *CI : Uses) {

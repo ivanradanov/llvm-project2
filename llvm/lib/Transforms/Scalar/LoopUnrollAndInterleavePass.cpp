@@ -224,6 +224,13 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
 bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
   const bool DoExtraAnalysis = true;
   bool Result = true;
+
+  CombinedLatchExiting = TheLoop->getExitingBlock();
+  if (CombinedLatchExiting != TheLoop->getLoopLatch()) {
+    LLVM_DEBUG(DBGS << "Expected a combined exiting and latch block\n");
+    ILLEGAL();
+  }
+
   for (BasicBlock *BB : TheLoop->blocks()) {
     // Check whether the BB terminator is a BranchInst. Any other terminator is
     // not supported yet.
@@ -254,13 +261,6 @@ bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
       LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
     }
   }
-
-  CombinedLatchExiting = TheLoop->getExitingBlock();
-  if (CombinedLatchExiting != TheLoop->getLoopLatch()) {
-    LLVM_DEBUG(DBGS << "Expected a combined exiting and latch block\n");
-    ILLEGAL();
-  }
-
   return Result;
 }
 #pragma pop_macro("ILLEGAL")
