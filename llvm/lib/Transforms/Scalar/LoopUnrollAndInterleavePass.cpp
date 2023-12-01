@@ -965,12 +965,10 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
 
   // Plumbing around the coarsened and epilogue loops
 
-  for (BasicBlock::iterator I = ExitBlock->begin(); isa<PHINode>(I);) {
-    PHINode *PN = cast<PHINode>(I++);
-
-    Value *IncomingVal = PN->getIncomingValueForBlock(CombinedLatchExiting);
-    PN->addIncoming(EpilogueVMap[IncomingVal],
-                    cast<BasicBlock>(EpilogueVMap[CombinedLatchExiting]));
+  for (auto &PN : ExitBlock->phis()) {
+    Value *IncomingVal = PN.getIncomingValueForBlock(CombinedLatchExiting);
+    PN.addIncoming(EpilogueVMap[IncomingVal],
+                   cast<BasicBlock>(EpilogueVMap[CombinedLatchExiting]));
   }
 
   // Note this calculation works for both increasing and decreasing loops.
@@ -1020,42 +1018,17 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     BranchInst *BackEdge =
         dyn_cast<BranchInst>(CombinedLatchExiting->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
-    BasicBlock *PrevBB = EpilogueFrom =
-        CombinedLatchExiting->splitBasicBlockBefore(BackEdge);
-    PrevBB->setName(CombinedLatchExiting->getName() + "epilogue.start.check");
-    Instruction *BI = PrevBB->getTerminator();
-    IRBuilder<> Builder(BI);
+    BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
+        Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
+    ExitBlock->replacePhiUsesWith(CombinedLatchExiting, EndCheckBB);
+    BackEdge->replaceSuccessorWith(ExitBlock, EndCheckBB);
+    IRBuilder<> Builder(EndCheckBB);
     Value *IsAtEpilogueStart = Builder.CreateCmp(
         CmpInst::Predicate::ICMP_EQ, &LoopBounds->getStepInst(), EpilogueStart,
         "is.epilogue.start");
-    Value *EpilogueBranch = Builder.CreateCondBr(
-        IsAtEpilogueStart, EpilogueLoop->getHeader(), CombinedLatchExiting);
-    BI->eraseFromParent();
-    EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, PrevBB);
-
-    // TODO Instead of introducing this redundant branch and bb we can redirect
-    // the original branch instead so that if it doesnt jump to the exit to do a
-    // check for the epilogue loop start first
-    BasicBlock *EndCheckBB =
-        PrevBB->splitBasicBlockBefore(cast<Instruction>(EpilogueBranch));
-    EndCheckBB->setName(PrevBB->getName() + ".original.end.check");
-    Instruction *EndCheckBI = EndCheckBB->getTerminator();
-    IRBuilder<> EpilogueCheckBuilder(EndCheckBI);
-
-    // TODO Is there a canonical form? Do we know which side the exit block is
-    // on?
-    BasicBlock *TrueBB = nullptr, *FalseBB = nullptr;
-    if (BackEdge->getSuccessor(0) == ExitBlock) {
-      TrueBB = ExitBlock;
-      FalseBB = PrevBB;
-    } else {
-      assert(BackEdge->getSuccessor(1) == ExitBlock);
-      TrueBB = ExitBlock;
-      FalseBB = PrevBB;
-    }
-    EpilogueCheckBuilder.CreateCondBr(BackEdge->getCondition(), TrueBB,
-                                      FalseBB);
-    EndCheckBI->eraseFromParent();
+    Builder.CreateCondBr(IsAtEpilogueStart, EpilogueLoop->getHeader(),
+                         ExitBlock);
+    EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, EndCheckBB);
   }
 
   // Start the epilogue loop ivs from the iteration the coarsened version ended

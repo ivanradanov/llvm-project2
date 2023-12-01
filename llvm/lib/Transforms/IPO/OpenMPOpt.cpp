@@ -1263,7 +1263,8 @@ private:
       GetForCall(F, ForCall, StrideType);
       bool ThisKernelChanged = false;
       for (auto *L : LI->getTopLevelLoops()) {
-        simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/false);
+        formLCSSA(*L, *DT, LI, SE);
+        simplifyLoop(L, DT, LI, SE, nullptr, nullptr, /*PreserveLCSSA=*/true);
         LLVM_DEBUG(dbgs() << TAG << "Trying to coarsen F["
                           << L->getHeader()->getParent()->getName() << "] %"
                           << L->getHeader()->getName() << "\n");
