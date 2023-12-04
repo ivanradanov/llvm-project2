@@ -571,6 +571,7 @@ def OMP_Sections : Directive<"sections"> {
   ];
 }
 def OMP_Section : Directive<"section"> {}
+def OMP_Coexecute : Directive<"coexecute"> {}
 def OMP_Single : Directive<"single"> {
   let allowedClauses = [
     VersionedClause<OMPC_Private>,
@@ -1357,6 +1358,22 @@ def OMP_TargetSimd : Directive<"target simd"> {
     VersionedClause<OMPC_ThreadLimit, 51>,
   ];
 }
+def OMP_TeamsCoexecute : Directive<"teams coexecute"> {
+  let allowedClauses = [
+    VersionedClause<OMPC_Private>,
+    VersionedClause<OMPC_FirstPrivate>,
+    VersionedClause<OMPC_Shared>,
+    VersionedClause<OMPC_Reduction>,
+    VersionedClause<OMPC_Allocate>,
+    VersionedClause<OMPC_OMPX_Attribute>,
+  ];
+  let allowedOnceClauses = [
+    VersionedClause<OMPC_Default>,
+    VersionedClause<OMPC_If, 52>,
+    VersionedClause<OMPC_NumTeams>,
+    VersionedClause<OMPC_ThreadLimit>
+  ];
+}
 def OMP_TeamsDistribute : Directive<"teams distribute"> {
   let allowedClauses = [
     VersionedClause<OMPC_Default>,
@@ -1507,6 +1524,33 @@ let allowedOnceClauses = [
   ];
 }
 def OMP_TargetTeams : Directive<"target teams"> {
+  let allowedClauses = [
+    VersionedClause<OMPC_If>,
+    VersionedClause<OMPC_Map>,
+    VersionedClause<OMPC_Private>,
+    VersionedClause<OMPC_Depend>,
+    VersionedClause<OMPC_FirstPrivate>,
+    VersionedClause<OMPC_IsDevicePtr>,
+    VersionedClause<OMPC_HasDeviceAddr, 51>,
+    VersionedClause<OMPC_Reduction>,
+    VersionedClause<OMPC_Allocate>,
+    VersionedClause<OMPC_UsesAllocators, 50>,
+    VersionedClause<OMPC_Shared>,
+    VersionedClause<OMPC_OMPX_Attribute>,
+  ];
+
+  let allowedOnceClauses = [
+    VersionedClause<OMPC_Device>,
+    VersionedClause<OMPC_NoWait>,
+    VersionedClause<OMPC_DefaultMap>,
+    VersionedClause<OMPC_Default>,
+    VersionedClause<OMPC_NumTeams>,
+    VersionedClause<OMPC_ThreadLimit>,
+    VersionedClause<OMPC_OMPX_DynCGroupMem>,
+    VersionedClause<OMPC_OMX_Bare>,
+  ];
+}
+def OMP_TargetTeamsCoexecute : Directive<"target teams coexecute"> {
   let allowedClauses = [
     VersionedClause<OMPC_If>,
     VersionedClause<OMPC_Map>,
@@ -2033,6 +2077,7 @@ def OMP_EndSections : Directive<"end sections"> {
     VersionedClause<OMPC_NoWait>
   ];
 }
+def OMP_EndCoexecute : Directive<"end coexecute"> {}
 def OMP_EndSingle : Directive<"end single"> {
   let allowedClauses = [
     VersionedClause<OMPC_CopyPrivate>
