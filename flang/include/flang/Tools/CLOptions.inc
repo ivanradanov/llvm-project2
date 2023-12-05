@@ -193,6 +193,8 @@ inline void addExternalNameConversionPass(
 /// \param pm - MLIR pass manager that will hold the pipeline definition
 inline void createDefaultFIROptimizerPassPipeline(
     mlir::PassManager &pm, const MLIRToLLVMPassPipelineConfig &pc) {
+  pm.addPass(fir::createOMPOptPass());
+
   // simplify the IR
   mlir::GreedyRewriteConfig config;
   config.enableRegionSimplification = false;
@@ -238,8 +240,6 @@ inline void createDefaultFIROptimizerPassPipeline(
   pm.addPass(mlir::createCanonicalizerPass(config));
   pm.addPass(fir::createSimplifyRegionLitePass());
   pm.addPass(mlir::createCSEPass());
-
-  pm.addPass(fir::createOMPOptPass());
 }
 
 /// Create a pass pipeline for lowering from HLFIR to FIR
