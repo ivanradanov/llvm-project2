@@ -79,6 +79,7 @@ std::unique_ptr<mlir::Pass> createPolymorphicOpConversionPass();
 std::unique_ptr<mlir::Pass> createOMPFunctionFilteringPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createOMPMarkDeclareTargetPass();
+std::unique_ptr<mlir::Pass> createOMPOptPass();
 
 std::unique_ptr<mlir::Pass> createVScaleAttrPass();
 std::unique_ptr<mlir::Pass>

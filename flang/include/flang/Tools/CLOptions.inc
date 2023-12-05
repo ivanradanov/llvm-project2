@@ -238,6 +238,8 @@ inline void createDefaultFIROptimizerPassPipeline(
   pm.addPass(mlir::createCanonicalizerPass(config));
   pm.addPass(fir::createSimplifyRegionLitePass());
   pm.addPass(mlir::createCSEPass());
+
+  pm.addPass(fir::createOMPOptPass());
 }
 
 /// Create a pass pipeline for lowering from HLFIR to FIR

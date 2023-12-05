@@ -325,6 +325,15 @@ def OMPMarkDeclareTargetPass
   let dependentDialects = ["mlir::omp::OpenMPDialect"];
 }
 
+def OMPOpt : Pass<"omp-opt"> {
+  let summary = "OpenMP optimizations";
+  let constructor = "::fir::createOMPOptPass()";
+  let dependentDialects = [
+    "fir::FIROpsDialect",
+    "mlir::omp::OpenMPDialect"
+  ];
+}
+
 def OMPFunctionFiltering : Pass<"omp-function-filtering"> {
   let summary = "Filters out functions intended for the host when compiling "
                 "for the target device.";
