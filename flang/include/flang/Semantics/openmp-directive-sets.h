@@ -86,6 +86,7 @@ static const OmpDirectiveSet topTargetSet{
     Directive::OMPD_target_teams_distribute_parallel_do,
     Directive::OMPD_target_teams_distribute_parallel_do_simd,
     Directive::OMPD_target_teams_distribute_simd,
+    Directive::OMPD_target_teams_coexecute,
 };
 
 static const OmpDirectiveSet allTargetSet{topTargetSet};
@@ -115,6 +116,7 @@ static const OmpDirectiveSet topTeamsSet{
     Directive::OMPD_teams_distribute_parallel_do,
     Directive::OMPD_teams_distribute_parallel_do_simd,
     Directive::OMPD_teams_distribute_simd,
+    Directive::OMPD_teams_coexecute,
 };
 
 static const OmpDirectiveSet allTeamsSet{
@@ -123,11 +125,19 @@ static const OmpDirectiveSet allTeamsSet{
     llvm::omp::OMPD_target_teams_distribute_parallel_do,
     llvm::omp::OMPD_target_teams_distribute_parallel_do_simd,
     llvm::omp::OMPD_target_teams_distribute_simd,
+    llvm::omp::OMPD_target_teams_coexecute,
     llvm::omp::OMPD_teams,
     llvm::omp::OMPD_teams_distribute,
     llvm::omp::OMPD_teams_distribute_parallel_do,
     llvm::omp::OMPD_teams_distribute_parallel_do_simd,
     llvm::omp::OMPD_teams_distribute_simd,
+    llvm::omp::OMPD_teams_coexecute,
+};
+
+static const OmpDirectiveSet allCoexecuteSet{
+    llvm::omp::OMPD_coexecute,
+    llvm::omp::OMPD_teams_coexecute,
+    llvm::omp::OMPD_target_teams_coexecute,
 };
 
 static const OmpDirectiveSet topDistributeSet{
@@ -165,6 +175,7 @@ static const OmpDirectiveSet workShareSet{
         Directive::OMPD_parallel_sections,
         Directive::OMPD_sections,
         Directive::OMPD_single,
+        Directive::OMPD_coexecute,
     } | allDoSet,
 };
 
@@ -222,11 +233,16 @@ static const OmpDirectiveSet blockConstructSet{
     Directive::OMPD_taskgroup,
     Directive::OMPD_teams,
     Directive::OMPD_workshare,
+    Directive::OMPD_target_teams_coexecute,
+    Directive::OMPD_teams_coexecute,
+    Directive::OMPD_coexecute,
 };
 
 //===----------------------------------------------------------------------===//
 // Directive sets for allowed/not allowed nested directives
 //===----------------------------------------------------------------------===//
+
+// TODO not sure where coexecute goes into these
 
 static const OmpDirectiveSet nestedOrderedErrSet{
     Directive::OMPD_critical,
@@ -274,6 +290,7 @@ static const OmpDirectiveSet nestedTeamsAllowedSet{
     Directive::OMPD_parallel_sections,
     Directive::OMPD_parallel_workshare,
     Directive::OMPD_distribute,
+    Directive::OMPD_coexecute,
     Directive::OMPD_distribute_parallel_do,
     Directive::OMPD_distribute_parallel_do_simd,
     Directive::OMPD_distribute_simd,
