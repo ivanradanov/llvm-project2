@@ -2804,6 +2804,15 @@ genTeamsOp(Fortran::lower::AbstractConverter &converter,
                                  reductionDeclSymbols));
 }
 
+static mlir::omp::CoexecuteOp
+genCoexecuteOp(Fortran::lower::AbstractConverter &converter,
+               Fortran::lower::pft::Evaluation &eval,
+               mlir::Location currentLocation,
+               const Fortran::parser::OmpClauseList &clauseList) {
+  return genOpWithBody<mlir::omp::CoexecuteOp>(
+      converter, eval, currentLocation, /*outerCombined=*/false, &clauseList);
+}
+
 /// Extract the list of function and variable symbols affected by the given
 /// 'declare target' directive and return the intended device type for them.
 static mlir::omp::DeclareTargetDeviceType getDeclareTargetInfo(
@@ -3206,6 +3215,9 @@ genOMP(Fortran::lower::AbstractConverter &converter,
     genTeamsOp(converter, eval, currentLocation, beginClauseList,
                /*outerCombined=*/false);
     break;
+  case llvm::omp::Directive::OMPD_coexecute:
+    genCoexecuteOp(converter, eval, currentLocation, beginClauseList);
+    break;
   case llvm::omp::Directive::OMPD_workshare:
     TODO(currentLocation, "Workshare construct");
     break;
@@ -3221,6 +3233,11 @@ genOMP(Fortran::lower::AbstractConverter &converter,
     if ((llvm::omp::allTeamsSet & llvm::omp::blockConstructSet)
             .test(directive.v)) {
       genTeamsOp(converter, eval, currentLocation, beginClauseList);
+      combinedDirective = true;
+    }
+    if ((llvm::omp::allCoexecuteSet & llvm::omp::blockConstructSet)
+            .test(directive.v)) {
+      genCoexecuteOp(converter, eval, currentLocation, beginClauseList);
       combinedDirective = true;
     }
     if ((llvm::omp::allParallelSet & llvm::omp::blockConstructSet)
