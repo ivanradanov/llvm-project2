@@ -187,17 +187,12 @@ public:
   void runOnOperation() override;
 };
 
-void OMPOptPass::runOnOperation() {
-  LLVM_DEBUG(llvm::dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
-
-  mlir::Operation *op = getOperation();
-
-  LLVM_DEBUG({
-    using llvm::dbgs;
-    dbgs() << "Dumping memory effects\n";
-    op->walk([](mlir::omp::CoexecuteOp coexecute) {
-      dbgs() << "For " << coexecute << ":\n";
-      for (auto &op : coexecute.getOps()) {
+static void dumpMemoryEffects(mlir::Operation *op) {
+  using llvm::dbgs;
+  dbgs() << "For " << *op << ":\n";
+  for (auto &region : op->getRegions()) {
+    for (auto &block : region) {
+      for (auto &op : block) {
         dbgs() << op << ": ";
         llvm::SmallVector<mlir::MemoryEffects::EffectInstance> effects;
         mlir::MemoryEffectOpInterface interface =
@@ -224,7 +219,20 @@ void OMPOptPass::runOnOperation() {
         }
         dbgs() << "\n";
       }
-    });
+    }
+  }
+}
+
+void OMPOptPass::runOnOperation() {
+  LLVM_DEBUG(llvm::dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
+
+  mlir::Operation *op = getOperation();
+
+  LLVM_DEBUG({
+    using llvm::dbgs;
+    dbgs() << "Dumping memory effects\n";
+    op->walk(
+        [](mlir::omp::CoexecuteOp coexecute) { dumpMemoryEffects(coexecute); });
   });
 
   // TODO we should assert here that all of our coexecute regions have a single
@@ -237,7 +245,7 @@ void OMPOptPass::runOnOperation() {
   // prevent the pattern driver form merging blocks
   config.enableRegionSimplification = false;
 
-  patterns.insert<FissionCoexecute, CoexecuteToSingle>(&context);
+  patterns.insert<FissionCoexecute>(&context);
   if (mlir::failed(mlir::applyPatternsAndFoldGreedily(op, std::move(patterns),
                                                       config))) {
     mlir::emitError(op->getLoc(), "error in OpenMP optimizations\n");
