@@ -16,6 +16,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
@@ -34,8 +35,8 @@ static bool shouldParallelize(mlir::Operation *op) {
   // TODO Currently we cannot parallelize operations with results that have uses
   // - we need additional handling in the fission for that i.e. a way to access
   // that result outside the
-  if (!llvm::for_each(op->getResults(),
-                      [](mlir::OpResult v) -> bool { return v.use_empty(); }))
+  if (llvm::any_of(op->getResults(),
+                   [](mlir::OpResult v) -> bool { return !v.use_empty(); }))
     return false;
   // We will parallelize unordered loops - these come from array syntax
   if (auto loop = mlir::dyn_cast<fir::DoLoopOp>(op)) {
@@ -44,9 +45,15 @@ static bool shouldParallelize(mlir::Operation *op) {
       return false;
     return *unordered;
   }
-  // TODO need to check whether it is a call we can actually parallelize (e.g.
-  // matmul, any, etc), for now, we give up
-  if (mlir::isa<fir::CallOp>(op)) {
+  if (auto callOp = mlir::dyn_cast<fir::CallOp>(op)) {
+    auto callee = callOp.getCallee();
+    if (!callee)
+      return false;
+    auto *func = op->getParentOfType<mlir::ModuleOp>().lookupSymbol(*callee);
+    // TODO need to insert a check here whether it is a call we can actually
+    // parallelize currently
+    if (func->getAttr(fir::FIROpsDialect::getFirRuntimeAttrName()))
+      return true;
     return false;
   }
   // We cannot parallise anything else
