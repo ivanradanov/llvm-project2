@@ -29,6 +29,9 @@ namespace fir {
 #define DEBUG_TYPE "flang-omp-opt"
 #define TAG ("[" DEBUG_TYPE "] ")
 
+using llvm::dbgs;
+namespace omp = mlir::omp;
+
 /// This is the single source of truth about whether we should parallelize an
 /// operation nested in an omp.execute region.
 static bool shouldParallelize(mlir::Operation *op) {
@@ -60,14 +63,40 @@ static bool shouldParallelize(mlir::Operation *op) {
   return false;
 }
 
-struct FissionCoexecute
-    : public mlir::OpRewritePattern<mlir::omp::CoexecuteOp> {
+/// If B() and D() are parallelizable,
+///
+/// omp.teams {
+///   omp.coexecute {
+///     A()
+///     B()
+///     C()
+///     D()
+///     E()
+///   }
+/// }
+///
+/// becomes
+///
+/// A()
+/// omp.teams {
+///   omp.coexecute {
+///     B()
+///   }
+/// }
+/// C()
+/// omp.teams {
+///   omp.coexecute {
+///     D()
+///   }
+/// }
+/// E()
+struct FissionCoexecute : public mlir::OpRewritePattern<omp::CoexecuteOp> {
   using OpRewritePattern::OpRewritePattern;
   mlir::LogicalResult
-  matchAndRewrite(mlir::omp::CoexecuteOp coexecute,
+  matchAndRewrite(omp::CoexecuteOp coexecute,
                   mlir::PatternRewriter &rewriter) const override {
     auto loc = coexecute->getLoc();
-    auto teams = mlir::dyn_cast<mlir::omp::TeamsOp>(coexecute->getParentOp());
+    auto teams = mlir::dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
     if (!teams) {
       mlir::emitError(loc, "coexecute not nested in teams\n");
       return mlir::failure();
@@ -85,7 +114,7 @@ struct FissionCoexecute
       return mlir::failure();
     }
 
-    LLVM_DEBUG(llvm::dbgs() << TAG << "Fission " << coexecute << "\n");
+    LLVM_DEBUG(dbgs() << TAG << "Fission " << coexecute << "\n");
 
     auto *teamsBlock = &teams.getRegion().front();
 
@@ -103,12 +132,12 @@ struct FissionCoexecute
           break;
         }
         if (shouldParallelize(&op)) {
-          LLVM_DEBUG(llvm::dbgs() << TAG << "Will parallelize " << op << "\n");
+          LLVM_DEBUG(dbgs() << TAG << "Will parallelize " << op << "\n");
           parallelize = &op;
           break;
         } else {
           rewriter.clone(op, mapping);
-          LLVM_DEBUG(llvm::dbgs() << TAG << "Hoisting " << op << "\n");
+          LLVM_DEBUG(dbgs() << TAG << "Hoisting " << op << "\n");
           hoisted.push_back(&op);
           changed = true;
         }
@@ -128,21 +157,20 @@ struct FissionCoexecute
             &newTeams.getRegion(), newTeams.getRegion().begin(), {}, {});
         for (auto arg : teamsBlock->getArguments())
           newTeamsBlock->addArgument(arg.getType(), arg.getLoc());
-        auto newCoexecute = rewriter.create<mlir::omp::CoexecuteOp>(loc);
-        rewriter.create<mlir::omp::TerminatorOp>(loc);
+        auto newCoexecute = rewriter.create<omp::CoexecuteOp>(loc);
+        rewriter.create<omp::TerminatorOp>(loc);
         rewriter.createBlock(&newCoexecute.getRegion(),
                              newCoexecute.getRegion().begin(), {}, {});
         auto *cloned = rewriter.clone(*parallelize);
         rewriter.replaceOp(parallelize, cloned);
-        rewriter.create<mlir::omp::TerminatorOp>(loc);
+        rewriter.create<omp::TerminatorOp>(loc);
         changed = true;
       }
     }
 
     LLVM_DEBUG({
       if (changed) {
-        llvm::dbgs() << TAG << "After fission:\n"
-                     << *teams->getParentOp() << "\n";
+        dbgs() << TAG << "After fission:\n" << *teams->getParentOp() << "\n";
       }
     });
 
@@ -150,14 +178,13 @@ struct FissionCoexecute
   }
 };
 
-struct CoexecuteToSingle
-    : public mlir::OpRewritePattern<mlir::omp::CoexecuteOp> {
+struct CoexecuteToSingle : public mlir::OpRewritePattern<omp::CoexecuteOp> {
   using OpRewritePattern::OpRewritePattern;
   mlir::LogicalResult
-  matchAndRewrite(mlir::omp::CoexecuteOp coexecute,
+  matchAndRewrite(omp::CoexecuteOp coexecute,
                   mlir::PatternRewriter &rewriter) const override {
     auto loc = coexecute->getLoc();
-    auto teams = mlir::dyn_cast<mlir::omp::TeamsOp>(coexecute->getParentOp());
+    auto teams = mlir::dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
     if (!teams) {
       mlir::emitError(loc, "coexecute not nested in teams\n");
       return mlir::failure();
@@ -188,7 +215,6 @@ public:
 };
 
 static void dumpMemoryEffects(mlir::Operation *op) {
-  using llvm::dbgs;
   dbgs() << "For " << *op << ":\n";
   for (auto &region : op->getRegions()) {
     for (auto &block : region) {
@@ -224,15 +250,13 @@ static void dumpMemoryEffects(mlir::Operation *op) {
 }
 
 void OMPOptPass::runOnOperation() {
-  LLVM_DEBUG(llvm::dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
 
   mlir::Operation *op = getOperation();
 
   LLVM_DEBUG({
-    using llvm::dbgs;
     dbgs() << "Dumping memory effects\n";
-    op->walk(
-        [](mlir::omp::CoexecuteOp coexecute) { dumpMemoryEffects(coexecute); });
+    op->walk([](omp::CoexecuteOp coexecute) { dumpMemoryEffects(coexecute); });
   });
 
   // TODO we should assert here that all of our coexecute regions have a single
@@ -245,7 +269,7 @@ void OMPOptPass::runOnOperation() {
   // prevent the pattern driver form merging blocks
   config.enableRegionSimplification = false;
 
-  patterns.insert<FissionCoexecute>(&context);
+  patterns.insert<SplitTargetData, FissionCoexecute>(&context);
   if (mlir::failed(mlir::applyPatternsAndFoldGreedily(op, std::move(patterns),
                                                       config))) {
     mlir::emitError(op->getLoc(), "error in OpenMP optimizations\n");
