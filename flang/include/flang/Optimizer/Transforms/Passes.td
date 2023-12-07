@@ -325,11 +325,20 @@ def OMPMarkDeclareTargetPass
   let dependentDialects = ["mlir::omp::OpenMPDialect"];
 }
 
-def OMPOpt : Pass<"omp-opt"> {
-  let summary = "OpenMP optimizations";
-  let constructor = "::fir::createOMPOptPass()";
+def FIROMPOpt : Pass<"fir-omp-opt"> {
+  let summary = "OpenMP optimizations on FIR level";
+  let constructor = "::fir::createFIROMPOptPass()";
   let dependentDialects = [
     "fir::FIROpsDialect",
+    "mlir::omp::OpenMPDialect"
+  ];
+}
+
+def LLVMOMPOpt : Pass<"llvm-omp-opt"> {
+  let summary = "OpenMP optimizations on LLVM level";
+  let constructor = "::fir::createLLVMOMPOptPass()";
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
     "mlir::omp::OpenMPDialect"
   ];
 }

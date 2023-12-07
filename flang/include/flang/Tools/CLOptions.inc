@@ -193,7 +193,7 @@ inline void addExternalNameConversionPass(
 /// \param pm - MLIR pass manager that will hold the pipeline definition
 inline void createDefaultFIROptimizerPassPipeline(
     mlir::PassManager &pm, const MLIRToLLVMPassPipelineConfig &pc) {
-  pm.addPass(fir::createOMPOptPass());
+  pm.addPass(fir::createFIROMPOptPass());
 
   // simplify the IR
   mlir::GreedyRewriteConfig config;
@@ -329,6 +329,8 @@ inline void createDefaultFIRCodeGenPassPipeline(
   }
 
   fir::addFIRToLLVMPass(pm, config);
+
+  pm.addPass(fir::createLLVMOMPOptPass());
 }
 
 /// Create a pass pipeline for lowering from MLIR to LLVM IR
