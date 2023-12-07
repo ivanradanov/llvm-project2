@@ -56,6 +56,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Transforms/IPO/Attributor.h"
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -1113,19 +1114,26 @@ private:
 
     // TODO there has to be a smarter way to go about this
     auto HandleDistributeCall = [&](Function *F, unsigned UnrollFactor) {
-      for (BasicBlock &BB : *F)
-        for (Instruction &I : BB)
-          if (CallBase *CB = dyn_cast<CallBase>(&I)) {
-            auto It =
-                OMPInfoCache.RuntimeFunctionIDMap.find(CB->getCalledFunction());
-            if (It == OMPInfoCache.RuntimeFunctionIDMap.end())
-              continue;
-            auto RF = It->getSecond();
-            switch (RF) {
-            case OMPRTL___kmpc_distribute_static_init_4:
-            case OMPRTL___kmpc_distribute_static_init_4u:
-            case OMPRTL___kmpc_distribute_static_init_8:
-            case OMPRTL___kmpc_distribute_static_init_8u: {
+      CallBase *Call = nullptr;
+      auto DistributeInitRTFs = {OMPRTL___kmpc_distribute_static_init_4,
+                                 OMPRTL___kmpc_distribute_static_init_4u,
+                                 OMPRTL___kmpc_distribute_static_init_8,
+                                 OMPRTL___kmpc_distribute_static_init_8u};
+      for (auto FI : DistributeInitRTFs) {
+        OMPInformationCache::RuntimeFunctionInfo &DistributeRFI =
+            OMPInfoCache.RFIs[FI];
+        if (!DistributeRFI)
+          continue;
+        DistributeRFI.foreachUse(
+            [&](Use &U, Function &F) {
+              auto *CB = dyn_cast<CallBase>(U.getUser());
+              if (CB && Call) {
+                llvm_unreachable(
+                    "Two for_static_init calls in a single function");
+                return false;
+              }
+              Call = CB;
+
               static int StaticInitChunkArgNo = 8;
               auto *OriginalChunk = CB->getArgOperand(StaticInitChunkArgNo);
               Value *NewChunk = nullptr;
@@ -1140,55 +1148,43 @@ private:
                 Inst->insertBefore(CB);
               }
               CB->setArgOperand(StaticInitChunkArgNo, NewChunk);
-              break;
-            }
-            case OMPRTL___kmpc_for_static_init_4:
-            case OMPRTL___kmpc_for_static_init_4u:
-            case OMPRTL___kmpc_for_static_init_8:
-            case OMPRTL___kmpc_for_static_init_8u: {
-              llvm_unreachable("Why");
-              break;
-            }
-            default:
-              break;
-            }
-          }
+              return false;
+            },
+            F);
+      }
     };
-    // TODO there has to be a smarter way to go about this
     auto GetForCall = [&](Function *F, CallBase *&Call,
                           IntegerType *&StrideType) {
       if (Call && StrideType)
         return;
-      for (BasicBlock &BB : *F)
-        for (Instruction &I : BB)
-          if (CallBase *CB = dyn_cast<CallBase>(&I)) {
-            auto It =
-                OMPInfoCache.RuntimeFunctionIDMap.find(CB->getCalledFunction());
-            if (It == OMPInfoCache.RuntimeFunctionIDMap.end())
-              continue;
-            StrideType = IntegerType::getInt64Ty(F->getContext());
-            auto RF = It->getSecond();
-            switch (RF) {
-            case OMPRTL___kmpc_distribute_static_init_4:
-            case OMPRTL___kmpc_distribute_static_init_4u:
-            case OMPRTL___kmpc_distribute_static_init_8:
-            case OMPRTL___kmpc_distribute_static_init_8u: {
-              llvm_unreachable("Why");
-              break;
-            }
-            case OMPRTL___kmpc_for_static_init_4:
-            case OMPRTL___kmpc_for_static_init_4u:
-              StrideType = IntegerType::getInt32Ty(F->getContext());
-              [[fallthrough]];
-            case OMPRTL___kmpc_for_static_init_8:
-            case OMPRTL___kmpc_for_static_init_8u: {
+
+      auto *I64Ty = IntegerType::getInt64Ty(F->getContext());
+      auto *I32Ty = IntegerType::getInt64Ty(F->getContext());
+      auto ForInitRTFs = {
+          OMPRTL___kmpc_for_static_init_4, OMPRTL___kmpc_for_static_init_4u,
+          OMPRTL___kmpc_for_static_init_8, OMPRTL___kmpc_for_static_init_8u};
+      auto StrideTys = {I32Ty, I32Ty, I64Ty, I64Ty};
+      for (auto Pair : zip_equal(ForInitRTFs, StrideTys)) {
+        auto FI = std::get<0>(Pair);
+        auto *StrideTy = std::get<1>(Pair);
+        OMPInformationCache::RuntimeFunctionInfo &ForRFI =
+            OMPInfoCache.RFIs[FI];
+        if (!ForRFI)
+          continue;
+        ForRFI.foreachUse(
+            [&](Use &U, Function &F) {
+              auto *CB = dyn_cast<CallBase>(U.getUser());
+              if (CB && Call) {
+                llvm_unreachable(
+                    "Two for_static_init calls in a single function");
+                return false;
+              }
               Call = CB;
-              break;
-            }
-            default:
-              break;
-            }
-          }
+              StrideType = StrideTy;
+              return false;
+            },
+            F);
+      }
     };
     auto HandleForCall = [&](Function *F, CallBase *&Call,
                              IntegerType *&StrideType) {
