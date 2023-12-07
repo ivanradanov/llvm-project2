@@ -6,7 +6,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-// TODO doc
+/// Handles coexecute lowering
+///
+/// Currently it happens in two stages:
+///
+/// 1. At FIR level:
+/// We identify parallelism available in omp.coexecute ops, and we fission
+/// coexecute op so that we can parallelise the individual chunks.
+/// teams{coexecute{do_unordered{}}} nests become parallel{for{}} nests (they
+/// should probably become teams{distribute} nests, but currently we do not have
+/// that construct available in the omp dialect). teams{coexecute{runtime_func}}
+/// become just runtime_func.
+///
+/// 2. At LLVM level:
+/// We fission omp.target ops so that we isolate separale parallel{for}s nested
+/// in it in separate omp.target regions. This way we can later replace runtime
+/// functions with optimized gpu kernels and preserve the semantics with the
+/// target executing the code between the parallel chunks only on one thread.
+///
+/// NOTE this is done at LLVM level because we do not have an easy way to
+/// allocate temporaries on the target
+///
 
 #include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/Dialect/FIROps.h"
@@ -16,12 +36,14 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
+#include <optional>
 
 namespace fir {
 #define GEN_PASS_DEF_FIROMPOPT
@@ -66,17 +88,19 @@ static bool shouldParallelize(Operation *op) {
   return false;
 }
 
-static omp::TeamsOp getTeamsOpToIsolate(omp::TargetOp targetOp) {
+static std::optional<std::tuple<Operation *, bool, bool>>
+getNestedOpToIsolate(omp::TargetOp targetOp) {
   auto *targetBlock = &targetOp.getRegion().front();
   for (auto &op : *targetBlock) {
-    if (auto teamsOp = dyn_cast<omp::TeamsOp>(&op)) {
-      if (teamsOp->getNextNode() != targetBlock->getTerminator() &&
-          teamsOp != &*targetBlock->begin())
-        return teamsOp;
-      return nullptr;
+    if (isa<omp::TeamsOp, omp::ParallelOp>(&op)) {
+      bool first = &op == &*targetBlock->begin();
+      bool last = op.getNextNode() == targetBlock->getTerminator();
+      if (first && last)
+        return std::nullopt;
+      return {{&op, first, last}};
     }
   }
-  return nullptr;
+  return std::nullopt;
 }
 
 mlir::LLVM::ConstantOp
@@ -86,16 +110,28 @@ genI32Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
   return rewriter.create<mlir::LLVM::ConstantOp>(loc, i32Ty, attr);
 }
 
-/// Isolates the first target{teams{coexecute{}}} nest in its own omp.target op
+/// Isolates the first target{parallel|teams{}} nest in its own omp.target op
+///
+/// TODO should we clean up the attributes
 struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(omp::TargetOp targetOp,
                                 PatternRewriter &rewriter) const override {
-    auto teamsOp = getTeamsOpToIsolate(targetOp);
-    if (!teamsOp) {
-      LLVM_DEBUG(dbgs() << TAG << "No teams op to isolate\n");
+    if (targetOp->getAttr("fission_target_already_handled")) {
       return failure();
     }
+    auto tuple = getNestedOpToIsolate(targetOp);
+    if (!tuple) {
+      LLVM_DEBUG(dbgs() << TAG << "No op to isolate\n");
+      return failure();
+    }
+
+    Operation *toIsolate = std::get<0>(*tuple);
+    bool splitBefore = !std::get<1>(*tuple);
+    bool splitAfter = !std::get<2>(*tuple);
+
+    LLVM_DEBUG(dbgs() << TAG << "Will isolate " << *toIsolate << " from "
+                      << targetOp << "\n");
 
     auto loc = targetOp->getLoc();
 
@@ -108,8 +144,9 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
           genI32Constant(loc, rewriter, 1));
     };
 
-    auto *targetBlock = &targetOp.getRegion().front();
     auto usedOutsideSplit = [&](Value v, Operation *splitBefore) {
+      auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
+      auto *targetBlock = &targetOp.getRegion().front();
       for (auto *user : v.getUsers()) {
         while (user->getBlock() != targetBlock) {
           user = user->getParentOp();
@@ -119,16 +156,20 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
       }
       return false;
     };
+
     auto splitBeforeOp = [&](Operation *splitBefore) {
+      auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
+      auto *targetBlock = &targetOp.getRegion().front();
       rewriter.setInsertionPoint(targetOp);
       IRMapping toReplace;
       SmallVector<std::pair<Value, Value>> allocs;
       auto mapOperands = SmallVector<Value>(targetOp.getMapOperands());
-      for (auto &op : *targetBlock) {
-        if (&op == splitBefore)
-          break;
-        for (auto res : op.getResults()) {
+      for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
+           it++) {
+        for (auto res : it->getResults()) {
           if (usedOutsideSplit(res, splitBefore)) {
+            // TODO if it is a load from a previous fission's allocTemp just
+            // forward it
             auto alloc = allocTemp(res.getType());
             allocs.push_back({alloc, res});
             toReplace.map(res, alloc);
@@ -140,9 +181,12 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
       // Split into two blocks with additional mapppings for the values to be
       // passed in memory across the regions
 
+      rewriter.setInsertionPoint(targetOp);
       auto preTargetOp = rewriter.create<omp::TargetOp>(
           loc, targetOp.getIfExpr(), targetOp.getDevice(),
           targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+      preTargetOp->setAttr("fission_target_already_handled",
+                           rewriter.getUnitAttr());
       auto *preTargetBlock = rewriter.createBlock(
           &preTargetOp.getRegion(), preTargetOp.getRegion().begin(), {}, {});
       IRMapping preMapping;
@@ -157,11 +201,12 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
         rewriter.clone(*it, preMapping);
       for (auto pair : allocs) {
         auto alloc = std::get<0>(pair);
-        auto original = std::get<0>(pair);
+        auto original = std::get<1>(pair);
         rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original), alloc);
       }
       rewriter.create<omp::TerminatorOp>(loc);
 
+      rewriter.setInsertionPoint(targetOp);
       auto postTargetOp = rewriter.create<omp::TargetOp>(
           loc, targetOp.getIfExpr(), targetOp.getDevice(),
           targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
@@ -176,7 +221,7 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
       }
       for (auto pair : allocs) {
         auto alloc = std::get<0>(pair);
-        auto original = std::get<0>(pair);
+        auto original = std::get<1>(pair);
         auto newArg =
             postTargetBlock->addArgument(alloc.getType(), alloc.getLoc());
         postMapping.map(original, rewriter.create<LLVM::LoadOp>(
@@ -186,16 +231,23 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
         rewriter.clone(*it, postMapping);
 
       rewriter.eraseOp(targetOp);
-      targetOp = postTargetOp;
+      return postMapping.lookup(splitBefore);
     };
 
-    auto *nextOp = teamsOp->getNextNode();
-    bool splitAfter = nextOp == teamsOp->getBlock()->getTerminator();
-    splitBeforeOp(teamsOp);
-    if (splitAfter)
-      splitBeforeOp(targetOp.getRegion().front().front().getNextNode());
-
-    return success();
+    if (splitBefore && splitAfter) {
+      auto *newToIsolate = splitBeforeOp(toIsolate);
+      splitBeforeOp(newToIsolate->getNextNode());
+      return success();
+    }
+    if (splitBefore) {
+      splitBeforeOp(toIsolate);
+      return success();
+    }
+    if (splitAfter) {
+      splitBeforeOp(toIsolate->getNextNode());
+      return success();
+    }
+    llvm_unreachable("we should not have had an op to isolate");
   }
 };
 
@@ -452,7 +504,7 @@ public:
 };
 
 void LLVMOMPOptPass::runOnOperation() {
-  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-llvm ===\n");
 
   Operation *op = getOperation();
   MLIRContext &context = getContext();
@@ -469,7 +521,7 @@ void LLVMOMPOptPass::runOnOperation() {
 }
 
 void FIROMPOptPass::runOnOperation() {
-  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-fir ===\n");
 
   Operation *op = getOperation();
 
