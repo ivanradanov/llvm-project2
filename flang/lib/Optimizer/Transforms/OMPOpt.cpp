@@ -16,13 +16,16 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/IRMapping.h>
+#include <mlir/IR/PatternMatch.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
 namespace fir {
-#define GEN_PASS_DEF_OMPOPT
+#define GEN_PASS_DEF_FIROMPOPT
+#define GEN_PASS_DEF_LLVMOMPOPT
 #include "flang/Optimizer/Transforms/Passes.h.inc"
 } // namespace fir
 
@@ -30,29 +33,29 @@ namespace fir {
 #define TAG ("[" DEBUG_TYPE "] ")
 
 using llvm::dbgs;
-namespace omp = mlir::omp;
+using namespace mlir;
 
 /// This is the single source of truth about whether we should parallelize an
 /// operation nested in an omp.execute region.
-static bool shouldParallelize(mlir::Operation *op) {
+static bool shouldParallelize(Operation *op) {
   // TODO Currently we cannot parallelize operations with results that have uses
   // - we need additional handling in the fission for that i.e. a way to access
   // that result outside the
   if (llvm::any_of(op->getResults(),
-                   [](mlir::OpResult v) -> bool { return !v.use_empty(); }))
+                   [](OpResult v) -> bool { return !v.use_empty(); }))
     return false;
   // We will parallelize unordered loops - these come from array syntax
-  if (auto loop = mlir::dyn_cast<fir::DoLoopOp>(op)) {
+  if (auto loop = dyn_cast<fir::DoLoopOp>(op)) {
     auto unordered = loop.getUnordered();
     if (!unordered)
       return false;
     return *unordered;
   }
-  if (auto callOp = mlir::dyn_cast<fir::CallOp>(op)) {
+  if (auto callOp = dyn_cast<fir::CallOp>(op)) {
     auto callee = callOp.getCallee();
     if (!callee)
       return false;
-    auto *func = op->getParentOfType<mlir::ModuleOp>().lookupSymbol(*callee);
+    auto *func = op->getParentOfType<ModuleOp>().lookupSymbol(*callee);
     // TODO need to insert a check here whether it is a call we can actually
     // parallelize currently
     if (func->getAttr(fir::FIROpsDialect::getFirRuntimeAttrName()))
@@ -62,6 +65,139 @@ static bool shouldParallelize(mlir::Operation *op) {
   // We cannot parallise anything else
   return false;
 }
+
+static omp::TeamsOp getTeamsOpToIsolate(omp::TargetOp targetOp) {
+  auto *targetBlock = &targetOp.getRegion().front();
+  for (auto &op : *targetBlock) {
+    if (auto teamsOp = dyn_cast<omp::TeamsOp>(&op)) {
+      if (teamsOp->getNextNode() != targetBlock->getTerminator() &&
+          teamsOp != &*targetBlock->begin())
+        return teamsOp;
+      return nullptr;
+    }
+  }
+  return nullptr;
+}
+
+mlir::LLVM::ConstantOp
+genI32Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
+  mlir::Type i32Ty = rewriter.getI32Type();
+  mlir::IntegerAttr attr = rewriter.getI32IntegerAttr(value);
+  return rewriter.create<mlir::LLVM::ConstantOp>(loc, i32Ty, attr);
+}
+
+/// Isolates the first teams{coexecute{}} nest in its own omp.target op
+struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(omp::TargetOp targetOp,
+                                PatternRewriter &rewriter) const override {
+    auto teamsOp = getTeamsOpToIsolate(targetOp);
+    if (!teamsOp) {
+      LLVM_DEBUG(dbgs() << TAG << "No teams op to isolate\n");
+      return failure();
+    }
+
+    auto loc = targetOp->getLoc();
+
+    auto allocTemp = [&](Type ty) {
+      // TODO This should be a omp_target_alloc or something equivalent which we
+      // currently do not have an easy way to generate so I am ignoring this
+      // problem for now
+      return rewriter.create<LLVM::AllocaOp>(
+          loc, LLVM::LLVMPointerType::get(ty.getContext()), ty,
+          genI32Constant(loc, rewriter, 1));
+    };
+
+    auto *targetBlock = &targetOp.getRegion().front();
+    auto usedOutsideSplit = [&](Value v, Operation *splitBefore) {
+      for (auto *user : v.getUsers()) {
+        while (user->getBlock() != targetBlock) {
+          user = user->getParentOp();
+        }
+        if (!user->isBeforeInBlock(splitBefore))
+          return true;
+      }
+      return false;
+    };
+    auto splitBeforeOp = [&](Operation *splitBefore) {
+      rewriter.setInsertionPoint(targetOp);
+      IRMapping toReplace;
+      SmallVector<std::pair<Value, Value>> allocs;
+      auto mapOperands = SmallVector<Value>(targetOp.getMapOperands());
+      for (auto &op : *targetBlock) {
+        if (&op == splitBefore)
+          break;
+        for (auto res : op.getResults()) {
+          if (usedOutsideSplit(res, splitBefore)) {
+            auto alloc = allocTemp(res.getType());
+            allocs.push_back({alloc, res});
+            toReplace.map(res, alloc);
+            mapOperands.push_back(alloc);
+          }
+        }
+      }
+
+      // Split into two blocks with additional mapppings for the values to be
+      // passed in memory across the regions
+
+      auto preTargetOp = rewriter.create<omp::TargetOp>(
+          loc, targetOp.getIfExpr(), targetOp.getDevice(),
+          targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+      auto *preTargetBlock = rewriter.createBlock(
+          &preTargetOp.getRegion(), preTargetOp.getRegion().begin(), {}, {});
+      IRMapping preMapping;
+      for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
+        auto originalArg = targetBlock->getArgument(i);
+        auto newArg = preTargetBlock->addArgument(originalArg.getType(),
+                                                  originalArg.getLoc());
+        preMapping.map(originalArg, newArg);
+      }
+      for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
+           it++)
+        rewriter.clone(*it, preMapping);
+      for (auto pair : allocs) {
+        auto alloc = std::get<0>(pair);
+        auto original = std::get<0>(pair);
+        rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original), alloc);
+      }
+      rewriter.create<omp::TerminatorOp>(loc);
+
+      auto postTargetOp = rewriter.create<omp::TargetOp>(
+          loc, targetOp.getIfExpr(), targetOp.getDevice(),
+          targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+      auto *postTargetBlock = rewriter.createBlock(
+          &postTargetOp.getRegion(), postTargetOp.getRegion().begin(), {}, {});
+      IRMapping postMapping;
+      for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
+        auto originalArg = targetBlock->getArgument(i);
+        auto newArg = postTargetBlock->addArgument(originalArg.getType(),
+                                                   originalArg.getLoc());
+        postMapping.map(originalArg, newArg);
+      }
+      for (auto pair : allocs) {
+        auto alloc = std::get<0>(pair);
+        auto original = std::get<0>(pair);
+        auto newArg =
+            postTargetBlock->addArgument(alloc.getType(), alloc.getLoc());
+        postMapping.map(original, rewriter.create<LLVM::LoadOp>(
+                                      loc, original.getType(), newArg));
+      }
+      for (auto it = splitBefore->getIterator(); it != targetBlock->end(); it++)
+        rewriter.clone(*it, postMapping);
+
+      rewriter.eraseOp(targetOp);
+      targetOp = postTargetOp;
+    };
+
+    auto *nextOp = teamsOp->getNextNode();
+    bool splitAfter = nextOp == teamsOp->getBlock()->getTerminator();
+    splitBeforeOp(teamsOp);
+    if (splitAfter)
+      splitBeforeOp(targetOp.getRegion().front().front().getNextNode());
+
+    return success();
+  }
+};
 
 /// If B() and D() are parallelizable,
 ///
@@ -90,28 +226,27 @@ static bool shouldParallelize(mlir::Operation *op) {
 ///   }
 /// }
 /// E()
-struct FissionCoexecute : public mlir::OpRewritePattern<omp::CoexecuteOp> {
+struct FissionCoexecute : public OpRewritePattern<omp::CoexecuteOp> {
   using OpRewritePattern::OpRewritePattern;
-  mlir::LogicalResult
-  matchAndRewrite(omp::CoexecuteOp coexecute,
-                  mlir::PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(omp::CoexecuteOp coexecute,
+                                PatternRewriter &rewriter) const override {
     auto loc = coexecute->getLoc();
-    auto teams = mlir::dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
+    auto teams = dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
     if (!teams) {
-      mlir::emitError(loc, "coexecute not nested in teams\n");
-      return mlir::failure();
+      emitError(loc, "coexecute not nested in teams\n");
+      return failure();
     }
     if (coexecute.getRegion().getBlocks().size() != 1) {
-      mlir::emitError(loc, "coexecute with multiple blocks\n");
-      return mlir::failure();
+      emitError(loc, "coexecute with multiple blocks\n");
+      return failure();
     }
     if (teams.getRegion().getBlocks().size() != 1) {
-      mlir::emitError(loc, "teams with multiple blocks\n");
-      return mlir::failure();
+      emitError(loc, "teams with multiple blocks\n");
+      return failure();
     }
     if (teams.getRegion().getBlocks().front().getOperations().size() != 2) {
-      mlir::emitError(loc, "teams with multiple nested ops\n");
-      return mlir::failure();
+      emitError(loc, "teams with multiple nested ops\n");
+      return failure();
     }
 
     LLVM_DEBUG(dbgs() << TAG << "Fission " << coexecute << "\n");
@@ -124,9 +259,9 @@ struct FissionCoexecute : public mlir::OpRewritePattern<omp::CoexecuteOp> {
     bool changed = false;
     while (&coexecuteBlock->front() != terminator) {
       rewriter.setInsertionPoint(teams);
-      mlir::IRMapping mapping;
-      llvm::SmallVector<mlir::Operation *> hoisted;
-      mlir::Operation *parallelize = nullptr;
+      IRMapping mapping;
+      llvm::SmallVector<Operation *> hoisted;
+      Operation *parallelize = nullptr;
       for (auto &op : coexecute.getOps()) {
         if (&op == terminator) {
           break;
@@ -174,55 +309,49 @@ struct FissionCoexecute : public mlir::OpRewritePattern<omp::CoexecuteOp> {
       }
     });
 
-    return mlir::success(changed);
+    return success(changed);
   }
 };
 
-struct CoexecuteToSingle : public mlir::OpRewritePattern<omp::CoexecuteOp> {
+struct CoexecuteToSingle : public OpRewritePattern<omp::CoexecuteOp> {
   using OpRewritePattern::OpRewritePattern;
-  mlir::LogicalResult
-  matchAndRewrite(omp::CoexecuteOp coexecute,
-                  mlir::PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(omp::CoexecuteOp coexecute,
+                                PatternRewriter &rewriter) const override {
     auto loc = coexecute->getLoc();
-    auto teams = mlir::dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
+    auto teams = dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
     if (!teams) {
-      mlir::emitError(loc, "coexecute not nested in teams\n");
-      return mlir::failure();
+      emitError(loc, "coexecute not nested in teams\n");
+      return failure();
     }
     if (coexecute.getRegion().getBlocks().size() != 1) {
-      mlir::emitError(loc, "coexecute with multiple blocks\n");
-      return mlir::failure();
+      emitError(loc, "coexecute with multiple blocks\n");
+      return failure();
     }
     if (teams.getRegion().getBlocks().size() != 1) {
-      mlir::emitError(loc, "teams with multiple blocks\n");
-      return mlir::failure();
+      emitError(loc, "teams with multiple blocks\n");
+      return failure();
     }
     if (teams.getRegion().getBlocks().front().getOperations().size() != 2) {
-      mlir::emitError(loc, "teams with multiple nested ops\n");
-      return mlir::failure();
+      emitError(loc, "teams with multiple nested ops\n");
+      return failure();
     }
-    mlir::Block *coexecuteBlock = &coexecute.getRegion().front();
+    Block *coexecuteBlock = &coexecute.getRegion().front();
     rewriter.eraseOp(coexecuteBlock->getTerminator());
     rewriter.inlineBlockBefore(coexecuteBlock, teams);
     rewriter.eraseOp(teams);
-    return mlir::success();
+    return success();
   }
 };
 
-class OMPOptPass : public fir::impl::OMPOptBase<OMPOptPass> {
-public:
-  void runOnOperation() override;
-};
-
-static void dumpMemoryEffects(mlir::Operation *op) {
+static void dumpMemoryEffects(Operation *op) {
   dbgs() << "For " << *op << ":\n";
   for (auto &region : op->getRegions()) {
     for (auto &block : region) {
       for (auto &op : block) {
         dbgs() << op << ": ";
-        llvm::SmallVector<mlir::MemoryEffects::EffectInstance> effects;
-        mlir::MemoryEffectOpInterface interface =
-            mlir::dyn_cast<mlir::MemoryEffectOpInterface>(op);
+        llvm::SmallVector<MemoryEffects::EffectInstance> effects;
+        MemoryEffectOpInterface interface =
+            dyn_cast<MemoryEffectOpInterface>(op);
         if (!interface) {
           dbgs() << "No memory effect interface\n";
           continue;
@@ -231,15 +360,13 @@ static void dumpMemoryEffects(mlir::Operation *op) {
         if (effects.empty())
           dbgs() << "Pure";
         for (auto &effect : effects) {
-          if (mlir::isa<mlir::MemoryEffects::Read>(effect.getEffect())) {
+          if (isa<MemoryEffects::Read>(effect.getEffect())) {
             dbgs() << "Read(" << effect.getValue() << ") ";
-          } else if (mlir::isa<mlir::MemoryEffects::Write>(
-                         effect.getEffect())) {
+          } else if (isa<MemoryEffects::Write>(effect.getEffect())) {
             dbgs() << "Write(" << effect.getValue() << ") ";
-          } else if (mlir::isa<mlir::MemoryEffects::Allocate>(
-                         effect.getEffect())) {
+          } else if (isa<MemoryEffects::Allocate>(effect.getEffect())) {
             dbgs() << "Alloc(" << effect.getValue() << ") ";
-          } else if (mlir::isa<mlir::MemoryEffects::Free>(effect.getEffect())) {
+          } else if (isa<MemoryEffects::Free>(effect.getEffect())) {
             dbgs() << "Free(" << effect.getValue() << ") ";
           }
         }
@@ -249,10 +376,37 @@ static void dumpMemoryEffects(mlir::Operation *op) {
   }
 }
 
-void OMPOptPass::runOnOperation() {
+class LLVMOMPOptPass : public ::fir::impl::LLVMOMPOptBase<LLVMOMPOptPass> {
+public:
+  void runOnOperation() override;
+};
+
+class FIROMPOptPass : public ::fir::impl::FIROMPOptBase<FIROMPOptPass> {
+public:
+  void runOnOperation() override;
+};
+
+void LLVMOMPOptPass::runOnOperation() {
   LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
 
-  mlir::Operation *op = getOperation();
+  Operation *op = getOperation();
+  MLIRContext &context = getContext();
+  RewritePatternSet patterns(&context);
+  GreedyRewriteConfig config;
+  // prevent the pattern driver form merging blocks
+  config.enableRegionSimplification = false;
+
+  patterns.insert<FissionTarget>(&context);
+  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+    emitError(op->getLoc(), "error in OpenMP optimizations\n");
+    signalPassFailure();
+  }
+}
+
+void FIROMPOptPass::runOnOperation() {
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE " ===\n");
+
+  Operation *op = getOperation();
 
   LLVM_DEBUG({
     dbgs() << "Dumping memory effects\n";
@@ -263,21 +417,24 @@ void OMPOptPass::runOnOperation() {
   // block and that they are perfectly nested in a teams region so as not to
   // duplicate that check (that check should probably be in a LLVM_DEBUG?)
 
-  mlir::MLIRContext &context = getContext();
-  mlir::RewritePatternSet patterns(&context);
-  mlir::GreedyRewriteConfig config;
+  MLIRContext &context = getContext();
+  RewritePatternSet patterns(&context);
+  GreedyRewriteConfig config;
   // prevent the pattern driver form merging blocks
   config.enableRegionSimplification = false;
 
-  patterns.insert<SplitTargetData, FissionCoexecute>(&context);
-  if (mlir::failed(mlir::applyPatternsAndFoldGreedily(op, std::move(patterns),
-                                                      config))) {
-    mlir::emitError(op->getLoc(), "error in OpenMP optimizations\n");
+  patterns.insert<FissionCoexecute>(&context);
+  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+    emitError(op->getLoc(), "error in OpenMP optimizations\n");
     signalPassFailure();
   }
 }
 
 /// OpenMP optimizations
-std::unique_ptr<mlir::Pass> fir::createOMPOptPass() {
-  return std::make_unique<OMPOptPass>();
+std::unique_ptr<Pass> fir::createLLVMOMPOptPass() {
+  return std::make_unique<LLVMOMPOptPass>();
+}
+/// OpenMP optimizations
+std::unique_ptr<Pass> fir::createFIROMPOptPass() {
+  return std::make_unique<FIROMPOptPass>();
 }
