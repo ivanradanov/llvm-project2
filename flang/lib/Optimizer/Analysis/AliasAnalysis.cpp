@@ -32,8 +32,11 @@ static bool isDummyArgument(mlir::Value v) {
   auto blockArg{v.dyn_cast<mlir::BlockArgument>()};
   if (!blockArg)
     return false;
+  auto *block = blockArg.getOwner();
+  if (!mlir::isa<func::FuncOp>(block->getParentOp()))
+    return false;
 
-  return blockArg.getOwner()->isEntryBlock();
+  return block->isEntryBlock();
 }
 
 /// Temporary function to skip through all the no op operations
