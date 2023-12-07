@@ -86,7 +86,7 @@ genI32Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
   return rewriter.create<mlir::LLVM::ConstantOp>(loc, i32Ty, attr);
 }
 
-/// Isolates the first teams{coexecute{}} nest in its own omp.target op
+/// Isolates the first target{teams{coexecute{}}} nest in its own omp.target op
 struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(omp::TargetOp targetOp,
@@ -196,6 +196,80 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
       splitBeforeOp(targetOp.getRegion().front().front().getNextNode());
 
     return success();
+  }
+};
+
+template <typename T>
+static T getPerfectlyNested(Operation *op) {
+  if (op->getNumRegions() != 1)
+    return nullptr;
+  auto &region = op->getRegion(0);
+  if (region.getBlocks().size() != 1)
+    return nullptr;
+  auto *block = &region.front();
+  auto *firstOp = &block->front();
+  if (auto nested = dyn_cast<T>(firstOp))
+    if (firstOp->getNextNode() == block->getTerminator())
+      return nested;
+  return nullptr;
+}
+
+struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(omp::TeamsOp teamsOp,
+                                PatternRewriter &rewriter) const override {
+    auto teamsLoc = teamsOp->getLoc();
+    auto coexecuteOp = getPerfectlyNested<omp::CoexecuteOp>(teamsOp);
+    if (!coexecuteOp) {
+      LLVM_DEBUG(dbgs() << TAG << "No coexecute nested\n");
+      return failure();
+    }
+    auto coexecuteLoc = teamsOp->getLoc();
+    assert(teamsOp.getAllReductionVars().empty());
+
+    auto loopOp = getPerfectlyNested<fir::DoLoopOp>(coexecuteOp);
+    if (loopOp && shouldParallelize(loopOp)) {
+      auto parallelOp = rewriter.create<omp::ParallelOp>(
+          teamsLoc, teamsOp.getIfExpr(), /*num_threads_var=*/nullptr,
+          teamsOp.getAllocateVars(), teamsOp.getAllocatorsVars(),
+          /*reduction_vars=*/ValueRange(), /*reductions=*/nullptr,
+          /*proc_bind_val=*/nullptr);
+      rewriter.createBlock(&parallelOp.getRegion(),
+                           parallelOp.getRegion().begin(), {}, {});
+      auto wsLoop = rewriter.create<omp::WsLoopOp>(
+          coexecuteLoc, loopOp.getLowerBound(), loopOp.getUpperBound(),
+          loopOp.getStep());
+      wsLoop.setInclusive(true);
+      rewriter.create<omp::TerminatorOp>(coexecuteLoc);
+      auto *loopTerminator = loopOp.getBody()->getTerminator();
+      assert(loopTerminator->getNumResults() == 0);
+      rewriter.setInsertionPoint(loopTerminator);
+      rewriter.replaceOpWithNewOp<omp::YieldOp>(
+          loopOp.getBody()->getTerminator(), ValueRange());
+      rewriter.inlineRegionBefore(loopOp.getRegion(), wsLoop.getRegion(),
+                                  wsLoop.getRegion().begin());
+      // Currently the number of args in the wsloop block matches the number of
+      // args in the do loop, so we do not need to remap any arguments or add
+      // new ones, but we may need to when we involve reductions
+      rewriter.replaceOp(teamsOp, parallelOp);
+      return success();
+    }
+
+    auto callOp = getPerfectlyNested<fir::CallOp>(coexecuteOp);
+    if (callOp && shouldParallelize(callOp)) {
+      Block *coexecuteBlock = &coexecuteOp.getRegion().front();
+      rewriter.eraseOp(coexecuteBlock->getTerminator());
+      rewriter.inlineBlockBefore(coexecuteBlock, teamsOp);
+      rewriter.eraseOp(teamsOp);
+      return success();
+    }
+
+    // TODO need to handle reductions/ops with results (shouldParallelize has to
+    // be update too)
+
+    LLVM_DEBUG(dbgs() << TAG
+                      << "Unhandled case in teams{coexecute{}} lowering\n");
+    return failure();
   }
 };
 
@@ -313,32 +387,23 @@ struct FissionCoexecute : public OpRewritePattern<omp::CoexecuteOp> {
   }
 };
 
-struct CoexecuteToSingle : public OpRewritePattern<omp::CoexecuteOp> {
+struct TeamsCoexecuteToSingle : public OpRewritePattern<omp::TeamsOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(omp::CoexecuteOp coexecute,
+  LogicalResult matchAndRewrite(omp::TeamsOp teamsOp,
                                 PatternRewriter &rewriter) const override {
-    auto loc = coexecute->getLoc();
-    auto teams = dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
-    if (!teams) {
-      emitError(loc, "coexecute not nested in teams\n");
+    auto coexecuteOp = getPerfectlyNested<omp::CoexecuteOp>(teamsOp);
+    if (!coexecuteOp) {
+      LLVM_DEBUG(dbgs() << TAG << "No coexecute nested\n");
       return failure();
     }
-    if (coexecute.getRegion().getBlocks().size() != 1) {
-      emitError(loc, "coexecute with multiple blocks\n");
-      return failure();
-    }
-    if (teams.getRegion().getBlocks().size() != 1) {
-      emitError(loc, "teams with multiple blocks\n");
-      return failure();
-    }
-    if (teams.getRegion().getBlocks().front().getOperations().size() != 2) {
-      emitError(loc, "teams with multiple nested ops\n");
-      return failure();
-    }
-    Block *coexecuteBlock = &coexecute.getRegion().front();
+
+    Block *coexecuteBlock = &coexecuteOp.getRegion().front();
     rewriter.eraseOp(coexecuteBlock->getTerminator());
-    rewriter.inlineBlockBefore(coexecuteBlock, teams);
-    rewriter.eraseOp(teams);
+    rewriter.inlineBlockBefore(coexecuteBlock, teamsOp);
+    rewriter.eraseOp(teamsOp);
+
+    coexecuteOp.emitWarning("unable to parallelize coexecute");
+
     return success();
   }
 };
@@ -418,15 +483,25 @@ void FIROMPOptPass::runOnOperation() {
   // duplicate that check (that check should probably be in a LLVM_DEBUG?)
 
   MLIRContext &context = getContext();
-  RewritePatternSet patterns(&context);
   GreedyRewriteConfig config;
   // prevent the pattern driver form merging blocks
   config.enableRegionSimplification = false;
 
-  patterns.insert<FissionCoexecute>(&context);
-  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
-    emitError(op->getLoc(), "error in OpenMP optimizations\n");
-    signalPassFailure();
+  {
+    RewritePatternSet patterns(&context);
+    patterns.insert<FissionCoexecute>(&context);
+    if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+      emitError(op->getLoc(), "error in OpenMP optimizations\n");
+      signalPassFailure();
+    }
+  }
+  {
+    RewritePatternSet patterns(&context);
+    patterns.insert<TeamsCoexecuteLowering, TeamsCoexecuteToSingle>(&context);
+    if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+      emitError(op->getLoc(), "error in OpenMP optimizations\n");
+      signalPassFailure();
+    }
   }
 }
 
