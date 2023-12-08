@@ -36,6 +36,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -104,15 +105,17 @@ getNestedOpToIsolate(omp::TargetOp targetOp) {
 }
 
 mlir::LLVM::ConstantOp
-genI32Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
-  mlir::Type i32Ty = rewriter.getI32Type();
-  mlir::IntegerAttr attr = rewriter.getI32IntegerAttr(value);
-  return rewriter.create<mlir::LLVM::ConstantOp>(loc, i32Ty, attr);
+genI64Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
+  mlir::Type i64Ty = rewriter.getI64Type();
+  mlir::IntegerAttr attr = rewriter.getI64IntegerAttr(value);
+  return rewriter.create<mlir::LLVM::ConstantOp>(loc, i64Ty, attr);
 }
 
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
 /// TODO should we clean up the attributes
+///
+/// TODO when splitting a target we need to properly tweak omp_map_info's
 struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(omp::TargetOp targetOp,
@@ -135,13 +138,29 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
 
     auto loc = targetOp->getLoc();
 
+    auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
     auto allocTemp = [&](Type ty) {
       // TODO This should be a omp_target_alloc or something equivalent which we
       // currently do not have an easy way to generate so I am ignoring this
       // problem for now
-      return rewriter.create<LLVM::AllocaOp>(
-          loc, LLVM::LLVMPointerType::get(ty.getContext()), ty,
-          genI32Constant(loc, rewriter, 1));
+      auto alloca = rewriter.create<LLVM::AllocaOp>(
+          loc, ptrTy, ty, genI64Constant(loc, rewriter, 1));
+      SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
+          loc, rewriter.getType<mlir::omp::DataBoundsType>(),
+          genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
+          nullptr, nullptr, false, nullptr)};
+      auto mapInfo = rewriter.create<omp::MapInfoOp>(
+          loc, ptrTy, alloca, ty, /*var_ptr_ptr=*/nullptr, bounds,
+          rewriter.getIntegerAttr(
+              rewriter.getIntegerType(64, false),
+              static_cast<
+                  std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
+                  llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO |
+                  llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM)),
+          rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
+              mlir::omp::VariableCaptureKind::ByCopy),
+          rewriter.getStringAttr("coexecute_tmp"));
+      return mapInfo;
     };
 
     auto usedOutsideSplit = [&](Value v, Operation *splitBefore) {
@@ -161,18 +180,23 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
       auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
       auto *targetBlock = &targetOp.getRegion().front();
       rewriter.setInsertionPoint(targetOp);
-      IRMapping toReplace;
-      SmallVector<std::pair<Value, Value>> allocs;
+      SmallVector<std::tuple<Value, unsigned>> allocs;
+      SmallVector<LLVM::LoadOp> toClone;
       auto mapOperands = SmallVector<Value>(targetOp.getMapOperands());
       for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
            it++) {
+        // Skip if it is already a load from a mapped argument to the target
+        // region
+        if (auto loadOp = dyn_cast<LLVM::LoadOp>(it))
+          if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getAddr()))
+            if (blockArg.getOwner() == targetBlock) {
+              toClone.push_back(loadOp);
+              continue;
+            }
         for (auto res : it->getResults()) {
           if (usedOutsideSplit(res, splitBefore)) {
-            // TODO if it is a load from a previous fission's allocTemp just
-            // forward it
             auto alloc = allocTemp(res.getType());
-            allocs.push_back({alloc, res});
-            toReplace.map(res, alloc);
+            allocs.push_back({res, mapOperands.size()});
             mapOperands.push_back(alloc);
           }
         }
@@ -199,10 +223,11 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
       for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
            it++)
         rewriter.clone(*it, preMapping);
-      for (auto pair : allocs) {
-        auto alloc = std::get<0>(pair);
-        auto original = std::get<1>(pair);
-        rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original), alloc);
+      for (auto tup : allocs) {
+        auto original = std::get<0>(tup);
+        auto newArg = preTargetBlock->addArgument(ptrTy, original.getLoc());
+        rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original),
+                                       newArg);
       }
       rewriter.create<omp::TerminatorOp>(loc);
 
@@ -219,11 +244,11 @@ struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
                                                    originalArg.getLoc());
         postMapping.map(originalArg, newArg);
       }
-      for (auto pair : allocs) {
-        auto alloc = std::get<0>(pair);
-        auto original = std::get<1>(pair);
-        auto newArg =
-            postTargetBlock->addArgument(alloc.getType(), alloc.getLoc());
+      for (auto loadOp : toClone)
+        rewriter.clone(*loadOp, postMapping);
+      for (auto tup : allocs) {
+        auto original = std::get<0>(tup);
+        auto newArg = postTargetBlock->addArgument(ptrTy, original.getLoc());
         postMapping.map(original, rewriter.create<LLVM::LoadOp>(
                                       loc, original.getType(), newArg));
       }
