@@ -114,8 +114,8 @@ genI64Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
 /// TODO should we clean up the attributes
-///
-/// TODO when splitting a target we need to properly tweak omp_map_info's
+/// TODO when splitting a target we need to properly tweak omp.map_info's
+/// TODO we should hoist out allocations
 struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(omp::TargetOp targetOp,
