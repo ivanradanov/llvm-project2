@@ -104,11 +104,56 @@ getNestedOpToIsolate(omp::TargetOp targetOp) {
   return std::nullopt;
 }
 
-mlir::LLVM::ConstantOp
-genI64Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
+mlir::LLVM::ConstantOp genI64Constant(mlir::Location loc,
+                                      mlir::RewriterBase &rewriter, int value) {
   mlir::Type i64Ty = rewriter.getI64Type();
   mlir::IntegerAttr attr = rewriter.getI64IntegerAttr(value);
   return rewriter.create<mlir::LLVM::ConstantOp>(loc, i64Ty, attr);
+}
+
+/// If multiple coexecutes are nested in a target regions, we will need to split
+/// the target region, but we want to preserve the data semantics of the
+/// original data region - we split the target region into a target_data{target}
+/// nest
+///
+/// TODO need to handle special case where the target regions had a always copy
+/// or always free map types (or something similar, I forgot how they are
+/// called); I think these just need to be removed from the inner data region
+/// map
+mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
+                                    RewriterBase &rewriter) {
+  auto loc = targetOp->getLoc();
+  if (targetOp.getMapOperands().empty()) {
+    LLVM_DEBUG(dbgs() << TAG << "target region has no data maps\n");
+    return mlir::failure();
+  }
+  unsigned coexecuteNum = 0;
+  targetOp->walk([&](omp::CoexecuteOp) { coexecuteNum++; });
+  if (coexecuteNum < 2) {
+    LLVM_DEBUG(
+        dbgs() << TAG
+               << "target region has fewer than two nested coexecutes\n");
+    return mlir::failure();
+  }
+
+  rewriter.setInsertionPoint(targetOp);
+  auto dataOp = rewriter.create<omp::DataOp>(
+      loc, targetOp.getIfExpr(), targetOp.getDevice(),
+      /*use_device_ptr=*/mlir::ValueRange(),
+      /*use_device_addr=*/mlir::ValueRange(), targetOp.getMapOperands());
+  rewriter.createBlock(&dataOp.getRegion(), dataOp.getRegion().begin(), {}, {});
+  auto newTargetOp = rewriter.create<omp::TargetOp>(
+      loc, targetOp.getIfExpr(), targetOp.getDevice(),
+      targetOp.getThreadLimit(), targetOp.getNowaitAttr(),
+      /*mapOperands=*/targetOp.getMapOperands());
+  rewriter.create<omp::TerminatorOp>(loc);
+
+  rewriter.inlineRegionBefore(targetOp.getRegion(), newTargetOp.getRegion(),
+                              newTargetOp.getRegion().begin());
+
+  rewriter.replaceOp(targetOp, newTargetOp);
+
+  return mlir::success();
 }
 
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
@@ -116,165 +161,154 @@ genI64Constant(mlir::Location loc, mlir::PatternRewriter &rewriter, int value) {
 /// TODO should we clean up the attributes
 /// TODO when splitting a target we need to properly tweak omp.map_info's
 /// TODO we should hoist out allocations
-struct FissionTarget : public OpRewritePattern<omp::TargetOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(omp::TargetOp targetOp,
-                                PatternRewriter &rewriter) const override {
-    if (targetOp->getAttr("fission_target_already_handled")) {
-      return failure();
-    }
-    auto tuple = getNestedOpToIsolate(targetOp);
-    if (!tuple) {
-      LLVM_DEBUG(dbgs() << TAG << "No op to isolate\n");
-      return failure();
-    }
-
-    Operation *toIsolate = std::get<0>(*tuple);
-    bool splitBefore = !std::get<1>(*tuple);
-    bool splitAfter = !std::get<2>(*tuple);
-
-    LLVM_DEBUG(dbgs() << TAG << "Will isolate " << *toIsolate << " from "
-                      << targetOp << "\n");
-
-    auto loc = targetOp->getLoc();
-
-    auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
-    auto allocTemp = [&](Type ty) {
-      // TODO This should be a omp_target_alloc or something equivalent which we
-      // currently do not have an easy way to generate so I am ignoring this
-      // problem for now
-      auto alloca = rewriter.create<LLVM::AllocaOp>(
-          loc, ptrTy, ty, genI64Constant(loc, rewriter, 1));
-      SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
-          loc, rewriter.getType<mlir::omp::DataBoundsType>(),
-          genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
-          nullptr, nullptr, false, nullptr)};
-      auto mapInfo = rewriter.create<omp::MapInfoOp>(
-          loc, ptrTy, alloca, ty, /*var_ptr_ptr=*/nullptr, bounds,
-          rewriter.getIntegerAttr(
-              rewriter.getIntegerType(64, false),
-              static_cast<
-                  std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
-                  llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO |
-                  llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM)),
-          rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
-              mlir::omp::VariableCaptureKind::ByCopy),
-          rewriter.getStringAttr("coexecute_tmp"));
-      return mapInfo;
-    };
-
-    auto usedOutsideSplit = [&](Value v, Operation *splitBefore) {
-      auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
-      auto *targetBlock = &targetOp.getRegion().front();
-      for (auto *user : v.getUsers()) {
-        while (user->getBlock() != targetBlock) {
-          user = user->getParentOp();
-        }
-        if (!user->isBeforeInBlock(splitBefore))
-          return true;
-      }
-      return false;
-    };
-
-    auto splitBeforeOp = [&](Operation *splitBefore) {
-      auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
-      auto *targetBlock = &targetOp.getRegion().front();
-      rewriter.setInsertionPoint(targetOp);
-      SmallVector<std::tuple<Value, unsigned>> allocs;
-      SmallVector<LLVM::LoadOp> toClone;
-      auto mapOperands = SmallVector<Value>(targetOp.getMapOperands());
-      for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
-           it++) {
-        // Skip if it is already a load from a mapped argument to the target
-        // region
-        if (auto loadOp = dyn_cast<LLVM::LoadOp>(it))
-          if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getAddr()))
-            if (blockArg.getOwner() == targetBlock) {
-              toClone.push_back(loadOp);
-              continue;
-            }
-        for (auto res : it->getResults()) {
-          if (usedOutsideSplit(res, splitBefore)) {
-            auto alloc = allocTemp(res.getType());
-            allocs.push_back({res, mapOperands.size()});
-            mapOperands.push_back(alloc);
-          }
-        }
-      }
-
-      // Split into two blocks with additional mapppings for the values to be
-      // passed in memory across the regions
-
-      rewriter.setInsertionPoint(targetOp);
-      auto preTargetOp = rewriter.create<omp::TargetOp>(
-          loc, targetOp.getIfExpr(), targetOp.getDevice(),
-          targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
-      preTargetOp->setAttr("fission_target_already_handled",
-                           rewriter.getUnitAttr());
-      auto *preTargetBlock = rewriter.createBlock(
-          &preTargetOp.getRegion(), preTargetOp.getRegion().begin(), {}, {});
-      IRMapping preMapping;
-      for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
-        auto originalArg = targetBlock->getArgument(i);
-        auto newArg = preTargetBlock->addArgument(originalArg.getType(),
-                                                  originalArg.getLoc());
-        preMapping.map(originalArg, newArg);
-      }
-      for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
-           it++)
-        rewriter.clone(*it, preMapping);
-      for (auto tup : allocs) {
-        auto original = std::get<0>(tup);
-        auto newArg = preTargetBlock->addArgument(ptrTy, original.getLoc());
-        rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original),
-                                       newArg);
-      }
-      rewriter.create<omp::TerminatorOp>(loc);
-
-      rewriter.setInsertionPoint(targetOp);
-      auto postTargetOp = rewriter.create<omp::TargetOp>(
-          loc, targetOp.getIfExpr(), targetOp.getDevice(),
-          targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
-      auto *postTargetBlock = rewriter.createBlock(
-          &postTargetOp.getRegion(), postTargetOp.getRegion().begin(), {}, {});
-      IRMapping postMapping;
-      for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
-        auto originalArg = targetBlock->getArgument(i);
-        auto newArg = postTargetBlock->addArgument(originalArg.getType(),
-                                                   originalArg.getLoc());
-        postMapping.map(originalArg, newArg);
-      }
-      for (auto loadOp : toClone)
-        rewriter.clone(*loadOp, postMapping);
-      for (auto tup : allocs) {
-        auto original = std::get<0>(tup);
-        auto newArg = postTargetBlock->addArgument(ptrTy, original.getLoc());
-        postMapping.map(original, rewriter.create<LLVM::LoadOp>(
-                                      loc, original.getType(), newArg));
-      }
-      for (auto it = splitBefore->getIterator(); it != targetBlock->end(); it++)
-        rewriter.clone(*it, postMapping);
-
-      rewriter.eraseOp(targetOp);
-      return postMapping.lookup(splitBefore);
-    };
-
-    if (splitBefore && splitAfter) {
-      auto *newToIsolate = splitBeforeOp(toIsolate);
-      splitBeforeOp(newToIsolate->getNextNode());
-      return success();
-    }
-    if (splitBefore) {
-      splitBeforeOp(toIsolate);
-      return success();
-    }
-    if (splitAfter) {
-      splitBeforeOp(toIsolate->getNextNode());
-      return success();
-    }
-    llvm_unreachable("we should not have had an op to isolate");
+omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
+  auto tuple = getNestedOpToIsolate(targetOp);
+  if (!tuple) {
+    LLVM_DEBUG(dbgs() << TAG << "No op to isolate\n");
+    return nullptr;
   }
-};
+
+  Operation *toIsolate = std::get<0>(*tuple);
+  bool splitBefore = !std::get<1>(*tuple);
+  bool splitAfter = !std::get<2>(*tuple);
+
+  LLVM_DEBUG(dbgs() << TAG << "Will isolate " << *toIsolate << " from "
+                    << targetOp << "\n");
+
+  auto loc = targetOp->getLoc();
+
+  auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
+  auto allocTemp = [&](Type ty) {
+    // TODO This should be a omp_target_alloc or something equivalent which we
+    // currently do not have an easy way to generate so I am ignoring this
+    // problem for now
+    auto alloca = rewriter.create<LLVM::AllocaOp>(
+        loc, ptrTy, ty, genI64Constant(loc, rewriter, 1));
+    SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
+        loc, rewriter.getType<mlir::omp::DataBoundsType>(),
+        genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
+        nullptr, nullptr, false, nullptr)};
+    auto mapInfo = rewriter.create<omp::MapInfoOp>(
+        loc, ptrTy, alloca, ty, /*var_ptr_ptr=*/nullptr, bounds,
+        rewriter.getIntegerAttr(
+            rewriter.getIntegerType(64, false),
+            static_cast<
+                std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
+                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO |
+                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM)),
+        rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
+            mlir::omp::VariableCaptureKind::ByCopy),
+        rewriter.getStringAttr("coexecute_tmp"));
+    return mapInfo;
+  };
+
+  auto usedOutsideSplit = [&](Value v, Operation *splitBefore) {
+    auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
+    auto *targetBlock = &targetOp.getRegion().front();
+    for (auto *user : v.getUsers()) {
+      while (user->getBlock() != targetBlock) {
+        user = user->getParentOp();
+      }
+      if (!user->isBeforeInBlock(splitBefore))
+        return true;
+    }
+    return false;
+  };
+
+  auto splitBeforeOp = [&](Operation *splitBefore) {
+    auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
+    auto *targetBlock = &targetOp.getRegion().front();
+    rewriter.setInsertionPoint(targetOp);
+    SmallVector<std::tuple<Value, unsigned>> allocs;
+    SmallVector<LLVM::LoadOp> toClone;
+    auto mapOperands = SmallVector<Value>(targetOp.getMapOperands());
+    for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
+         it++) {
+      // Skip if it is already a load from a mapped argument to the target
+      // region
+      if (auto loadOp = dyn_cast<LLVM::LoadOp>(it))
+        if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getAddr()))
+          if (blockArg.getOwner() == targetBlock) {
+            toClone.push_back(loadOp);
+            continue;
+          }
+      for (auto res : it->getResults()) {
+        if (usedOutsideSplit(res, splitBefore)) {
+          auto alloc = allocTemp(res.getType());
+          allocs.push_back({res, mapOperands.size()});
+          mapOperands.push_back(alloc);
+        }
+      }
+    }
+
+    // Split into two blocks with additional mapppings for the values to be
+    // passed in memory across the regions
+
+    rewriter.setInsertionPoint(targetOp);
+    auto preTargetOp = rewriter.create<omp::TargetOp>(
+        loc, targetOp.getIfExpr(), targetOp.getDevice(),
+        targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+    auto *preTargetBlock = rewriter.createBlock(
+        &preTargetOp.getRegion(), preTargetOp.getRegion().begin(), {}, {});
+    IRMapping preMapping;
+    for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
+      auto originalArg = targetBlock->getArgument(i);
+      auto newArg = preTargetBlock->addArgument(originalArg.getType(),
+                                                originalArg.getLoc());
+      preMapping.map(originalArg, newArg);
+    }
+    for (auto it = targetBlock->begin(); it != splitBefore->getIterator(); it++)
+      rewriter.clone(*it, preMapping);
+    for (auto tup : allocs) {
+      auto original = std::get<0>(tup);
+      auto newArg = preTargetBlock->addArgument(ptrTy, original.getLoc());
+      rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original), newArg);
+    }
+    rewriter.create<omp::TerminatorOp>(loc);
+
+    rewriter.setInsertionPoint(targetOp);
+    auto postTargetOp = rewriter.create<omp::TargetOp>(
+        loc, targetOp.getIfExpr(), targetOp.getDevice(),
+        targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+    auto *postTargetBlock = rewriter.createBlock(
+        &postTargetOp.getRegion(), postTargetOp.getRegion().begin(), {}, {});
+    IRMapping postMapping;
+    for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
+      auto originalArg = targetBlock->getArgument(i);
+      auto newArg = postTargetBlock->addArgument(originalArg.getType(),
+                                                 originalArg.getLoc());
+      postMapping.map(originalArg, newArg);
+    }
+    for (auto loadOp : toClone)
+      rewriter.clone(*loadOp, postMapping);
+    for (auto tup : allocs) {
+      auto original = std::get<0>(tup);
+      auto newArg = postTargetBlock->addArgument(ptrTy, original.getLoc());
+      postMapping.map(original, rewriter.create<LLVM::LoadOp>(
+                                    loc, original.getType(), newArg));
+    }
+    for (auto it = splitBefore->getIterator(); it != targetBlock->end(); it++)
+      rewriter.clone(*it, postMapping);
+
+    rewriter.eraseOp(targetOp);
+    return postMapping.lookup(splitBefore);
+  };
+
+  if (splitBefore && splitAfter) {
+    auto *newSplitBefore = splitBeforeOp(toIsolate);
+    newSplitBefore = splitBeforeOp(newSplitBefore->getNextNode());
+    return cast<omp::TargetOp>(newSplitBefore->getParentOp());
+  }
+  if (splitBefore) {
+    auto *newSplitBefore = splitBeforeOp(toIsolate);
+    return cast<omp::TargetOp>(newSplitBefore->getParentOp());
+  }
+  if (splitAfter) {
+    auto *newSplitBefore = splitBeforeOp(toIsolate->getNextNode());
+    return cast<omp::TargetOp>(newSplitBefore->getParentOp());
+  }
+  llvm_unreachable("we should not have had an op to isolate");
+}
 
 template <typename T>
 static T getPerfectlyNested(Operation *op) {
@@ -377,90 +411,94 @@ struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
 ///   }
 /// }
 /// E()
-struct FissionCoexecute : public OpRewritePattern<omp::CoexecuteOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(omp::CoexecuteOp coexecute,
-                                PatternRewriter &rewriter) const override {
-    auto loc = coexecute->getLoc();
-    auto teams = dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
-    if (!teams) {
-      emitError(loc, "coexecute not nested in teams\n");
-      return failure();
-    }
-    if (coexecute.getRegion().getBlocks().size() != 1) {
-      emitError(loc, "coexecute with multiple blocks\n");
-      return failure();
-    }
-    if (teams.getRegion().getBlocks().size() != 1) {
-      emitError(loc, "teams with multiple blocks\n");
-      return failure();
-    }
-    if (teams.getRegion().getBlocks().front().getOperations().size() != 2) {
-      emitError(loc, "teams with multiple nested ops\n");
-      return failure();
-    }
+LogicalResult fissionCoexecute(omp::CoexecuteOp coexecute,
+                               PatternRewriter &rewriter) {
+  auto loc = coexecute->getLoc();
+  auto teams = dyn_cast<omp::TeamsOp>(coexecute->getParentOp());
+  if (!teams) {
+    emitError(loc, "coexecute not nested in teams\n");
+    return failure();
+  }
+  if (coexecute.getRegion().getBlocks().size() != 1) {
+    emitError(loc, "coexecute with multiple blocks\n");
+    return failure();
+  }
+  if (teams.getRegion().getBlocks().size() != 1) {
+    emitError(loc, "teams with multiple blocks\n");
+    return failure();
+  }
+  if (teams.getRegion().getBlocks().front().getOperations().size() != 2) {
+    emitError(loc, "teams with multiple nested ops\n");
+    return failure();
+  }
 
-    LLVM_DEBUG(dbgs() << TAG << "Fission " << coexecute << "\n");
+  LLVM_DEBUG(dbgs() << TAG << "Fission " << coexecute << "\n");
 
-    auto *teamsBlock = &teams.getRegion().front();
+  auto *teamsBlock = &teams.getRegion().front();
 
-    // While we have unhandled operations in the original coexecute
-    auto *coexecuteBlock = &coexecute.getRegion().front();
-    auto *terminator = coexecuteBlock->getTerminator();
-    bool changed = false;
-    while (&coexecuteBlock->front() != terminator) {
-      rewriter.setInsertionPoint(teams);
-      IRMapping mapping;
-      llvm::SmallVector<Operation *> hoisted;
-      Operation *parallelize = nullptr;
-      for (auto &op : coexecute.getOps()) {
-        if (&op == terminator) {
-          break;
-        }
-        if (shouldParallelize(&op)) {
-          LLVM_DEBUG(dbgs() << TAG << "Will parallelize " << op << "\n");
-          parallelize = &op;
-          break;
-        } else {
-          rewriter.clone(op, mapping);
-          LLVM_DEBUG(dbgs() << TAG << "Hoisting " << op << "\n");
-          hoisted.push_back(&op);
-          changed = true;
-        }
-      }
-
-      for (auto *op : hoisted)
-        rewriter.replaceOp(op, mapping.lookup(op));
-
-      if (parallelize && hoisted.empty() &&
-          parallelize->getNextNode() == terminator)
+  // While we have unhandled operations in the original coexecute
+  auto *coexecuteBlock = &coexecute.getRegion().front();
+  auto *terminator = coexecuteBlock->getTerminator();
+  bool changed = false;
+  while (&coexecuteBlock->front() != terminator) {
+    rewriter.setInsertionPoint(teams);
+    IRMapping mapping;
+    llvm::SmallVector<Operation *> hoisted;
+    Operation *parallelize = nullptr;
+    for (auto &op : coexecute.getOps()) {
+      if (&op == terminator) {
         break;
-      if (parallelize) {
-        // TODO do we need any special handling for teams region, block args
-        // etc?
-        auto newTeams = rewriter.cloneWithoutRegions(teams);
-        auto *newTeamsBlock = rewriter.createBlock(
-            &newTeams.getRegion(), newTeams.getRegion().begin(), {}, {});
-        for (auto arg : teamsBlock->getArguments())
-          newTeamsBlock->addArgument(arg.getType(), arg.getLoc());
-        auto newCoexecute = rewriter.create<omp::CoexecuteOp>(loc);
-        rewriter.create<omp::TerminatorOp>(loc);
-        rewriter.createBlock(&newCoexecute.getRegion(),
-                             newCoexecute.getRegion().begin(), {}, {});
-        auto *cloned = rewriter.clone(*parallelize);
-        rewriter.replaceOp(parallelize, cloned);
-        rewriter.create<omp::TerminatorOp>(loc);
+      }
+      if (shouldParallelize(&op)) {
+        LLVM_DEBUG(dbgs() << TAG << "Will parallelize " << op << "\n");
+        parallelize = &op;
+        break;
+      } else {
+        rewriter.clone(op, mapping);
+        LLVM_DEBUG(dbgs() << TAG << "Hoisting " << op << "\n");
+        hoisted.push_back(&op);
         changed = true;
       }
     }
 
-    LLVM_DEBUG({
-      if (changed) {
-        dbgs() << TAG << "After fission:\n" << *teams->getParentOp() << "\n";
-      }
-    });
+    for (auto *op : hoisted)
+      rewriter.replaceOp(op, mapping.lookup(op));
 
-    return success(changed);
+    if (parallelize && hoisted.empty() &&
+        parallelize->getNextNode() == terminator)
+      break;
+    if (parallelize) {
+      // TODO do we need any special handling for teams region, block args
+      // etc?
+      auto newTeams = rewriter.cloneWithoutRegions(teams);
+      auto *newTeamsBlock = rewriter.createBlock(
+          &newTeams.getRegion(), newTeams.getRegion().begin(), {}, {});
+      for (auto arg : teamsBlock->getArguments())
+        newTeamsBlock->addArgument(arg.getType(), arg.getLoc());
+      auto newCoexecute = rewriter.create<omp::CoexecuteOp>(loc);
+      rewriter.create<omp::TerminatorOp>(loc);
+      rewriter.createBlock(&newCoexecute.getRegion(),
+                           newCoexecute.getRegion().begin(), {}, {});
+      auto *cloned = rewriter.clone(*parallelize);
+      rewriter.replaceOp(parallelize, cloned);
+      rewriter.create<omp::TerminatorOp>(loc);
+      changed = true;
+    }
+  }
+
+  LLVM_DEBUG({
+    if (changed) {
+      dbgs() << TAG << "After fission:\n" << *teams->getParentOp() << "\n";
+    }
+  });
+
+  return success(changed);
+}
+struct FissionCoexecute : public OpRewritePattern<omp::CoexecuteOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(omp::CoexecuteOp coexecute,
+                                PatternRewriter &rewriter) const override {
+    return fissionCoexecute(coexecute, rewriter);
   }
 };
 
@@ -533,16 +571,13 @@ void LLVMOMPOptPass::runOnOperation() {
 
   Operation *op = getOperation();
   MLIRContext &context = getContext();
-  RewritePatternSet patterns(&context);
-  GreedyRewriteConfig config;
-  // prevent the pattern driver form merging blocks
-  config.enableRegionSimplification = false;
 
-  patterns.insert<FissionTarget>(&context);
-  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
-    emitError(op->getLoc(), "error in OpenMP optimizations\n");
-    signalPassFailure();
-  }
+  SmallVector<omp::TargetOp> targetOps;
+  op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
+  IRRewriter rewriter(&context);
+  for (auto targetOp : targetOps)
+    while (targetOp)
+      targetOp = fissionTarget(targetOp, rewriter);
 }
 
 void FIROMPOptPass::runOnOperation() {
@@ -571,6 +606,13 @@ void FIROMPOptPass::runOnOperation() {
       emitError(op->getLoc(), "error in OpenMP optimizations\n");
       signalPassFailure();
     }
+  }
+  {
+    SmallVector<omp::TargetOp> targetOps;
+    op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
+    IRRewriter rewriter(&context);
+    for (auto targetOp : targetOps)
+      (void)splitTargetData(targetOp, rewriter);
   }
   {
     RewritePatternSet patterns(&context);
