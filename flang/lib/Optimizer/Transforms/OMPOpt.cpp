@@ -158,8 +158,6 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
 
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
-/// TODO should we clean up the attributes
-/// TODO when splitting a target we need to properly tweak omp.map_info's
 /// TODO we should hoist out allocations
 omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto tuple = getNestedOpToIsolate(targetOp);
@@ -556,29 +554,15 @@ static void dumpMemoryEffects(Operation *op) {
   }
 }
 
-class LLVMOMPOptPass : public ::fir::impl::LLVMOMPOptBase<LLVMOMPOptPass> {
-public:
-  void runOnOperation() override;
-};
-
 class FIROMPOptPass : public ::fir::impl::FIROMPOptBase<FIROMPOptPass> {
 public:
   void runOnOperation() override;
 };
 
-void LLVMOMPOptPass::runOnOperation() {
-  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-llvm ===\n");
-
-  Operation *op = getOperation();
-  MLIRContext &context = getContext();
-
-  SmallVector<omp::TargetOp> targetOps;
-  op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
-  IRRewriter rewriter(&context);
-  for (auto targetOp : targetOps)
-    while (targetOp)
-      targetOp = fissionTarget(targetOp, rewriter);
-}
+class LLVMOMPOptPass : public ::fir::impl::LLVMOMPOptBase<LLVMOMPOptPass> {
+public:
+  void runOnOperation() override;
+};
 
 void FIROMPOptPass::runOnOperation() {
   LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-fir ===\n");
@@ -622,6 +606,20 @@ void FIROMPOptPass::runOnOperation() {
       signalPassFailure();
     }
   }
+}
+
+void LLVMOMPOptPass::runOnOperation() {
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-llvm ===\n");
+
+  Operation *op = getOperation();
+  MLIRContext &context = getContext();
+
+  SmallVector<omp::TargetOp> targetOps;
+  op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
+  IRRewriter rewriter(&context);
+  for (auto targetOp : targetOps)
+    while (targetOp)
+      targetOp = fissionTarget(targetOp, rewriter);
 }
 
 /// OpenMP optimizations
