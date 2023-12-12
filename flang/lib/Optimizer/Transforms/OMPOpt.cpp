@@ -39,11 +39,13 @@
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/BlockSupport.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
+#include <mlir/Support/LLVM.h>
 #include <optional>
 
 namespace fir {
@@ -159,6 +161,7 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
 /// TODO we should hoist out allocations
+/// TODO only include map operands that are used
 omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto tuple = getNestedOpToIsolate(targetOp);
   if (!tuple) {
@@ -521,6 +524,112 @@ struct TeamsCoexecuteToSingle : public OpRewritePattern<omp::TeamsOp> {
   }
 };
 
+static Value getMem(Value mem) {
+  if (auto arg = mem.dyn_cast<BlockArgument>()) {
+    auto targetOp = dyn_cast<omp::TargetOp>(arg.getOwner()->getParentOp());
+    if (!targetOp)
+      return nullptr;
+    auto argNum = arg.getArgNumber();
+    auto mapInfoOp = cast<omp::MapInfoOp>(targetOp.getMapOperands()[argNum].getDefiningOp());
+    return getMem(mapInfoOp.getVarPtr());
+  }
+  Operation *op = mem.getDefiningOp();
+  assert(op);
+  if (auto declareOp = dyn_cast<fir::DeclareOp>(op)) {
+    return getMem(declareOp.getMemref());
+  } else if (auto declareOp = dyn_cast<fir::AllocaOp>(op)) {
+    return mem;
+  } else {
+    return nullptr;
+  }
+}
+
+static Value getStoredValue(Value mem) {
+  mem = getMem(mem);
+  if (!mem)
+    return nullptr;
+
+
+  SmallVector<Value> todo = {mem};
+  SmallVector<fir::StoreOp> stores;
+  SmallVector<fir::LoadOp> loads;
+
+  while (!todo.empty()) {
+    Value mem = todo.back();
+    todo.pop_back();
+
+    for (Operation *user : mem.getUsers()) {
+      if (auto declareOp = dyn_cast<fir::DeclareOp>(user)) {
+        // No shaped declarations for now
+        if (declareOp.getShape()) {
+          LLVM_DEBUG(dbgs() << TAG << "Shaped declaration\n");
+          return nullptr;
+        }
+
+        Value declaredMem = declareOp.getResult();
+        assert(declaredMem.getType() == mem.getType());
+        todo.push_back(declaredMem);
+      } else if (auto mapInfoOp = dyn_cast<omp::MapInfoOp>(user)) {
+        Value mapInfo = mapInfoOp.getResult();
+        for (OpOperand &use : mapInfo.getUses()) {
+          Operation *owner = use.getOwner();
+          if (auto targetOp = dyn_cast<omp::TargetOp>(owner)) {
+            auto targetMem = targetOp->getRegion(0).front().getArgument(use.getOperandNumber());
+            assert(targetMem.getType() == mem.getType());
+            todo.push_back(targetMem);
+          } else if (auto targetData = dyn_cast<omp::TargetOp>(owner)) {
+            // ?
+          } else {
+            llvm_unreachable("Unexpected user of omp.map_info");
+          }
+        }
+      } else if (auto storeOp = dyn_cast<fir::StoreOp>(user)) {
+        stores.push_back(storeOp);
+      } else if (auto loadOp = dyn_cast<fir::LoadOp>(user)) {
+        loads.push_back(loadOp);
+      } else {
+        LLVM_DEBUG(dbgs() << TAG << "Unknown user\n");
+        return nullptr;
+      }
+    }
+  }
+  // We do not care if we load before the store since that would be undefined
+  // behaviour and we can use any value. TODO Is this true for fortran?
+  if (stores.size() == 1)
+    return stores[0].getValue();
+  return nullptr;
+}
+
+static Value getHostValue(Value v) {
+  auto loadOp = dyn_cast_or_null<fir::LoadOp>(v.getDefiningOp());
+  if (!loadOp)
+    return nullptr;
+
+  Value mem = loadOp.getMemref();
+  return getStoredValue(mem);
+}
+
+struct HoistAllocs : public OpRewritePattern<fir::AllocMemOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(fir::AllocMemOp allocMemOp,
+                                PatternRewriter &rewriter) const override {
+    auto targetOp = dyn_cast<omp::TargetOp>(allocMemOp->getParentOp());
+    if (!targetOp)
+      return failure();
+
+    SmallVector<Value> shape;
+    for (auto dim : allocMemOp.getShape()) {
+      auto hostVal = getHostValue(dim);
+      if (hostVal)
+        return failure();
+      shape.push_back();
+    }
+
+    rewriter.setInsertionPoint(targetOp);
+
+  }
+}
+
 static void dumpMemoryEffects(Operation *op) {
   dbgs() << "For " << *op << ":\n";
   for (auto &region : op->getRegions()) {
@@ -583,6 +692,8 @@ void FIROMPOptPass::runOnOperation() {
   // prevent the pattern driver form merging blocks
   config.enableRegionSimplification = false;
 
+  // We need to split the coexecute when we have the parallel regions
+  // represented as unordered do loops
   {
     RewritePatternSet patterns(&context);
     patterns.insert<FissionCoexecute>(&context);
@@ -591,13 +702,9 @@ void FIROMPOptPass::runOnOperation() {
       signalPassFailure();
     }
   }
-  {
-    SmallVector<omp::TargetOp> targetOps;
-    op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
-    IRRewriter rewriter(&context);
-    for (auto targetOp : targetOps)
-      (void)splitTargetData(targetOp, rewriter);
-  }
+  // We need to convert the unordered do loops to omp.distribute while we still
+  // have that representation (later in the pipeline they will be converted to
+  // cf and will be unrecoverable)
   {
     RewritePatternSet patterns(&context);
     patterns.insert<TeamsCoexecuteLowering, TeamsCoexecuteToSingle>(&context);
@@ -614,6 +721,18 @@ void LLVMOMPOptPass::runOnOperation() {
   Operation *op = getOperation();
   MLIRContext &context = getContext();
 
+  // We must split out the target data before we fission the target regions in
+  // order to preserve the memory movement semantics
+  {
+    SmallVector<omp::TargetOp> targetOps;
+    op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
+    IRRewriter rewriter(&context);
+    for (auto targetOp : targetOps)
+      (void)splitTargetData(targetOp, rewriter);
+  }
+  // Target fission is best done when we have the llvm representation as all the
+  // types are allocatable now and we can allocate temporaries for kernel
+  // crossings
   SmallVector<omp::TargetOp> targetOps;
   op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
   IRRewriter rewriter(&context);
