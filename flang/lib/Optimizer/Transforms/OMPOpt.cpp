@@ -106,6 +106,13 @@ getNestedOpToIsolate(omp::TargetOp targetOp) {
   return std::nullopt;
 }
 
+mlir::LLVM::ConstantOp genI32Constant(mlir::Location loc,
+                                      mlir::RewriterBase &rewriter, int value) {
+  mlir::Type i32Ty = rewriter.getI32Type();
+  mlir::IntegerAttr attr = rewriter.getI32IntegerAttr(value);
+  return rewriter.create<mlir::LLVM::ConstantOp>(loc, i32Ty, attr);
+}
+
 mlir::LLVM::ConstantOp genI64Constant(mlir::Location loc,
                                       mlir::RewriterBase &rewriter, int value) {
   mlir::Type i64Ty = rewriter.getI64Type();
@@ -524,111 +531,178 @@ struct TeamsCoexecuteToSingle : public OpRewritePattern<omp::TeamsOp> {
   }
 };
 
-static Value getMem(Value mem) {
-  if (auto arg = mem.dyn_cast<BlockArgument>()) {
+static Value getHostValue(Value v, RewriterBase &rewriter, IRMapping &mapping) {
+  Operation *op = v.getDefiningOp();
+  if (!op)
+    return nullptr;
+  if (auto loadOp = dyn_cast_or_null<LLVM::LoadOp>(op)) {
+    // TODO need to check aliasing and if there arent any stores
+    Value mem = loadOp.getAddr();
+    auto arg = mem.dyn_cast<BlockArgument>();
+    if (!arg)
+      return nullptr;
     auto targetOp = dyn_cast<omp::TargetOp>(arg.getOwner()->getParentOp());
     if (!targetOp)
       return nullptr;
     auto argNum = arg.getArgNumber();
-    auto mapInfoOp = cast<omp::MapInfoOp>(targetOp.getMapOperands()[argNum].getDefiningOp());
-    return getMem(mapInfoOp.getVarPtr());
+    auto mapInfoOp =
+        cast<omp::MapInfoOp>(targetOp.getMapOperands()[argNum].getDefiningOp());
+    auto hostValue = rewriter.create<LLVM::LoadOp>(
+        loadOp->getLoc(), v.getType(), mapInfoOp.getVarPtr());
+    mapping.map(v, hostValue);
+    return hostValue;
   }
-  Operation *op = mem.getDefiningOp();
-  assert(op);
-  if (auto declareOp = dyn_cast<fir::DeclareOp>(op)) {
-    return getMem(declareOp.getMemref());
-  } else if (auto declareOp = dyn_cast<fir::AllocaOp>(op)) {
-    return mem;
-  } else {
-    return nullptr;
-  }
-}
-
-static Value getStoredValue(Value mem) {
-  mem = getMem(mem);
-  if (!mem)
+  MemoryEffectOpInterface interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!interface)
     return nullptr;
 
-
-  SmallVector<Value> todo = {mem};
-  SmallVector<fir::StoreOp> stores;
-  SmallVector<fir::LoadOp> loads;
-
-  while (!todo.empty()) {
-    Value mem = todo.back();
-    todo.pop_back();
-
-    for (Operation *user : mem.getUsers()) {
-      if (auto declareOp = dyn_cast<fir::DeclareOp>(user)) {
-        // No shaped declarations for now
-        if (declareOp.getShape()) {
-          LLVM_DEBUG(dbgs() << TAG << "Shaped declaration\n");
-          return nullptr;
-        }
-
-        Value declaredMem = declareOp.getResult();
-        assert(declaredMem.getType() == mem.getType());
-        todo.push_back(declaredMem);
-      } else if (auto mapInfoOp = dyn_cast<omp::MapInfoOp>(user)) {
-        Value mapInfo = mapInfoOp.getResult();
-        for (OpOperand &use : mapInfo.getUses()) {
-          Operation *owner = use.getOwner();
-          if (auto targetOp = dyn_cast<omp::TargetOp>(owner)) {
-            auto targetMem = targetOp->getRegion(0).front().getArgument(use.getOperandNumber());
-            assert(targetMem.getType() == mem.getType());
-            todo.push_back(targetMem);
-          } else if (auto targetData = dyn_cast<omp::TargetOp>(owner)) {
-            // ?
-          } else {
-            llvm_unreachable("Unexpected user of omp.map_info");
-          }
-        }
-      } else if (auto storeOp = dyn_cast<fir::StoreOp>(user)) {
-        stores.push_back(storeOp);
-      } else if (auto loadOp = dyn_cast<fir::LoadOp>(user)) {
-        loads.push_back(loadOp);
-      } else {
-        LLVM_DEBUG(dbgs() << TAG << "Unknown user\n");
-        return nullptr;
-      }
-    }
-  }
-  // We do not care if we load before the store since that would be undefined
-  // behaviour and we can use any value. TODO Is this true for fortran?
-  if (stores.size() == 1)
-    return stores[0].getValue();
-  return nullptr;
-}
-
-static Value getHostValue(Value v) {
-  auto loadOp = dyn_cast_or_null<fir::LoadOp>(v.getDefiningOp());
-  if (!loadOp)
+  llvm::SmallVector<MemoryEffects::EffectInstance> effects;
+  interface.getEffects(effects);
+  if (!effects.empty())
     return nullptr;
 
-  Value mem = loadOp.getMemref();
-  return getStoredValue(mem);
+  unsigned resNum = 0;
+  unsigned i = 0;
+  for (auto opr : op->getOperands()) {
+    if (opr == v)
+      resNum = i;
+    if (!getHostValue(opr, rewriter, mapping))
+      return nullptr;
+    i++;
+  }
+
+  return rewriter.clone(*op, mapping)->getResult(resNum);
 }
 
-struct HoistAllocs : public OpRewritePattern<fir::AllocMemOp> {
+static inline mlir::Type getLlvmPtrType(mlir::MLIRContext *context) {
+  return mlir::LLVM::LLVMPointerType::get(context);
+}
+
+/// Return the LLVMFuncOp corresponding to omp_target_alloc
+///
+/// void* omp_target_alloc(size_t size, int device_num);
+///
+/// TODO is the abi correct for all targets?
+static mlir::LLVM::LLVMFuncOp getOmpTargetAlloc(ModuleOp module) {
+  if (mlir::LLVM::LLVMFuncOp mallocFunc =
+          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_alloc"))
+    return mallocFunc;
+  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+  auto i64Ty = mlir::IntegerType::get(module->getContext(), 64);
+  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
+  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
+      moduleBuilder.getUnknownLoc(), "omp_target_alloc",
+      mlir::LLVM::LLVMFunctionType::get(
+          LLVM::LLVMPointerType::get(module->getContext()), {i64Ty, i32Ty},
+          /*isVarArg=*/false));
+}
+
+/// Return the LLVMFuncOp corresponding to omp_target_free
+///
+/// void omp_target_free(void *device_ptr, int device_num);
+///
+/// TODO is the abi correct for all targets?
+static mlir::LLVM::LLVMFuncOp getOmpTargetFree(ModuleOp module) {
+  if (mlir::LLVM::LLVMFuncOp freeFunc =
+          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_free"))
+    return freeFunc;
+  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
+  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
+      moduleBuilder.getUnknownLoc(), "omp_target_free",
+      mlir::LLVM::LLVMFunctionType::get(
+          LLVM::LLVMVoidType::get(module->getContext()),
+          {getLlvmPtrType(module->getContext()), i32Ty},
+          /*isVarArg=*/false));
+}
+
+struct HoistAllocs : public OpRewritePattern<LLVM::CallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(fir::AllocMemOp allocMemOp,
+  LogicalResult matchAndRewrite(LLVM::CallOp allocMemOp,
                                 PatternRewriter &rewriter) const override {
+    if (auto callee = allocMemOp.getCallee()) {
+      if (*callee != "malloc")
+        return failure();
+    } else {
+      return failure();
+    }
+
     auto targetOp = dyn_cast<omp::TargetOp>(allocMemOp->getParentOp());
     if (!targetOp)
       return failure();
 
-    SmallVector<Value> shape;
-    for (auto dim : allocMemOp.getShape()) {
-      auto hostVal = getHostValue(dim);
-      if (hostVal)
-        return failure();
-      shape.push_back();
-    }
+    auto loc = allocMemOp->getLoc();
+    auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
+
+    mlir::LLVM::LLVMFuncOp ompTargetAllocFunc =
+        getOmpTargetAlloc(allocMemOp->getParentOfType<ModuleOp>());
+    mlir::LLVM::LLVMFuncOp ompTargetFreeFunc =
+        getOmpTargetFree(allocMemOp->getParentOfType<ModuleOp>());
 
     rewriter.setInsertionPoint(targetOp);
+    IRMapping mapping;
+    mlir::Value size =
+        getHostValue(allocMemOp.getArgOperands()[0], rewriter, mapping);
+    if (!size) {
+      LLVM_DEBUG(dbgs() << TAG << "Could not get host value of "
+                        << allocMemOp.getArgOperands()[0] << "\n");
+      return failure();
+    }
 
+    Value device = targetOp.getDevice();
+    if (!device) {
+      // TODO is this the correct way to get the default device?
+      device = genI32Constant(loc, rewriter, 0);
+    }
+    auto newAlloc =
+        rewriter
+            .create<mlir::LLVM::CallOp>(loc, ompTargetAllocFunc,
+                                        SmallVector<Value>({size, device}))
+            ->getResult(0);
+    auto ompHostAlloca = rewriter.create<LLVM::AllocaOp>(
+        loc, ptrTy, ptrTy, genI64Constant(loc, rewriter, 1));
+    rewriter.create<LLVM::StoreOp>(loc, newAlloc, ompHostAlloca);
+
+    SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
+        loc, rewriter.getType<mlir::omp::DataBoundsType>(),
+        genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
+        nullptr, nullptr, false, nullptr)};
+    auto mapInfo = rewriter.create<omp::MapInfoOp>(
+        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr, bounds,
+        rewriter.getIntegerAttr(
+            rewriter.getIntegerType(64, false),
+            static_cast<
+                std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
+                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO)),
+        rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
+            mlir::omp::VariableCaptureKind::ByCopy),
+        rewriter.getStringAttr("coexecute_hoisted_malloc"));
+
+    auto *targetBlock = &targetOp.getRegion().front();
+    targetOp.getMapOperandsMutable().append({mapInfo});
+    auto newArg = targetBlock->addArgument(mapInfo.getType(), loc);
+    rewriter.setInsertionPointToStart(targetBlock);
+    auto ompDeviceAlloc = rewriter.create<LLVM::LoadOp>(loc, ptrTy, newArg);
+
+    rewriter.setInsertionPointAfter(targetOp);
+    rewriter.create<mlir::LLVM::CallOp>(loc, ompTargetFreeFunc,
+                                        SmallVector<Value>({newAlloc, device}));
+
+    SmallVector<Operation *> frees;
+    for (Operation *user : allocMemOp.getResult().getUsers())
+      if (auto callOp = dyn_cast<LLVM::CallOp>(user))
+        if (auto callee = allocMemOp.getCallee())
+          if (*callee == "free")
+            frees.push_back(user);
+    for (Operation *user : frees)
+      rewriter.eraseOp(user);
+
+    rewriter.replaceAllUsesWith(allocMemOp.getResult(), ompDeviceAlloc);
+    rewriter.eraseOp(allocMemOp);
+
+    return success();
   }
-}
+};
 
 static void dumpMemoryEffects(Operation *op) {
   dbgs() << "For " << *op << ":\n";
@@ -720,7 +794,21 @@ void LLVMOMPOptPass::runOnOperation() {
 
   Operation *op = getOperation();
   MLIRContext &context = getContext();
+  GreedyRewriteConfig config;
+  // prevent the pattern driver form merging blocks
+  config.enableRegionSimplification = false;
 
+  // We need to split the coexecute when we have the parallel regions
+  // represented as unordered do loops
+  {
+    RewritePatternSet patterns(&context);
+    patterns.insert<HoistAllocs>(&context);
+    if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+      emitError(op->getLoc(), "error in OpenMP optimizations\n");
+      signalPassFailure();
+    }
+  }
+  LLVM_DEBUG(dbgs() << TAG << "After hoisting allocations:\n" << *op << "\n");
   // We must split out the target data before we fission the target regions in
   // order to preserve the memory movement semantics
   {
