@@ -238,10 +238,27 @@ static mlir::Value computeElementDistance(mlir::Location loc,
   return rewriter.create<mlir::LLVM::PtrToIntOp>(loc, idxTy, gep);
 }
 
+/// Removes unused operands/args from the omp.target op
+///
+/// TODO is this ok? are there map types that need to be preserved even though
+/// we do not use them in the target region?
+static void minimizeArgs(omp::TargetOp targetOp) {
+  auto *targetBlock = &targetOp.getRegion().front();
+  for (unsigned i = 0; i < targetBlock->getNumArguments();) {
+    if (targetBlock->getArgument(i).use_empty()) {
+      targetBlock->eraseArgument(i);
+      targetOp.getMapOperandsMutable().erase(i);
+    } else {
+      i++;
+    }
+  }
+}
+
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
-/// TODO only include map operands that are used
 /// TODO lifetime analysis to lower amount of memory required for temporaries
+/// TODO flow mincut analysis to figure out the lowest amount of memory we need
+/// to allocate for the crossing
 omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto tuple = getNestedOpToIsolate(targetOp);
   if (!tuple) {
@@ -394,6 +411,10 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
       rewriter.clone(*it, postMapping);
 
     rewriter.eraseOp(targetOp);
+
+    minimizeArgs(preTargetOp);
+    minimizeArgs(postTargetOp);
+
     return postMapping.lookup(splitBefore);
   };
 
