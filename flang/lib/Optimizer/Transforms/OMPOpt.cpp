@@ -60,6 +60,48 @@ namespace fir {
 using llvm::dbgs;
 using namespace mlir;
 
+static inline mlir::Type getLlvmPtrType(mlir::MLIRContext *context) {
+  return mlir::LLVM::LLVMPointerType::get(context);
+}
+
+/// Return the LLVMFuncOp corresponding to omp_target_alloc
+///
+/// void* omp_target_alloc(size_t size, int device_num);
+///
+/// TODO is the abi correct for all targets?
+static mlir::LLVM::LLVMFuncOp getOmpTargetAlloc(ModuleOp module) {
+  if (mlir::LLVM::LLVMFuncOp mallocFunc =
+          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_alloc"))
+    return mallocFunc;
+  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+  auto i64Ty = mlir::IntegerType::get(module->getContext(), 64);
+  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
+  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
+      moduleBuilder.getUnknownLoc(), "omp_target_alloc",
+      mlir::LLVM::LLVMFunctionType::get(
+          LLVM::LLVMPointerType::get(module->getContext()), {i64Ty, i32Ty},
+          /*isVarArg=*/false));
+}
+
+/// Return the LLVMFuncOp corresponding to omp_target_free
+///
+/// void omp_target_free(void *device_ptr, int device_num);
+///
+/// TODO is the abi correct for all targets?
+static mlir::LLVM::LLVMFuncOp getOmpTargetFree(ModuleOp module) {
+  if (mlir::LLVM::LLVMFuncOp freeFunc =
+          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_free"))
+    return freeFunc;
+  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
+  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
+      moduleBuilder.getUnknownLoc(), "omp_target_free",
+      mlir::LLVM::LLVMFunctionType::get(
+          LLVM::LLVMVoidType::get(module->getContext()),
+          {getLlvmPtrType(module->getContext()), i32Ty},
+          /*isVarArg=*/false));
+}
+
 /// This is the single source of truth about whether we should parallelize an
 /// operation nested in an omp.execute region.
 static bool shouldParallelize(Operation *op) {
@@ -167,8 +209,8 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
 
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
-/// TODO we should hoist out allocations
 /// TODO only include map operands that are used
+/// TODO lifetime analysis to lower amount of memory required for temporaries
 omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto tuple = getNestedOpToIsolate(targetOp);
   if (!tuple) {
@@ -184,20 +226,34 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
                     << targetOp << "\n");
 
   auto loc = targetOp->getLoc();
+  mlir::LLVM::LLVMFuncOp ompTargetAllocFunc =
+      getOmpTargetAlloc(targetOp->getParentOfType<ModuleOp>());
+  mlir::LLVM::LLVMFuncOp ompTargetFreeFunc =
+      getOmpTargetFree(targetOp->getParentOfType<ModuleOp>());
 
   auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
   auto allocTemp = [&](Type ty) {
     // TODO This should be a omp_target_alloc or something equivalent which we
     // currently do not have an easy way to generate so I am ignoring this
     // problem for now
-    auto alloca = rewriter.create<LLVM::AllocaOp>(
+    auto alloc = rewriter.create<LLVM::AllocaOp>(
         loc, ptrTy, ty, genI64Constant(loc, rewriter, 1));
+    Value size = ;
+    Value device = targetOp.getDevice();
+    if (!device) {
+      // TODO is this the correct way to get the default device?
+      device = genI32Constant(loc, rewriter, 0);
+    }
+    auto alloc = rewriter
+            .create<mlir::LLVM::CallOp>(loc, ompTargetAllocFunc,
+                                        SmallVector<Value>({size, device}))
+            ->getResult(0);
     SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
         loc, rewriter.getType<mlir::omp::DataBoundsType>(),
         genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
         nullptr, nullptr, false, nullptr)};
     auto mapInfo = rewriter.create<omp::MapInfoOp>(
-        loc, ptrTy, alloca, ty, /*var_ptr_ptr=*/nullptr, bounds,
+        loc, ptrTy, alloc, ty, /*var_ptr_ptr=*/nullptr, bounds,
         rewriter.getIntegerAttr(
             rewriter.getIntegerType(64, false),
             static_cast<
@@ -574,48 +630,13 @@ static Value getHostValue(Value v, RewriterBase &rewriter, IRMapping &mapping) {
   return rewriter.clone(*op, mapping)->getResult(resNum);
 }
 
-static inline mlir::Type getLlvmPtrType(mlir::MLIRContext *context) {
-  return mlir::LLVM::LLVMPointerType::get(context);
-}
-
-/// Return the LLVMFuncOp corresponding to omp_target_alloc
+/// Hoists out temporary allocations from the target region to the host
 ///
-/// void* omp_target_alloc(size_t size, int device_num);
-///
-/// TODO is the abi correct for all targets?
-static mlir::LLVM::LLVMFuncOp getOmpTargetAlloc(ModuleOp module) {
-  if (mlir::LLVM::LLVMFuncOp mallocFunc =
-          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_alloc"))
-    return mallocFunc;
-  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
-  auto i64Ty = mlir::IntegerType::get(module->getContext(), 64);
-  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
-  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
-      moduleBuilder.getUnknownLoc(), "omp_target_alloc",
-      mlir::LLVM::LLVMFunctionType::get(
-          LLVM::LLVMPointerType::get(module->getContext()), {i64Ty, i32Ty},
-          /*isVarArg=*/false));
-}
-
-/// Return the LLVMFuncOp corresponding to omp_target_free
-///
-/// void omp_target_free(void *device_ptr, int device_num);
-///
-/// TODO is the abi correct for all targets?
-static mlir::LLVM::LLVMFuncOp getOmpTargetFree(ModuleOp module) {
-  if (mlir::LLVM::LLVMFuncOp freeFunc =
-          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_free"))
-    return freeFunc;
-  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
-  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
-  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
-      moduleBuilder.getUnknownLoc(), "omp_target_free",
-      mlir::LLVM::LLVMFunctionType::get(
-          LLVM::LLVMVoidType::get(module->getContext()),
-          {getLlvmPtrType(module->getContext()), i32Ty},
-          /*isVarArg=*/false));
-}
-
+/// TODO should we only do this if we will be splitting this target region, or
+/// always?
+/// TODO we should probably check that the allocation is freed inside the target
+/// region in question (i.e. the pointer does not escape)
+/// TODO lifetime analysis to lower amount of memory required for the mem
 struct HoistAllocs : public OpRewritePattern<LLVM::CallOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(LLVM::CallOp allocMemOp,
