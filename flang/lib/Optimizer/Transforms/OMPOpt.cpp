@@ -27,6 +27,8 @@
 /// NOTE this is done at LLVM level because we do not have an easy way to
 /// allocate temporaries on the target
 ///
+/// TODO there is some in-place operation updating which we should notify the
+/// rewriters about
 
 #include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/Dialect/FIROps.h"
