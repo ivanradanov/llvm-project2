@@ -39,6 +39,7 @@
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/Dialect/Utils/IndexingUtils.h>
 #include <mlir/IR/BlockSupport.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
@@ -207,6 +208,33 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
   return mlir::success();
 }
 
+/// Borrowed from CodeGen.cpp
+///
+/// Helper function for generating the LLVM IR that computes the distance
+/// in bytes between adjacent elements pointed to by a pointer
+/// of type \p ptrTy. The result is returned as a value of \p idxTy integer
+/// type.
+static mlir::Value
+computeElementDistance(mlir::Location loc, mlir::Type llvmObjectType,
+                       mlir::Type idxTy,
+                       mlir::RewriterBase &rewriter) {
+  // Note that we cannot use something like
+  // mlir::LLVM::getPrimitiveTypeSizeInBits() for the element type here. For
+  // example, it returns 10 bytes for mlir::Float80Type for targets where it
+  // occupies 16 bytes. Proper solution is probably to use
+  // mlir::DataLayout::getTypeABIAlignment(), but DataLayout is not being set
+  // yet (see llvm-project#57230). For the time being use the '(intptr_t)((type
+  // *)0 + 1)' trick for all types. The generated instructions are optimized
+  // into constant by the first pass of InstCombine, so it should not be a
+  // performance issue.
+  auto llvmPtrTy = ::getLlvmPtrType(llvmObjectType.getContext());
+  auto nullPtr = rewriter.create<mlir::LLVM::ZeroOp>(loc, llvmPtrTy);
+  auto gep = rewriter.create<mlir::LLVM::GEPOp>(
+      loc, llvmPtrTy, llvmObjectType, nullPtr,
+      llvm::ArrayRef<mlir::LLVM::GEPArg>{1});
+  return rewriter.create<mlir::LLVM::PtrToIntOp>(loc, idxTy, gep);
+}
+
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
 /// TODO only include map operands that are used
@@ -236,9 +264,7 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     // TODO This should be a omp_target_alloc or something equivalent which we
     // currently do not have an easy way to generate so I am ignoring this
     // problem for now
-    auto alloc = rewriter.create<LLVM::AllocaOp>(
-        loc, ptrTy, ty, genI64Constant(loc, rewriter, 1));
-    Value size = ;
+    Value size = computeElementDistance(loc, ty, rewriter.getI64Type(), rewriter);
     Value device = targetOp.getDevice();
     if (!device) {
       // TODO is this the correct way to get the default device?
@@ -248,21 +274,29 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
             .create<mlir::LLVM::CallOp>(loc, ompTargetAllocFunc,
                                         SmallVector<Value>({size, device}))
             ->getResult(0);
+    auto ompHostAlloca = rewriter.create<LLVM::AllocaOp>(
+        loc, ptrTy, ptrTy, genI64Constant(loc, rewriter, 1));
+    rewriter.create<LLVM::StoreOp>(loc, alloc, ompHostAlloca);
     SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
         loc, rewriter.getType<mlir::omp::DataBoundsType>(),
         genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
         nullptr, nullptr, false, nullptr)};
     auto mapInfo = rewriter.create<omp::MapInfoOp>(
-        loc, ptrTy, alloc, ty, /*var_ptr_ptr=*/nullptr, bounds,
+        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr, bounds,
         rewriter.getIntegerAttr(
             rewriter.getIntegerType(64, false),
             static_cast<
                 std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
-                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO |
-                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM)),
+                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO)),
         rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
             mlir::omp::VariableCaptureKind::ByCopy),
         rewriter.getStringAttr("coexecute_tmp"));
+
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointAfter(targetOp);
+    rewriter.create<mlir::LLVM::CallOp>(loc, ompTargetFreeFunc,
+                                        SmallVector<Value>({alloc, device}));
+
     return mapInfo;
   };
 
