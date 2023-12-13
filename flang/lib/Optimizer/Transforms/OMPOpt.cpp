@@ -259,6 +259,10 @@ static void minimizeArgs(omp::TargetOp targetOp) {
 /// TODO lifetime analysis to lower amount of memory required for temporaries
 /// TODO flow mincut analysis to figure out the lowest amount of memory we need
 /// to allocate for the crossing
+/// TODO try to sink top level operations in the parallel regions in order to
+/// avoid having to split them off in a separate omp.target
+/// TODO when we generate loads for the temporaries these should be in the
+/// parallel region
 omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto tuple = getNestedOpToIsolate(targetOp);
   if (!tuple) {
