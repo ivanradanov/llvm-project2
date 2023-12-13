@@ -38,6 +38,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/Dialect/Utils/IndexingUtils.h>
 #include <mlir/IR/BlockSupport.h>
@@ -214,10 +215,10 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
 /// in bytes between adjacent elements pointed to by a pointer
 /// of type \p ptrTy. The result is returned as a value of \p idxTy integer
 /// type.
-static mlir::Value
-computeElementDistance(mlir::Location loc, mlir::Type llvmObjectType,
-                       mlir::Type idxTy,
-                       mlir::RewriterBase &rewriter) {
+static mlir::Value computeElementDistance(mlir::Location loc,
+                                          mlir::Type llvmObjectType,
+                                          mlir::Type idxTy,
+                                          mlir::RewriterBase &rewriter) {
   // Note that we cannot use something like
   // mlir::LLVM::getPrimitiveTypeSizeInBits() for the element type here. For
   // example, it returns 10 bytes for mlir::Float80Type for targets where it
@@ -264,13 +265,15 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     // TODO This should be a omp_target_alloc or something equivalent which we
     // currently do not have an easy way to generate so I am ignoring this
     // problem for now
-    Value size = computeElementDistance(loc, ty, rewriter.getI64Type(), rewriter);
+    Value size =
+        computeElementDistance(loc, ty, rewriter.getI64Type(), rewriter);
     Value device = targetOp.getDevice();
     if (!device) {
       // TODO is this the correct way to get the default device?
       device = genI32Constant(loc, rewriter, 0);
     }
-    auto alloc = rewriter
+    auto alloc =
+        rewriter
             .create<mlir::LLVM::CallOp>(loc, ompTargetAllocFunc,
                                         SmallVector<Value>({size, device}))
             ->getResult(0);
@@ -666,20 +669,34 @@ static Value getHostValue(Value v, RewriterBase &rewriter, IRMapping &mapping) {
 
 /// Hoists out temporary allocations from the target region to the host
 ///
+/// We hoist malloc's which are allocated for temporary storage of arrays
+///
+/// We need to hoist out alloca's as well because these appear when using the
+/// fortran runtime functionss, e.g. @_FortranAAssign which take a pointer to a
+/// struct which describes the array being operated on
+///
 /// TODO should we only do this if we will be splitting this target region, or
 /// always?
 /// TODO we should probably check that the allocation is freed inside the target
 /// region in question (i.e. the pointer does not escape)
 /// TODO lifetime analysis to lower amount of memory required for the mem
-struct HoistAllocs : public OpRewritePattern<LLVM::CallOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(LLVM::CallOp allocMemOp,
+template <typename AllocOpTy>
+struct HoistAllocs : public OpRewritePattern<AllocOpTy> {
+  using OpRewritePattern<AllocOpTy>::OpRewritePattern;
+  LogicalResult matchAndRewrite(AllocOpTy allocMemOp,
                                 PatternRewriter &rewriter) const override {
-    if (auto callee = allocMemOp.getCallee()) {
-      if (*callee != "malloc")
+    // Only these two types supported currently
+    auto callOp = dyn_cast<LLVM::CallOp>(allocMemOp.getOperation());
+    auto allocaOp = dyn_cast<LLVM::AllocaOp>(allocMemOp.getOperation());
+    assert(callOp || allocaOp);
+
+    if (callOp) {
+      if (auto callee = callOp.getCallee()) {
+        if (*callee != "malloc")
+          return failure();
+      } else {
         return failure();
-    } else {
-      return failure();
+      }
     }
 
     auto targetOp = dyn_cast<omp::TargetOp>(allocMemOp->getParentOp());
@@ -690,17 +707,28 @@ struct HoistAllocs : public OpRewritePattern<LLVM::CallOp> {
     auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
 
     mlir::LLVM::LLVMFuncOp ompTargetAllocFunc =
-        getOmpTargetAlloc(allocMemOp->getParentOfType<ModuleOp>());
+        getOmpTargetAlloc(allocMemOp->template getParentOfType<ModuleOp>());
     mlir::LLVM::LLVMFuncOp ompTargetFreeFunc =
-        getOmpTargetFree(allocMemOp->getParentOfType<ModuleOp>());
+        getOmpTargetFree(allocMemOp->template getParentOfType<ModuleOp>());
 
     rewriter.setInsertionPoint(targetOp);
+    Value allocationSize = nullptr;
+    if (callOp) {
+      allocationSize = callOp.getArgOperands()[0];
+    } else if (allocaOp) {
+      allocationSize = computeElementDistance(loc, allocaOp.getType(),
+                                              rewriter.getI64Type(), rewriter);
+      allocationSize = rewriter.create<arith::MulIOp>(loc, allocationSize,
+                                                      allocaOp.getArraySize());
+    } else {
+      llvm_unreachable("Wrong template type");
+    }
+
     IRMapping mapping;
-    mlir::Value size =
-        getHostValue(allocMemOp.getArgOperands()[0], rewriter, mapping);
+    mlir::Value size = getHostValue(allocationSize, rewriter, mapping);
     if (!size) {
       LLVM_DEBUG(dbgs() << TAG << "Could not get host value of "
-                        << allocMemOp.getArgOperands()[0] << "\n");
+                        << allocationSize << "\n");
       return failure();
     }
 
@@ -743,14 +771,16 @@ struct HoistAllocs : public OpRewritePattern<LLVM::CallOp> {
     rewriter.create<mlir::LLVM::CallOp>(loc, ompTargetFreeFunc,
                                         SmallVector<Value>({newAlloc, device}));
 
-    SmallVector<Operation *> frees;
-    for (Operation *user : allocMemOp.getResult().getUsers())
-      if (auto callOp = dyn_cast<LLVM::CallOp>(user))
-        if (auto callee = allocMemOp.getCallee())
-          if (*callee == "free")
-            frees.push_back(user);
-    for (Operation *user : frees)
-      rewriter.eraseOp(user);
+    if (callOp) {
+      SmallVector<Operation *> frees;
+      for (Operation *user : allocMemOp.getResult().getUsers())
+        if (auto callOp = dyn_cast<LLVM::CallOp>(user))
+          if (auto callee = callOp.getCallee())
+            if (*callee == "free")
+              frees.push_back(user);
+      for (Operation *user : frees)
+        rewriter.eraseOp(user);
+    }
 
     rewriter.replaceAllUsesWith(allocMemOp.getResult(), ompDeviceAlloc);
     rewriter.eraseOp(allocMemOp);
@@ -857,7 +887,8 @@ void LLVMOMPOptPass::runOnOperation() {
   // represented as unordered do loops
   {
     RewritePatternSet patterns(&context);
-    patterns.insert<HoistAllocs>(&context);
+    patterns.insert<HoistAllocs<LLVM::CallOp>, HoistAllocs<LLVM::AllocaOp>>(
+        &context);
     if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
       emitError(op->getLoc(), "error in OpenMP optimizations\n");
       signalPassFailure();
