@@ -648,7 +648,6 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   }
 
   // Clone the loop to use the blocks for divergent regions
-  // TODO Figure out what should happen to alloca's we clone...
   unsigned It = 0;
   for (auto &DR : DivergentRegions) {
     DR.DivergentRegionsLoop = cloneLoopWithPreheader(
@@ -664,7 +663,6 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
 
   // Clone the loop once more to use as an epilogue, the original one will be
   // coarsened in-place
-  // TODO Figure out what should happen to alloca's we clone...
   ValueToValueMapTy EpilogueVMap;
   SmallVector<BasicBlock *> EpilogueLoopBlocks;
   Loop *EpilogueLoop =
