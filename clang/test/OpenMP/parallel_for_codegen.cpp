@@ -78,6 +78,40 @@ void static_chunked(float *a, float *b, float *c, float *d) {
 
 }
 
+void ompx_static_coarsen(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for schedule(ompx_static_coarsen, 5)
+// UB = min(UB, GlobalUB)
+
+// Outer loop header
+
+// Loop header
+  for (unsigned i = 131071; i <= 2147483647; i += 127) {
+// Start of body: calculate i from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+// Update the counters, adding stride
+
+}
+
+void ompx_dynamic_coarsen(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for schedule(ompx_dynamic_coarsen, 5)
+// UB = min(UB, GlobalUB)
+
+// Outer loop header
+
+// Loop header
+  for (unsigned i = 131071; i <= 2147483647; i += 127) {
+// Start of body: calculate i from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+// Update the counters, adding stride
+
+}
+
 void dynamic1(float *a, float *b, float *c, float *d) {
   #pragma omp parallel for schedule(dynamic)
 

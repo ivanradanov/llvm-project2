@@ -2922,7 +2922,8 @@ void CodeGenFunction::EmitOMPForOuterLoop(
     const OpenMPScheduleTy &ScheduleKind, bool IsMonotonic,
     const OMPLoopDirective &S, OMPPrivateScope &LoopScope, bool Ordered,
     const OMPLoopArguments &LoopArgs,
-    const CodeGenDispatchBoundsTy &CGDispatchBounds) {
+    const CodeGenDispatchBoundsTy &CGDispatchBounds,
+    const std::optional<llvm::APSInt> EvaluatedChunk) {
   CGOpenMPRuntime &RT = CGM.getOpenMPRuntime();
 
   // Dynamic scheduling of the outer loop (dynamic, guided, auto, runtime).
@@ -3009,6 +3010,7 @@ void CodeGenFunction::EmitOMPForOuterLoop(
     if (Ordered) {
       CGF.CGM.getOpenMPRuntime().emitForOrderedIterationEnd(CGF, Loc, IVSize,
                                                             IVSigned);
+
     }
   };
 
@@ -3021,6 +3023,11 @@ void CodeGenFunction::EmitOMPForOuterLoop(
   OuterLoopArgs.NextUB = S.getNextUpperBound();
   EmitOMPOuterLoop(DynamicOrOrdered, IsMonotonic, S, LoopScope, OuterLoopArgs,
                    emitOMPLoopBodyWithStopPoint, CodeGenOrdered);
+
+  if (RT.isOMPXCoarsen(ScheduleKind.Schedule)) {
+    assert(EvaluatedChunk.has_value());
+    llvm::dbgs() << "TODO Need to attach to_coarsen to loop\n";
+  }
 }
 
 static void emitEmptyOrdered(CodeGenFunction &, SourceLocation Loc,
@@ -3359,6 +3366,7 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
             *this, S, ScheduleKind.Schedule, ChunkExpr);
       }
       bool HasChunkSizeOne = false;
+      std::optional<llvm::APSInt> EvaluatedChunk;
       llvm::Value *Chunk = nullptr;
       if (ChunkExpr) {
         Chunk = EmitScalarExpr(ChunkExpr);
@@ -3367,8 +3375,8 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
                                      S.getBeginLoc());
         Expr::EvalResult Result;
         if (ChunkExpr->EvaluateAsInt(Result, getContext())) {
-          llvm::APSInt EvaluatedChunk = Result.Val.getInt();
-          HasChunkSizeOne = (EvaluatedChunk.getLimitedValue() == 1);
+          EvaluatedChunk = Result.Val.getInt();
+          HasChunkSizeOne = (EvaluatedChunk->getLimitedValue() == 1);
         }
       }
       const unsigned IVSize = getContext().getTypeSize(IVExpr->getType());
@@ -3462,7 +3470,7 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
             LB.getAddress(*this), UB.getAddress(*this), ST.getAddress(*this),
             IL.getAddress(*this), Chunk, EUB);
         EmitOMPForOuterLoop(ScheduleKind, IsMonotonic, S, LoopScope, Ordered,
-                            LoopArguments, CGDispatchBounds);
+                            LoopArguments, CGDispatchBounds, EvaluatedChunk);
       }
       if (isOpenMPSimdDirective(S.getDirectiveKind())) {
         EmitOMPSimdFinal(S, [IL, &S](CodeGenFunction &CGF) {
@@ -3858,6 +3866,8 @@ static bool isSupportedByOpenMPIRBuilder(const OMPForDirective &S) {
       case OMPC_SCHEDULE_runtime:
       case OMPC_SCHEDULE_guided:
       case OMPC_SCHEDULE_static:
+      case OMPC_SCHEDULE_ompx_static_coarsen:
+      case OMPC_SCHEDULE_ompx_dynamic_coarsen:
         continue;
       case OMPC_SCHEDULE_unknown:
         return false;
@@ -3878,12 +3888,14 @@ convertClauseKindToSchedKind(OpenMPScheduleClauseKind ScheduleClauseKind) {
   case OMPC_SCHEDULE_auto:
     return llvm::omp::OMP_SCHEDULE_Auto;
   case OMPC_SCHEDULE_dynamic:
+  case OMPC_SCHEDULE_ompx_dynamic_coarsen:
     return llvm::omp::OMP_SCHEDULE_Dynamic;
   case OMPC_SCHEDULE_guided:
     return llvm::omp::OMP_SCHEDULE_Guided;
   case OMPC_SCHEDULE_runtime:
     return llvm::omp::OMP_SCHEDULE_Runtime;
   case OMPC_SCHEDULE_static:
+  case OMPC_SCHEDULE_ompx_static_coarsen:
     return llvm::omp::OMP_SCHEDULE_Static;
   }
   llvm_unreachable("Unhandled schedule kind");

@@ -880,6 +880,8 @@ public:
   virtual bool isStaticNonchunked(OpenMPScheduleClauseKind ScheduleKind,
                                   bool Chunked) const;
 
+  virtual bool isOMPXCoarsen(OpenMPScheduleClauseKind ScheduleKind) const;
+
   /// Check if the specified \a ScheduleKind is static non-chunked.
   /// This kind of distribute directive is emitted without outer loop.
   /// \param ScheduleKind Schedule kind specified in the 'dist_schedule' clause.

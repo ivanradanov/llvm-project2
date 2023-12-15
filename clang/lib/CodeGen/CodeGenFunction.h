@@ -3808,7 +3808,8 @@ private:
                            bool IsMonotonic, const OMPLoopDirective &S,
                            OMPPrivateScope &LoopScope, bool Ordered,
                            const OMPLoopArguments &LoopArgs,
-                           const CodeGenDispatchBoundsTy &CGDispatchBounds);
+                           const CodeGenDispatchBoundsTy &CGDispatchBounds,
+                           const std::optional<llvm::APSInt> EvaluatedChunk);
   void EmitOMPDistributeOuterLoop(OpenMPDistScheduleClauseKind ScheduleKind,
                                   const OMPLoopDirective &S,
                                   OMPPrivateScope &LoopScope,

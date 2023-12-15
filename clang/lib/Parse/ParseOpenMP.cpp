@@ -3915,7 +3915,9 @@ OMPClause *Parser::ParseOpenMPSingleExprWithArgClause(OpenMPDirectiveKind DKind,
       ConsumeAnyToken();
     if ((Arg[ScheduleKind] == OMPC_SCHEDULE_static ||
          Arg[ScheduleKind] == OMPC_SCHEDULE_dynamic ||
-         Arg[ScheduleKind] == OMPC_SCHEDULE_guided) &&
+         Arg[ScheduleKind] == OMPC_SCHEDULE_guided ||
+         Arg[ScheduleKind] == OMPC_SCHEDULE_ompx_static_coarsen ||
+         Arg[ScheduleKind] == OMPC_SCHEDULE_ompx_dynamic_coarsen) &&
         Tok.is(tok::comma))
       DelimLoc = ConsumeAnyToken();
   } else if (Kind == OMPC_dist_schedule) {

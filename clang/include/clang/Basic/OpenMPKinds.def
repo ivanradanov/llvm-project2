@@ -93,6 +93,8 @@ OPENMP_SCHEDULE_KIND(dynamic)
 OPENMP_SCHEDULE_KIND(guided)
 OPENMP_SCHEDULE_KIND(auto)
 OPENMP_SCHEDULE_KIND(runtime)
+OPENMP_SCHEDULE_KIND(ompx_static_coarsen)
+OPENMP_SCHEDULE_KIND(ompx_dynamic_coarsen)
 
 // Modifiers for 'schedule' clause.
 OPENMP_SCHEDULE_MODIFIER(monotonic)
@@ -177,6 +179,7 @@ OPENMP_MOTION_MODIFIER_KIND(present)
 
 // Static attributes for 'dist_schedule' clause.
 OPENMP_DIST_SCHEDULE_KIND(static)
+OPENMP_DIST_SCHEDULE_KIND(ompx_static_coarsen)
 
 // Device types for 'device_type' clause.
 OPENMP_DEVICE_TYPE_KIND(host)

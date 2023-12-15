@@ -551,6 +551,10 @@ enum OpenMPSchedType {
   OMP_sch_modifier_monotonic = (1 << 29),
   /// Set if the nonmonotonic schedule modifier was present.
   OMP_sch_modifier_nonmonotonic = (1 << 30),
+  /// OpenMP extension schedule types
+  OMP_sch_ompx_static_coarsen = 512,
+  OMP_sch_ompx_dynamic_coarsen = 513,
+  OMP_dist_sch_ompx_static_coarsen = 514,
 };
 
 /// A basic class for pre|post-action for advanced codegen sequence for OpenMP
@@ -2413,6 +2417,10 @@ static OpenMPSchedType getRuntimeSchedule(OpenMPScheduleClauseKind ScheduleKind,
     return Ordered ? OMP_ord_runtime : OMP_sch_runtime;
   case OMPC_SCHEDULE_auto:
     return Ordered ? OMP_ord_auto : OMP_sch_auto;
+  case OMPC_SCHEDULE_ompx_static_coarsen:
+    return OMP_sch_ompx_static_coarsen;
+  case OMPC_SCHEDULE_ompx_dynamic_coarsen:
+    return OMP_sch_ompx_dynamic_coarsen;
   case OMPC_SCHEDULE_unknown:
     assert(!Chunked && "chunk was specified but schedule kind not known");
     return Ordered ? OMP_ord_static : OMP_sch_static;
@@ -2440,11 +2448,20 @@ bool CGOpenMPRuntime::isStaticNonchunked(
   return Schedule == OMP_dist_sch_static;
 }
 
+bool CGOpenMPRuntime::isOMPXCoarsen(
+    OpenMPScheduleClauseKind ScheduleKind) const {
+  OpenMPSchedType Schedule =
+      getRuntimeSchedule(ScheduleKind, /*Chunked=*/true, /*Ordered=*/false);
+  return Schedule == OMP_sch_ompx_static_coarsen ||
+         Schedule == OMP_sch_ompx_dynamic_coarsen;
+}
+
 bool CGOpenMPRuntime::isStaticChunked(OpenMPScheduleClauseKind ScheduleKind,
                                       bool Chunked) const {
   OpenMPSchedType Schedule =
       getRuntimeSchedule(ScheduleKind, Chunked, /*Ordered=*/false);
-  return Schedule == OMP_sch_static_chunked;
+  return Schedule == OMP_sch_static_chunked ||
+         Schedule == OMP_sch_ompx_static_coarsen;
 }
 
 bool CGOpenMPRuntime::isStaticChunked(
@@ -2457,7 +2474,7 @@ bool CGOpenMPRuntime::isDynamic(OpenMPScheduleClauseKind ScheduleKind) const {
   OpenMPSchedType Schedule =
       getRuntimeSchedule(ScheduleKind, /*Chunked=*/false, /*Ordered=*/false);
   assert(Schedule != OMP_sch_static_chunked && "cannot be chunked here");
-  return Schedule != OMP_sch_static;
+  return Schedule != OMP_sch_static && Schedule != OMP_sch_ompx_static_coarsen;
 }
 
 static int addMonoNonMonoModifier(CodeGenModule &CGM, OpenMPSchedType Schedule,
@@ -2505,7 +2522,9 @@ static int addMonoNonMonoModifier(CodeGenModule &CGM, OpenMPSchedType Schedule,
           Schedule == OMP_sch_static_balanced_chunked ||
           Schedule == OMP_ord_static_chunked || Schedule == OMP_ord_static ||
           Schedule == OMP_dist_sch_static_chunked ||
-          Schedule == OMP_dist_sch_static))
+          Schedule == OMP_dist_sch_static ||
+          Schedule == OMP_sch_ompx_static_coarsen ||
+          Schedule == OMP_dist_sch_ompx_static_coarsen))
       Modifier = OMP_sch_modifier_nonmonotonic;
   }
   return Schedule | Modifier;
@@ -2522,7 +2541,8 @@ void CGOpenMPRuntime::emitForDispatchInit(
   assert(Ordered ||
          (Schedule != OMP_sch_static && Schedule != OMP_sch_static_chunked &&
           Schedule != OMP_ord_static && Schedule != OMP_ord_static_chunked &&
-          Schedule != OMP_sch_static_balanced_chunked));
+          Schedule != OMP_sch_static_balanced_chunked &&
+          Schedule != OMP_sch_ompx_static_coarsen));
   // Call __kmpc_dispatch_init(
   //          ident_t *loc, kmp_int32 tid, kmp_int32 schedule,
   //          kmp_int[32|64] lower, kmp_int[32|64] upper,
@@ -2558,7 +2578,9 @@ static void emitForStaticInitCall(
          Schedule == OMP_sch_static_balanced_chunked ||
          Schedule == OMP_ord_static || Schedule == OMP_ord_static_chunked ||
          Schedule == OMP_dist_sch_static ||
-         Schedule == OMP_dist_sch_static_chunked);
+         Schedule == OMP_dist_sch_static_chunked ||
+         Schedule == OMP_sch_ompx_static_coarsen ||
+         Schedule == OMP_dist_sch_ompx_static_coarsen);
 
   // Call __kmpc_for_static_init(
   //          ident_t *loc, kmp_int32 tid, kmp_int32 schedtype,
@@ -2576,7 +2598,9 @@ static void emitForStaticInitCall(
     assert((Schedule == OMP_sch_static_chunked ||
             Schedule == OMP_sch_static_balanced_chunked ||
             Schedule == OMP_ord_static_chunked ||
-            Schedule == OMP_dist_sch_static_chunked) &&
+            Schedule == OMP_dist_sch_static_chunked ||
+            Schedule == OMP_dist_sch_ompx_static_coarsen ||
+            Schedule == OMP_sch_ompx_static_coarsen) &&
            "expected static chunked schedule");
   }
   llvm::Value *Args[] = {
