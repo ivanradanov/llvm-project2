@@ -2095,13 +2095,29 @@ void CodeGenFunction::EmitOMPInnerLoop(
   const Stmt *SS = ICS->getCapturedStmt();
   const AttributedStmt *AS = dyn_cast_or_null<AttributedStmt>(SS);
   OMPLoopNestStack.clear();
-  if (AS)
-    LoopStack.push(CondBlock, CGM.getContext(), CGM.getCodeGenOpts(),
-                   AS->getAttrs(), SourceLocToDebugLoc(R.getBegin()),
-                   SourceLocToDebugLoc(R.getEnd()));
-  else
-    LoopStack.push(CondBlock, SourceLocToDebugLoc(R.getBegin()),
-                   SourceLocToDebugLoc(R.getEnd()));
+  SmallVector<const Attr *> Attrs;
+  if (AS) {
+    auto Attrs = AS->getAttrs();
+    Attrs = SmallVector<const Attr *>(Attrs.begin(), Attrs.end());
+  }
+  for (auto *ScheduleClause : S.getClausesOfKind<OMPScheduleClause>()) {
+    if (ScheduleClause->getScheduleKind() ==
+            OMPC_SCHEDULE_ompx_static_coarsen ||
+        ScheduleClause->getScheduleKind() ==
+            OMPC_SCHEDULE_ompx_dynamic_coarsen) {
+      Expr::EvalResult Result;
+      if (ScheduleClause->getChunkSize()->EvaluateAsInt(Result, getContext())) {
+        llvm::APSInt EvaluatedChunk = Result.Val.getInt();
+        Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(),
+                                                EvaluatedChunk.getExtValue()));
+      } else {
+        llvm_unreachable("should have been checked in sema");
+      }
+    }
+  }
+  LoopStack.push(CondBlock, CGM.getContext(), CGM.getCodeGenOpts(),
+                 Attrs, SourceLocToDebugLoc(R.getBegin()),
+                 SourceLocToDebugLoc(R.getEnd()));
 
   // If there are any cleanups between here and the loop-exit scope,
   // create a block to stage a loop exit along.
@@ -3023,11 +3039,6 @@ void CodeGenFunction::EmitOMPForOuterLoop(
   OuterLoopArgs.NextUB = S.getNextUpperBound();
   EmitOMPOuterLoop(DynamicOrOrdered, IsMonotonic, S, LoopScope, OuterLoopArgs,
                    emitOMPLoopBodyWithStopPoint, CodeGenOrdered);
-
-  if (RT.isOMPXCoarsen(ScheduleKind.Schedule)) {
-    assert(EvaluatedChunk.has_value());
-    llvm::dbgs() << "TODO Need to attach to_coarsen to loop\n";
-  }
 }
 
 static void emitEmptyOrdered(CodeGenFunction &, SourceLocation Loc,

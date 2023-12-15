@@ -17517,8 +17517,19 @@ OMPClause *Sema::ActOnOpenMPScheduleClause(
         llvm::MapVector<const Expr *, DeclRefExpr *> Captures;
         ValExpr = tryBuildCapture(*this, ValExpr, Captures).get();
         HelperValStmt = buildPreInits(Context, Captures);
+        if (Kind == OMPC_SCHEDULE_ompx_static_coarsen ||
+            Kind == OMPC_SCHEDULE_ompx_dynamic_coarsen) {
+          Diag(KindLoc, diag::err_omp_unexpected_clause_value)
+              << "constant chunk size needed when coarsening";
+          return nullptr;
+        }
       }
     }
+  } else {
+    if (Kind == OMPC_SCHEDULE_ompx_static_coarsen ||
+        Kind == OMPC_SCHEDULE_ompx_dynamic_coarsen)
+      Diag(KindLoc, diag::err_omp_unexpected_clause_value)
+          << "no chunk size provided when coarsening";
   }
 
   return new (Context)

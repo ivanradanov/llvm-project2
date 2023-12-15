@@ -3847,11 +3847,11 @@ def LoopHint : Attr {
   /// State of the loop optimization specified by the spelling.
   let Args = [EnumArgument<"Option", "OptionType",
                           ["vectorize", "vectorize_width", "interleave", "interleave_count",
-                           "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count",
+                           "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count", "unroll_and_interleave_count",
                            "pipeline", "pipeline_initiation_interval", "distribute",
                            "vectorize_predicate"],
                           ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount",
-                           "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount",
+                           "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount", "UnrollAndInterleaveCount",
                            "PipelineDisabled", "PipelineInitiationInterval", "Distribute",
                            "VectorizePredicate"]>,
               EnumArgument<"State", "LoopHintState",
@@ -3872,6 +3872,7 @@ def LoopHint : Attr {
     case UnrollCount: return "unroll_count";
     case UnrollAndJam: return "unroll_and_jam";
     case UnrollAndJamCount: return "unroll_and_jam_count";
+    case UnrollAndInterleaveCount: return "unroll_and_interleave_count";
     case PipelineDisabled: return "pipeline";
     case PipelineInitiationInterval: return "pipeline_initiation_interval";
     case Distribute: return "distribute";
@@ -3899,6 +3900,13 @@ def CapturedRecord : InheritableAttr {
   let Spellings = [];
   let SemaHandler = 0;
   let Documentation = [InternalOnly];
+}
+
+def OMPXCoarsen : StmtAttr {
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Documentation = [InternalOnly];
+  let Args = [UnsignedArgument<"Factor", /*opt*/1>];
 }
 
 def OMPThreadPrivateDecl : InheritableAttr {

@@ -17,6 +17,7 @@
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/Support/Debug.h"
 #include <optional>
 using namespace clang::CodeGen;
 using namespace llvm;
@@ -376,6 +377,40 @@ LoopInfo::createLoopDistributeMetadata(const LoopAttributes &Attrs,
   return LoopID;
 }
 
+MDNode *LoopInfo::createUnrollAndInterleaveMetadata(const LoopAttributes &Attrs,
+                                                    ArrayRef<Metadata *> LoopProperties,
+                                                    bool &HasUserTransforms) {
+  LLVMContext &Ctx = Header->getContext();
+
+  bool Enabled = Attrs.UnrollAndInterleaveCount > 1;
+
+  if (Enabled != true) {
+    SmallVector<Metadata *, 4> NewLoopProperties;
+    if (Enabled == false) {
+      NewLoopProperties.append(LoopProperties.begin(), LoopProperties.end());
+      NewLoopProperties.push_back(
+          MDNode::get(Ctx, MDString::get(Ctx, "llvm.loop.unroll_and_interleave.disable")));
+      LoopProperties = NewLoopProperties;
+    }
+    return createLoopDistributeMetadata(Attrs, LoopProperties,
+                                        HasUserTransforms);
+  }
+
+  SmallVector<Metadata *, 4> Args;
+  Args.push_back(nullptr);
+  Args.append(LoopProperties.begin(), LoopProperties.end());
+  Metadata *Vals[] = {
+    MDString::get(Ctx, "llvm.loop.unroll_and_interleave.count"),
+    ConstantAsMetadata::get(ConstantInt::get(llvm::Type::getInt32Ty(Ctx),
+                                             Attrs.UnrollAndInterleaveCount))};
+  Args.push_back(MDNode::get(Ctx, Vals));
+
+  MDNode *LoopID = MDNode::getDistinct(Ctx, Args);
+  LoopID->replaceOperandWith(0, LoopID);
+  HasUserTransforms = true;
+  return LoopID;
+}
+
 MDNode *LoopInfo::createFullUnrollMetadata(const LoopAttributes &Attrs,
                                            ArrayRef<Metadata *> LoopProperties,
                                            bool &HasUserTransforms) {
@@ -395,7 +430,7 @@ MDNode *LoopInfo::createFullUnrollMetadata(const LoopAttributes &Attrs,
           MDNode::get(Ctx, MDString::get(Ctx, "llvm.loop.unroll.disable")));
       LoopProperties = NewLoopProperties;
     }
-    return createLoopDistributeMetadata(Attrs, LoopProperties,
+    return createUnrollAndInterleaveMetadata(Attrs, LoopProperties,
                                         HasUserTransforms);
   }
 
@@ -459,7 +494,7 @@ LoopAttributes::LoopAttributes(bool IsParallel)
       UnrollAndJamEnable(LoopAttributes::Unspecified),
       VectorizePredicateEnable(LoopAttributes::Unspecified), VectorizeWidth(0),
       VectorizeScalable(LoopAttributes::Unspecified), InterleaveCount(0),
-      UnrollCount(0), UnrollAndJamCount(0),
+      UnrollCount(0), UnrollAndJamCount(0), UnrollAndInterleaveCount(0),
       DistributeEnable(LoopAttributes::Unspecified), PipelineDisabled(false),
       PipelineInitiationInterval(0), CodeAlign(0), MustProgress(false) {}
 
@@ -470,6 +505,7 @@ void LoopAttributes::clear() {
   InterleaveCount = 0;
   UnrollCount = 0;
   UnrollAndJamCount = 0;
+  UnrollAndInterleaveCount = 0;
   VectorizeEnable = LoopAttributes::Unspecified;
   UnrollEnable = LoopAttributes::Unspecified;
   UnrollAndJamEnable = LoopAttributes::Unspecified;
@@ -612,9 +648,11 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
     const LoopHintAttr *LH = dyn_cast<LoopHintAttr>(Attr);
     const OpenCLUnrollHintAttr *OpenCLHint =
         dyn_cast<OpenCLUnrollHintAttr>(Attr);
+    const OMPXCoarsenAttr *OMPXCoarsen =
+        dyn_cast<OMPXCoarsenAttr>(Attr);
 
     // Skip non loop hint attributes
-    if (!LH && !OpenCLHint) {
+    if (!LH && !OpenCLHint && !OMPXCoarsen) {
       continue;
     }
 
@@ -635,6 +673,14 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         Option = LoopHintAttr::UnrollCount;
         State = LoopHintAttr::Numeric;
       }
+    } else if (OMPXCoarsen) {
+      ValueInt = OMPXCoarsen->getFactor();
+      assert(ValueInt >= 1);
+      if (ValueInt != 1) {
+        Option = LoopHintAttr::UnrollAndInterleaveCount;
+        State = LoopHintAttr::Numeric;
+      }
+
     } else if (LH) {
       auto *ValueExpr = LH->getValue();
       if (ValueExpr) {
@@ -674,6 +720,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         break;
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::UnrollAndInterleaveCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::PipelineInitiationInterval:
@@ -701,6 +748,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         break;
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::UnrollAndInterleaveCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::PipelineDisabled:
@@ -722,6 +770,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::VectorizePredicate:
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::UnrollAndInterleaveCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::Distribute:
@@ -743,6 +792,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::Interleave:
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::UnrollAndInterleaveCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::Distribute:
@@ -778,6 +828,9 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         break;
       case LoopHintAttr::UnrollAndJamCount:
         setUnrollAndJamCount(ValueInt);
+        break;
+      case LoopHintAttr::UnrollAndInterleaveCount:
+        setUnrollAndInterleaveCount(ValueInt);
         break;
       case LoopHintAttr::PipelineInitiationInterval:
         setPipelineInitiationInterval(ValueInt);

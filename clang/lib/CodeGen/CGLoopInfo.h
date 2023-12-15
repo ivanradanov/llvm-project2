@@ -70,6 +70,8 @@ struct LoopAttributes {
   /// llvm.unroll.
   unsigned UnrollAndJamCount;
 
+  unsigned UnrollAndInterleaveCount;
+
   /// Value for llvm.loop.distribute.enable metadata.
   LVEnableState DistributeEnable;
 
@@ -159,6 +161,11 @@ private:
   createPartialUnrollMetadata(const LoopAttributes &Attrs,
                               llvm::ArrayRef<llvm::Metadata *> LoopProperties,
                               bool &HasUserTransforms);
+  llvm::MDNode *
+  createUnrollAndInterleaveMetadata(const LoopAttributes &Attrs,
+                                    llvm::ArrayRef<llvm::Metadata *> LoopProperties,
+                                    bool &HasUserTransforms);
+
   llvm::MDNode *
   createUnrollAndJamMetadata(const LoopAttributes &Attrs,
                              llvm::ArrayRef<llvm::Metadata *> LoopProperties,
@@ -276,6 +283,9 @@ public:
 
   /// \brief Set the unroll count for the next loop pushed.
   void setUnrollAndJamCount(unsigned C) { StagedAttrs.UnrollAndJamCount = C; }
+
+  /// \brief Set the unroll count for the next loop pushed.
+  void setUnrollAndInterleaveCount(unsigned C) { StagedAttrs.UnrollAndInterleaveCount = C; }
 
   /// Set the pipeline disabled state.
   void setPipelineDisabled(bool S) { StagedAttrs.PipelineDisabled = S; }
