@@ -173,29 +173,15 @@ public:
                                    ScalarEvolution &SE, PostDominatorTree &PDT);
 };
 
-static bool isWorkShareLoop(Loop *L) {
-  if (!L->isOutermost())
-    return false;
-
-  Function *F = L->getHeader()->getParent();
-  for (BasicBlock &BB : *F)
-    for (Instruction &I : BB)
-      if (CallInst *CI = dyn_cast<CallInst>(&I))
-        if (Function *CF = CI->getCalledFunction())
-          if (CF->getName().starts_with("__kmpc_for_static_init"))
-            return true;
-
-  return false;
-}
-
 static void setLoopAlreadyCoarsened(Loop *L) {
   LLVMContext &Context = L->getHeader()->getContext();
 
-  MDNode *DisableUnrollMD =
-      MDNode::get(Context, MDString::get(Context, "llvm.loop.coarsen.disable"));
+  MDNode *DisableUnrollMD = MDNode::get(
+      Context,
+      MDString::get(Context, "llvm.loop.unroll_and_interleave.disable"));
   MDNode *LoopID = L->getLoopID();
   MDNode *NewLoopID = makePostTransformationMetadata(
-      Context, LoopID, {"llvm.loop.coarsen."}, {DisableUnrollMD});
+      Context, LoopID, {"llvm.loop.unroll_and_interleave."}, {DisableUnrollMD});
   L->setLoopID(NewLoopID);
 }
 
@@ -205,8 +191,22 @@ static MDNode *getUnrollMetadataForLoop(const Loop *L, StringRef Name) {
   return nullptr;
 }
 
+static unsigned getLoopCoarseningFactor(Loop *L) {
+  MDNode *MD =
+      getUnrollMetadataForLoop(L, "llvm.loop.unroll-and-interleave.count");
+  if (MD) {
+    assert(MD->getNumOperands() == 2 &&
+           "Unroll count hint metadata should have two operands.");
+    unsigned Count =
+        mdconst::extract<ConstantInt>(MD->getOperand(1))->getZExtValue();
+    assert(Count >= 1 && "Unroll and interleave factor must be positive.");
+    return Count;
+  }
+  return 0;
+}
+
 static bool getLoopAlreadyCoarsened(Loop *L) {
-  return getUnrollMetadataForLoop(L, "llvm.loop.coarsen.disable");
+  return getUnrollMetadataForLoop(L, "llvm.loop.unroll_and_interleave.disable");
 }
 
 #define DBGS llvm::dbgs() << "LUAI: "
@@ -578,11 +578,6 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   LLVM_DEBUG(DBGS << "F[" << F->getName() << "] Loop %"
                   << L->getHeader()->getName() << " "
                   << "Parallel=" << L->isAnnotatedParallel() << "\n");
-
-  if (getLoopAlreadyCoarsened(L)) {
-    LLVM_DEBUG(DBGS_FAIL << "Already coarsened\n");
-    return LoopUnrollResult::Unmodified;
-  }
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
@@ -1091,20 +1086,25 @@ LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
   auto *F = L.getHeader()->getParent();
   OptimizationRemarkEmitter ORE(F);
 
-  unsigned UnrollFactor = UnrollFactorOpt;
-  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR"))
+  if (getLoopAlreadyCoarsened(&L)) {
+    LLVM_DEBUG(DBGS_FAIL << "Coarsening disabled\n");
+    return PreservedAnalyses::all();
+  }
+  auto UnrollFactor = getLoopCoarseningFactor(&L);
+  if (UnrollFactor == 0) {
+    LLVM_DEBUG(DBGS_FAIL << "Coarsening metadata missing - ignoring\n");
+    return PreservedAnalyses::all();
+  }
+  if (UnrollFactorOpt.getNumOccurrences() > 0) {
+    LLVM_DEBUG(DBGS << "Setting factor from cl opt\n");
+    UnrollFactor = UnrollFactorOpt;
+  }
+  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR")) {
+    LLVM_DEBUG(DBGS << "Setting factor from env var\n");
     StringRef(Env).getAsInteger(10, UnrollFactor);
-  if (UnrollFactor == 1) {
-    LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
-    return PreservedAnalyses::all();
   }
-  if (UnrollFactor < 1) {
-    LLVM_DEBUG(DBGS << "Unroll factor of less than 1 - ignoring\n");
-    return PreservedAnalyses::all();
-  }
-
-  if (!isWorkShareLoop(&L)) {
-    LLVM_DEBUG(DBGS_FAIL << "Not work share loop\n");
+  if (UnrollFactor <= 1) {
+    LLVM_DEBUG(DBGS_FAIL << "Coarsening factor of 1 or 0 - ignoring\n");
     return PreservedAnalyses::all();
   }
 
@@ -1134,10 +1134,10 @@ bool llvm::loopUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
                                    ScalarEvolution &SE,
                                    PostDominatorTree &PDT) {
   if (UnrollFactor <= 1) {
-    LLVM_DEBUG(DBGS << "Unroll factor of 1 - ignoring\n");
+    LLVM_DEBUG(DBGS << "Unroll factor of 1 or 0 - ignoring\n");
     return false;
   }
-  return LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence)
+  return LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergenceOpt)
              .tryToUnrollLoop(L, DT, &LI, SE, PDT) !=
          LoopUnrollResult::Unmodified;
 }
