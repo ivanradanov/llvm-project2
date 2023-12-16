@@ -104,6 +104,7 @@
 #include "llvm/Transforms/Scalar/LoopRotation.h"
 #include "llvm/Transforms/Scalar/LoopSimplifyCFG.h"
 #include "llvm/Transforms/Scalar/LoopSink.h"
+#include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
 #include "llvm/Transforms/Scalar/LoopUnrollAndJamPass.h"
 #include "llvm/Transforms/Scalar/LoopUnrollPass.h"
 #include "llvm/Transforms/Scalar/LoopVersioningLICM.h"
@@ -1409,6 +1410,7 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   //        this may need to be revisited once we run GVN before loop deletion
   //        in the simplification pipeline.
   LPM.addPass(LoopDeletionPass());
+  LPM.addPass(LoopUnrollAndInterleavePass());
   OptimizePM.addPass(createFunctionToLoopPassAdaptor(
       std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
 
@@ -1451,11 +1453,6 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
                                                 PTO.EagerlyInvalidateAnalyses));
 
   invokeOptimizerLastEPCallbacks(MPM, Level);
-
-  // Perform OpenMP optimizations that work better on optimized loops,
-  // especially LICM and LoopRotate (coarsening) - TODO for GPUs this should be
-  // fine but for CPUs should this be before vectorization?
-  MPM.addPass(OpenMPOptPass());
 
   // Split out cold code. Splitting is done late to avoid hiding context from
   // other optimizations and inadvertently regressing performance. The tradeoff
