@@ -193,7 +193,7 @@ static MDNode *getUnrollMetadataForLoop(const Loop *L, StringRef Name) {
 
 static unsigned getLoopCoarseningFactor(Loop *L) {
   MDNode *MD =
-      getUnrollMetadataForLoop(L, "llvm.loop.unroll-and-interleave.count");
+      getUnrollMetadataForLoop(L, "llvm.loop.unroll_and_interleave.count");
   if (MD) {
     assert(MD->getNumOperands() == 2 &&
            "Unroll count hint metadata should have two operands.");
