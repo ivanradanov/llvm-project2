@@ -2097,8 +2097,8 @@ void CodeGenFunction::EmitOMPInnerLoop(
   OMPLoopNestStack.clear();
   SmallVector<const Attr *> Attrs;
   if (AS) {
-    auto Attrs = AS->getAttrs();
-    Attrs = SmallVector<const Attr *>(Attrs.begin(), Attrs.end());
+    auto SA = AS->getAttrs();
+    Attrs = SmallVector<const Attr *>(SA.begin(), SA.end());
   }
   for (auto *ScheduleClause : S.getClausesOfKind<OMPScheduleClause>()) {
     if (ScheduleClause->getScheduleKind() ==
