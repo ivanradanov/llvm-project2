@@ -1410,7 +1410,6 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   //        this may need to be revisited once we run GVN before loop deletion
   //        in the simplification pipeline.
   LPM.addPass(LoopDeletionPass());
-  LPM.addPass(LoopUnrollAndInterleavePass());
   OptimizePM.addPass(createFunctionToLoopPassAdaptor(
       std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
 
@@ -1451,6 +1450,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // Add the core optimizing pipeline.
   MPM.addPass(createModuleToFunctionPassAdaptor(std::move(OptimizePM),
                                                 PTO.EagerlyInvalidateAnalyses));
+
+  MPM.addPass(LoopUnrollAndInterleavePass());
 
   invokeOptimizerLastEPCallbacks(MPM, Level);
 
