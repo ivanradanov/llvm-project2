@@ -49,9 +49,9 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[TMP10:%.*]] = mul nsw i64 [[TMP9]], [[TMP2]]
 ; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP10]], [[TMP1]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODYEPILOGUE_START_CHECK_ORIGINAL_END_CHECK:%.*]]
-; CHECK:       omp.inner.for.bodyepilogue.start.check.original.end.check:
-; CHECK-NEXT:    [[DOTOMP_IV_017:%.*]] = phi i64 [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD8:%.*]], [[OMP_INNER_FOR_BODY:%.*]] ]
+; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
+; CHECK:       omp.inner.for.body:
+; CHECK-NEXT:    [[DOTOMP_IV_017:%.*]] = phi i64 [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD8:%.*]], [[OMP_INNER_FOR_BODY]] ]
 ; CHECK-NEXT:    [[DOTOMP_IV_017_COARSENED_1:%.*]] = phi i64 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD8_COARSENED_1:%.*]], [[OMP_INNER_FOR_BODY]] ]
 ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017]]
 ; CHECK-NEXT:    [[ARRAYIDX_COARSENED_1:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_COARSENED_1]]
@@ -65,21 +65,19 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[ADD8_COARSENED_1]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_017_COARSENED_1]]
 ; CHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD8]], [[ADD]]
 ; CHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD8_COARSENED_1]], [[ADD]]
+; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY]], label [[COARSENED_END_CHECK:%.*]], !llvm.loop [[LOOP18:![0-9]+]]
+; CHECK:       coarsened.end.check:
 ; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD8]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], label [[OMP_INNER_FOR_BODYEPILOGUE_START_CHECK:%.*]]
-; CHECK:       omp.inner.for.bodyepilogue.start.check:
-; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_INNER_FOR_BODY]]
-; CHECK:       omp.inner.for.body:
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODYEPILOGUE_START_CHECK_ORIGINAL_END_CHECK]], label [[OMP_LOOP_EXIT_LOOPEXIT]]
+; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; CHECK:       omp.inner.for.body.epilogue:
-; CHECK-NEXT:    [[DOTOMP_IV_017_EPILOGUE:%.*]] = phi i64 [ [[ADD8]], [[OMP_INNER_FOR_BODYEPILOGUE_START_CHECK]] ], [ [[ADD8_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_017_EPILOGUE:%.*]] = phi i64 [ [[ADD8]], [[COARSENED_END_CHECK]] ], [ [[ADD8_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; CHECK-NEXT:    [[ARRAYIDX_EPILOGUE:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_EPILOGUE]]
 ; CHECK-NEXT:    [[TMP12:%.*]] = load i32, ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[ADD6_EPILOGUE:%.*]] = add nsw i32 [[TMP12]], 100000
 ; CHECK-NEXT:    store i32 [[ADD6_EPILOGUE]], ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[ADD8_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_017_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD8_EPILOGUE]], [[ADD]]
-; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP18:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP20:![0-9]+]]
 ; CHECK:       omp.loop.exit.loopexit:
 ; CHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; CHECK:       omp.loop.exit:
@@ -124,7 +122,7 @@ omp.inner.for.body:                               ; preds = %omp.inner.for.body,
   store i32 %add6, ptr %arrayidx, align 4, !tbaa !17
   %add8 = add i64 %2, %.omp.iv.017
   %cmp4 = icmp ult i64 %add8, %add
-  br i1 %cmp4, label %omp.inner.for.body, label %omp.loop.exit
+  br i1 %cmp4, label %omp.inner.for.body, label %omp.loop.exit, !llvm.loop !45
 
 omp.loop.exit:                                    ; preds = %omp.inner.for.body, %omp.precond.then
   call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @anon.28ae86189fb9e802c4de080914343e0f.2 to ptr), i32 %0) #2
@@ -167,3 +165,5 @@ attributes #6 = { nounwind memory(readwrite) }
 !18 = !{!"int", !15, i64 0}
 !19 = !{!20, !20, i64 0}
 !20 = !{!"any pointer", !15, i64 0}
+!45 = distinct !{!45, !46}
+!46 = !{!"llvm.loop.unroll_and_interleave.count", i32 2}
