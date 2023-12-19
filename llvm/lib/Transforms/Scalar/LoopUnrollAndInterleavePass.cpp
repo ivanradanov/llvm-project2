@@ -1012,16 +1012,20 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     BranchInst *BackEdge =
         dyn_cast<BranchInst>(CombinedLatchExiting->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
-    BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
-        Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
-    ExitBlock->replacePhiUsesWith(CombinedLatchExiting, EndCheckBB);
-    BackEdge->replaceSuccessorWith(ExitBlock, EndCheckBB);
-    IRBuilder<> Builder(EndCheckBB);
-    Value *IsAtEpilogueStart = Builder.CreateCmp(
+    IRBuilder<> LatchBuilder(BackEdge);
+    Value *IsAtEpilogueStart = LatchBuilder.CreateCmp(
         CmpInst::Predicate::ICMP_EQ, &LoopBounds->getStepInst(), EpilogueStart,
         "is.epilogue.start");
-    Builder.CreateCondBr(IsAtEpilogueStart, EpilogueLoop->getHeader(),
-                         ExitBlock);
+    BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
+        Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
+    LatchBuilder.CreateCondBr(IsAtEpilogueStart, EndCheckBB,
+                              TheLoop->getHeader());
+    Instruction *Cloned = BackEdge->clone();
+    Cloned->insertInto(EndCheckBB, EndCheckBB->begin());
+    BackEdge->eraseFromParent();
+    ExitBlock->replacePhiUsesWith(CombinedLatchExiting, EndCheckBB);
+    Cloned->replaceSuccessorWith(TheLoop->getHeader(),
+                                 EpilogueLoop->getHeader());
     EpilogueLoop->getHeader()->replacePhiUsesWith(Preheader, EndCheckBB);
   }
 
@@ -1099,6 +1103,11 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
     for (auto &L : LI.getLoopsInPreorder()) {
       if (getLoopAlreadyCoarsened(L)) {
         LLVM_DEBUG(DBGS_FAIL << "Coarsening disabled\n");
+        continue;
+      }
+      auto UnrollFactor = getLoopCoarseningFactor(L);
+      if (UnrollFactor == 0) {
+        LLVM_DEBUG(DBGS_FAIL << "Coarsening metadata missing - ignoring\n");
         continue;
       }
       ToUAI.push_back(L);
