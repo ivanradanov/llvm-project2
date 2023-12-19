@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopUnrollAndInterleavePass.h"
+#include "llvm-c/Core.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
@@ -28,6 +29,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Debuginfod/Debuginfod.h"
+#include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
@@ -65,6 +67,7 @@
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <algorithm>
 #include <memory>
+#include <string>
 
 using namespace llvm;
 using std::make_unique;
@@ -562,6 +565,40 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
       (*DR.DefinedInsideDemotedVMap)[I] = Demoted;
     }
   }
+}
+
+static Function *getUnrolledFunction(Function *F, unsigned UnrollFactor) {
+  std::string NewName = F->getName().str() + ".coarsened." + std::to_string(UnrollFactor);
+
+  if (Function *NewF = F->getParent()->getFunction(NewName))
+    return NewF;
+
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
+  VMaps.reserve(UnrollFactor);
+  for (unsigned I = 0; I < UnrollFactor; I++)
+    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+
+  FunctionType *FTy = F->getFunctionType();
+  assert(FTy->getReturnType()->isVoidTy());
+  SmallVector<Type *> ArgTypes;
+  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
+    for (unsigned I = 0; I < UnrollFactor; I++)
+      ArgTypes.push_back(FTy->getParamType(I));
+
+  FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()), ArgTypes, /*isVarArg=*/false);
+  Function *NewF = Function::Create(NewFTy, GlobalValue::InternalLinkage, NewName, F->getParent());
+
+  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
+    (*VMaps[0])[F->getArg(ArgN)] = NewF->getArg(UnrollFactor * ArgN);
+  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
+    for (unsigned I = 1; I < UnrollFactor; I++)
+      (*VMaps[I])[NewF->getArg(UnrollFactor * ArgN)] = NewF->getArg(UnrollFactor * ArgN + I);
+
+
+  SmallVector<ReturnInst *, 8> Returns;
+  CloneFunctionInto(NewF, F, *VMaps[0], CloneFunctionChangeType::LocalChangesOnly, Returns);
+
+  return NewF;
 }
 
 LoopUnrollResult
