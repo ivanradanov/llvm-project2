@@ -94,7 +94,8 @@ typedef SmallPtrSet<BasicBlock *, 8> BBSet;
 typedef SmallVectorImpl<BasicBlock *> BBVecImpl;
 typedef SmallVector<BasicBlock *, 8> BBVec;
 
-class BBUnrollAndInterleave {
+namespace {
+class BBInterleave {
 protected:
   OptimizationRemarkEmitter &ORE;
   DominatorTree *DT;
@@ -110,8 +111,9 @@ protected:
   Loop *TheLoop = nullptr;
 
   // Options
-  const unsigned UnrollFactor;
+  const unsigned Factor;
   const bool UseDynamicConvergence;
+  const bool UseInterProceduralInterleaving;
 
 private:
   /// Divergent groups are the maximal sets of basic blocks with the following
@@ -139,11 +141,11 @@ private:
     bool IsNested;
 
     // Used for transformations later
-    unique_ptr<ValueToValueMapTy> DRLVMap;
-    unique_ptr<ValueToValueMapTy> ReverseDRLVMap;
-    SmallVector<BasicBlock *> DivergentRegionsLoopBlocks;
+    unique_ptr<ValueToValueMapTy> DRVMap;
+    unique_ptr<ValueToValueMapTy> ReverseDRVMap;
+    SmallVector<BasicBlock *> ClonedBlocks;
 
-    BBSet ExecutedByCL;
+    BBSet ExecutedByConvergent;
     unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
     unique_ptr<ValueToValueMapTy> DefinedInsideDemotedVMap;
 
@@ -151,8 +153,8 @@ private:
 
     DivergentRegion()
         : From(nullptr), To(nullptr), Entry(nullptr), Exit(nullptr),
-          IsNested(false), DRLVMap(new ValueToValueMapTy),
-          ReverseDRLVMap(new ValueToValueMapTy),
+          IsNested(false), DRVMap(new ValueToValueMapTy),
+          ReverseDRVMap(new ValueToValueMapTy),
           DefinedOutsideDemotedVMap(new ValueToValueMapTy),
           DefinedInsideDemotedVMap(new ValueToValueMapTy) {}
   };
@@ -174,10 +176,10 @@ private:
   void populateDivergentRegions();
 
 public:
-  BBUnrollAndInterleave(OptimizationRemarkEmitter &ORE, unsigned UnrollFactor,
-                        bool UseDynamicConvergence)
-      : ORE(ORE), UnrollFactor(UnrollFactor),
-        UseDynamicConvergence(UseDynamicConvergence) {}
+  BBInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
+               bool UseDynamicConvergence)
+      : ORE(ORE), Factor(Factor), UseDynamicConvergence(UseDynamicConvergence),
+        UseInterProceduralInterleaving(true) {}
   LoopUnrollResult tryToUnrollBBs(
       Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
       BasicBlock *PostDominatingBlock,
@@ -189,20 +191,20 @@ public:
   void cleanup();
 };
 
-class FunctionUnrollAndInterleave : public BBUnrollAndInterleave {
+class FunctionInterleave : public BBInterleave {
 private:
   SmallPtrSet<Instruction *, 8> DivergentBranches;
 
   bool collectDivergentBranches(Function *F);
 
 public:
-  FunctionUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
-                              unsigned UnrollFactor, bool UseDynamicConvergence)
-      : BBUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
-  Function *tryToUnrollFunction(Function *F);
+  FunctionInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
+                     bool UseDynamicConvergence)
+      : BBInterleave(ORE, Factor, UseDynamicConvergence) {}
+  Function *tryToInterleaveFunction(Function *F);
 };
 
-class LoopUnrollAndInterleave : public BBUnrollAndInterleave {
+class LoopUnrollAndInterleave : public BBInterleave {
 private:
   // Loop data
   Loop *TheLoop;
@@ -218,10 +220,14 @@ private:
 public:
   LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE, unsigned UnrollFactor,
                           bool UseDynamicConvergence)
-      : BBUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
-  LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo &LI,
-                                   ScalarEvolution &SE, PostDominatorTree &PDT);
+      : BBInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
+  LoopUnrollResult tryToUnrollAndInterleaveLoop(Loop *L, DominatorTree &DT,
+                                                LoopInfo &LI,
+                                                ScalarEvolution &SE,
+                                                PostDominatorTree &PDT);
 };
+
+} // namespace
 
 static void setLoopAlreadyCoarsened(Loop *L) {
   LLVMContext &Context = L->getHeader()->getContext();
@@ -271,7 +277,7 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
       return false;                                                            \
   } while (0)
 
-bool FunctionUnrollAndInterleave::collectDivergentBranches(Function *F) {
+bool FunctionInterleave::collectDivergentBranches(Function *F) {
   const bool DoExtraAnalysis = true;
   bool Result = true;
 
@@ -375,7 +381,7 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
 // TODO we can probably support functions with non-void returns but it is
 // annoying so ignored for now, we should reevaluate how we check for
 // legality of coarsening and do the check recursively on these as well
-static Function *getUnrollableCallee(Instruction *I) {
+static Function *getInterleavableCallee(Instruction *I) {
 
   if (auto *CI = dyn_cast<CallInst>(I))
     if (auto *Called = CI->getCalledFunction())
@@ -385,7 +391,7 @@ static Function *getUnrollableCallee(Instruction *I) {
   return nullptr;
 }
 
-void BBUnrollAndInterleave::populateDivergentRegions() {
+void BBInterleave::populateDivergentRegions() {
 
   BBSet ConvergingBlocks;
   BBSet EntryBlocks;
@@ -559,11 +565,11 @@ void BBUnrollAndInterleave::populateDivergentRegions() {
   }
 }
 
-void BBUnrollAndInterleave::demoteDRRegs(Loop *CL) {
+void BBInterleave::demoteDRRegs(Loop *CL) {
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDOUIAll;
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDIUOAll;
   for (auto &DR : DivergentRegions) {
-    ValueToValueMapTy &VMap = *DR.DRLVMap;
+    ValueToValueMapTy &VMap = *DR.DRVMap;
 
     SmallVector<Instruction *> &ToDemoteDOUI = ToDemoteDOUIAll[&DR] = {};
 
@@ -571,21 +577,21 @@ void BBUnrollAndInterleave::demoteDRRegs(Loop *CL) {
     // loop
     auto MappedDRBlocks = mapContainer<BBSet, BasicBlock>(DR.Blocks, VMap);
 
-    DR.ExecutedByCL = {};
+    DR.ExecutedByConvergent = {};
     // The blocks that dominate the Entry and are in the DR will be executed by
     // the coarsened loop first, which means the values that are defined in them
     // are considered to be "defined outside" the DR
     auto *DomBlock = DR.From;
     while (DR.Blocks.contains(DomBlock)) {
-      DR.ExecutedByCL.insert(DomBlock);
+      DR.ExecutedByConvergent.insert(DomBlock);
       DomBlock = DT->getNode(DomBlock)->getIDom()->getBlock();
     }
 
     auto MappedExecutedByCL =
-        mapContainer<BBSet, BasicBlock>(DR.ExecutedByCL, VMap);
+        mapContainer<BBSet, BasicBlock>(DR.ExecutedByConvergent, VMap);
 
     // Find values defined outside the DR and used inside it
-    for (auto *BB : DR.DivergentRegionsLoopBlocks) {
+    for (auto *BB : DR.ClonedBlocks) {
       if (!MappedExecutedByCL.contains(BB) && MappedDRBlocks.contains(BB))
         continue;
 
@@ -670,9 +676,9 @@ void BBUnrollAndInterleave::demoteDRRegs(Loop *CL) {
   }
 }
 
-Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
+Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
   std::string NewName =
-      F->getName().str() + ".coarsened." + std::to_string(UnrollFactor);
+      F->getName().str() + ".coarsened." + std::to_string(Factor);
 
   if (Function *NewF = F->getParent()->getFunction(NewName))
     return NewF;
@@ -685,7 +691,7 @@ Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
   assert(FTy->getReturnType()->isVoidTy());
   SmallVector<Type *> ArgTypes;
   for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
-    for (unsigned I = 0; I < UnrollFactor; I++)
+    for (unsigned I = 0; I < Factor; I++)
       ArgTypes.push_back(FTy->getParamType(ArgN));
 
   FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()),
@@ -696,7 +702,7 @@ Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
   ValueToValueMapTy VMap;
   for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
     Argument *OldArg = F->getArg(ArgN);
-    Argument *NewArg = NewF->getArg(UnrollFactor * ArgN);
+    Argument *NewArg = NewF->getArg(Factor * ArgN);
     assert(OldArg->getType() == NewArg->getType());
     VMap[OldArg] = NewArg;
   }
@@ -709,17 +715,17 @@ Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
 
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
-  VMaps.reserve(UnrollFactor);
-  ReverseVMaps.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++) {
+  VMaps.reserve(Factor);
+  ReverseVMaps.reserve(Factor);
+  for (unsigned I = 0; I < Factor; I++) {
     VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
     ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
   }
 
   for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
-    for (unsigned I = 0; I < UnrollFactor; I++) {
-      auto *NCArg = NewF->getArg(UnrollFactor * ArgN);
-      auto *CArg = NewF->getArg(UnrollFactor * ArgN + I);
+    for (unsigned I = 0; I < Factor; I++) {
+      auto *NCArg = NewF->getArg(Factor * ArgN);
+      auto *CArg = NewF->getArg(Factor * ArgN + I);
       assert(NCArg->getType() == CArg->getType());
       (*VMaps[I])[NCArg] = CArg;
     }
@@ -750,7 +756,7 @@ Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
     return nullptr;
   }
 
-  for (unsigned I = 0; I < UnrollFactor; I++)
+  for (unsigned I = 0; I < Factor; I++)
     for (auto M : *VMaps[I])
       (*ReverseVMaps[I])[cast<Value>(M.second)] = const_cast<Value *>(M.first);
 
@@ -771,7 +777,7 @@ Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
   return NewF;
 }
 
-LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
+LoopUnrollResult BBInterleave::tryToUnrollBBs(
     Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
     BasicBlock *PostDominatingBlock, const ArrayRef<BasicBlock *> &BBArr,
     DominatorTree &DT, PostDominatorTree &PDT,
@@ -817,19 +823,19 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
     Function::iterator InsertBefore = std::next(DR.To->getIterator());
     std::string Suffix = ".drs." + std::to_string(It++);
     for (BasicBlock *BB : BBsToCoarsen) {
-      BasicBlock *NewBB = CloneBasicBlock(BB, *DR.DRLVMap, Suffix, F);
+      BasicBlock *NewBB = CloneBasicBlock(BB, *DR.DRVMap, Suffix, F);
       NewBB->moveBefore(InsertBefore);
-      (*DR.DRLVMap)[BB] = NewBB;
-      DR.DivergentRegionsLoopBlocks.push_back(NewBB);
+      (*DR.DRVMap)[BB] = NewBB;
+      DR.ClonedBlocks.push_back(NewBB);
     }
 
-    remapInstructionsInBlocks(DR.DivergentRegionsLoopBlocks, *DR.DRLVMap);
+    remapInstructionsInBlocks(DR.ClonedBlocks, *DR.DRVMap);
   }
 
   // Interleave instructions
   SmallVector<SmallVector<Instruction *>> ClonedInsts;
-  ClonedInsts.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++)
+  ClonedInsts.reserve(Factor);
+  for (unsigned I = 0; I < Factor; I++)
     ClonedInsts.push_back({});
 
   for (BasicBlock *BB : BBsToCoarsen) {
@@ -842,37 +848,38 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
       (*VMaps[0])[I] = I;
       (*ReverseVMaps[0])[I] = I;
 
-      Function *UnrollableCallee = getUnrollableCallee(I);
-      Function *UnrolledF = nullptr;
-      if (UnrollableCallee)
-        UnrolledF = FunctionUnrollAndInterleave(ORE, UnrollFactor,
-                                                UseDynamicConvergence)
-                        .tryToUnrollFunction(UnrollableCallee);
-      if (UnrolledF) {
-        auto *CB = cast<CallBase>(I);
-        SmallVector<Value *> Args;
-        FunctionType *FTy = UnrollableCallee->getFunctionType();
-        for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
-          Value *Arg = CB->getArgOperand(ArgN);
-          for (unsigned It = 0; It < UnrollFactor; It++) {
-            Value *CoarsenedArg = (*VMaps[It])[Arg];
-            if (!CoarsenedArg) {
-              assert(!isa<Instruction>(Arg) ||
-                     find(BBsToCoarsen,
-                          (dyn_cast<Instruction>(Arg)->getParent())) ==
-                         BBsToCoarsen.end());
-              CoarsenedArg = Arg;
+      if (UseInterProceduralInterleaving) {
+        Function *InterleavableCallee = getInterleavableCallee(I);
+        Function *UnrolledF = nullptr;
+        if (InterleavableCallee)
+          UnrolledF = FunctionInterleave(ORE, Factor, UseDynamicConvergence)
+                          .tryToInterleaveFunction(InterleavableCallee);
+        if (UnrolledF) {
+          auto *CB = cast<CallBase>(I);
+          SmallVector<Value *> Args;
+          FunctionType *FTy = InterleavableCallee->getFunctionType();
+          for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
+            Value *Arg = CB->getArgOperand(ArgN);
+            for (unsigned It = 0; It < Factor; It++) {
+              Value *CoarsenedArg = (*VMaps[It])[Arg];
+              if (!CoarsenedArg) {
+                assert(!isa<Instruction>(Arg) ||
+                       find(BBsToCoarsen,
+                            (dyn_cast<Instruction>(Arg)->getParent())) ==
+                           BBsToCoarsen.end());
+                CoarsenedArg = Arg;
+              }
+              Args.push_back(CoarsenedArg);
             }
-            Args.push_back(CoarsenedArg);
           }
+          CallInst::Create(UnrolledF, Args, "", I);
+          I->eraseFromParent();
+          continue;
         }
-        CallInst::Create(UnrolledF, Args, "", I);
-        I->eraseFromParent();
-        continue;
       }
 
       bool IsTerminator = I->isTerminator();
-      for (unsigned It = 1; It < UnrollFactor; It++) {
+      for (unsigned It = 1; It < Factor; It++) {
         if (IsTerminator) {
           // Do not clone terminators - we use the control flow of the
           // existing iteration (if the branch is divergent we will insert
@@ -918,7 +925,7 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
       Value *AllSame = nullptr;
       Value *Cond = DivergentCond;
       IRBuilder<> Builder(BI);
-      for (unsigned It = 1; It < UnrollFactor; It++) {
+      for (unsigned It = 1; It < Factor; It++) {
         // The condition has to be an instruction otherwise it cannot be
         // divergent
         auto *CoarsenedCond = cast<Instruction>((*VMaps[It])[Cond]);
@@ -937,7 +944,7 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
     }
   }
 
-  for (unsigned It = 1; It < UnrollFactor; It++)
+  for (unsigned It = 1; It < Factor; It++)
     for (Instruction *I : ClonedInsts[It])
       RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
 
@@ -947,8 +954,8 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
   demoteDRRegs(TheLoop);
 
   for (auto &DR : DivergentRegions) {
-    ValueToValueMapTy &ReverseDRLVMap = *DR.ReverseDRLVMap;
-    for (auto M : *DR.DRLVMap) {
+    ValueToValueMapTy &ReverseDRLVMap = *DR.ReverseDRVMap;
+    for (auto M : *DR.DRVMap) {
       ReverseDRLVMap[cast<Value>(M.second)] = const_cast<Value *>(M.first);
     }
   }
@@ -961,8 +968,8 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
   // bring out those values for use in the subsequent coarsened computation.
   Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
   for (auto &DR : DivergentRegions) {
-    auto &DivergentRegionsVMap = *DR.DRLVMap;
-    auto &ReverseDRLVMap = *DR.ReverseDRLVMap;
+    auto &DivergentRegionsVMap = *DR.DRVMap;
+    auto &ReverseDRLVMap = *DR.ReverseDRVMap;
     BasicBlock *DREntry = cast<BasicBlock>(DivergentRegionsVMap[DR.Entry]);
     BasicBlock *DRExit = cast<BasicBlock>(DivergentRegionsVMap[DR.Exit]);
     BasicBlock *DRTo = cast<BasicBlock>(DivergentRegionsVMap[DR.To]);
@@ -989,7 +996,7 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
     BasicBlock *LastOutro = nullptr;
     SmallVector<BasicBlock *> Intros;
     ValueToValueMapTy SavedCoarsened;
-    for (unsigned It = 0; It < UnrollFactor; It++) {
+    for (unsigned It = 0; It < Factor; It++) {
       auto ThisFactorIdentifierVal = NumSwCases + It;
       auto *ThisFactorIdentifier = cast<ConstantInt>(
           ConstantInt::get(CoarsenedIdentifierTy, ThisFactorIdentifierVal));
@@ -1047,7 +1054,7 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
         // simplify the re-promoted values (currently we get a mess of phis with
         // some undef's, see defined-in-used-outside-dr.ll)
       }
-      if (It == UnrollFactor - 1) {
+      if (It == Factor - 1) {
         auto *FromOutroBI = BranchInst::Create(DR.To);
         FromOutroBI->insertInto(Outro, Outro->end());
       }
@@ -1066,15 +1073,14 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
   return LoopUnrollResult::PartiallyUnrolled;
 }
 
-void BBUnrollAndInterleave::cleanup() {
+void BBInterleave::cleanup() {
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
   for (auto &DR : DivergentRegions) {
-    BBSet UnusedDRBlocks(DR.DivergentRegionsLoopBlocks.begin(),
-                         DR.DivergentRegionsLoopBlocks.end());
+    BBSet UnusedDRBlocks(DR.ClonedBlocks.begin(), DR.ClonedBlocks.end());
     for (auto &DR : DivergentRegions) {
       auto MappedDRBlocks =
-          mapContainer<BBSet, BasicBlock>(DR.Blocks, *DR.DRLVMap);
+          mapContainer<BBSet, BasicBlock>(DR.Blocks, *DR.DRVMap);
       set_subtract(UnusedDRBlocks, MappedDRBlocks);
     }
     SmallVector<BasicBlock *> Tmp(UnusedDRBlocks.begin(), UnusedDRBlocks.end());
@@ -1107,10 +1113,9 @@ void BBUnrollAndInterleave::cleanup() {
   PromoteMemToReg(DRTmpStorage, *DT);
 }
 
-LoopUnrollResult
-LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
-                                         LoopInfo &LI, ScalarEvolution &SE,
-                                         PostDominatorTree &PDT) {
+LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
+    Loop *L, DominatorTree &DT, LoopInfo &LI, ScalarEvolution &SE,
+    PostDominatorTree &PDT) {
   this->LI = &LI;
   this->TheLoop = L;
 
@@ -1196,9 +1201,9 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   // VMaps for the separate interleaved iterations
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
-  VMaps.reserve(UnrollFactor);
-  ReverseVMaps.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++) {
+  VMaps.reserve(Factor);
+  ReverseVMaps.reserve(Factor);
+  for (unsigned I = 0; I < Factor; I++) {
     VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
     ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
   }
@@ -1209,7 +1214,7 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   Value *IVStepVal = LoopBounds->getStepValue();
   if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
     Value *NewStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
+        IVStepVal, ConstantInt::get(IVStepVal->getType(), Factor),
         "coarsened.step");
     cast<Instruction>(NewStep)->moveAfter(IVStepInst);
     IVStepInst->replaceUsesWithIf(
@@ -1222,7 +1227,7 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     assert(IVStepConst);
     Value *NewStep = ConstantInt::getIntegerValue(
         IntegerType::getInt32Ty(IVStepVal->getContext()),
-        UnrollFactor * IVStepConst->getValue());
+        Factor * IVStepConst->getValue());
     Instruction *StepInst = &LoopBounds->getStepInst();
     for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
       if (StepInst->getOperand(It) == IVStepVal)
@@ -1233,7 +1238,7 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   // stride, ..., initial + (UnrollFactor - 1) * stride
   (*VMaps[0])[InitialIVVal] = InitialIVVal;
   (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
-  for (unsigned I = 1; I < UnrollFactor; I++) {
+  for (unsigned I = 1; I < Factor; I++) {
     Value *CoarsenedInitialIV;
     Value *MultipliedStep = PreheaderBuilder.CreateMul(
         IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
@@ -1278,7 +1283,7 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   // Value *End = GetEnd(&LoopBounds->getFinalIVValue()); // Defined above.
   Value *Stride = LoopBounds->getStepValue();
   Value *One = ConstantInt::get(Start->getType(), 1);
-  Value *UnrollFactorCst = ConstantInt::get(Start->getType(), UnrollFactor);
+  Value *UnrollFactorCst = ConstantInt::get(Start->getType(), Factor);
   {
     Value *Diff = PreheaderBuilder.CreateSub(End, Start);
     Value *CeilDiv = PreheaderBuilder.CreateUDiv(
@@ -1423,7 +1428,7 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
                               /*MSSAU=*/nullptr, /*PreserveLCSSA=*/true);
       Changed |=
           LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence)
-              .tryToUnrollLoop(L, DT, LI, SE, PDT) !=
+              .tryToUnrollAndInterleaveLoop(L, DT, LI, SE, PDT) !=
           LoopUnrollResult::Unmodified;
     }
   }
@@ -1444,7 +1449,7 @@ bool loopUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
     return false;
   }
   return LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergenceOpt)
-             .tryToUnrollLoop(L, DT, LI, SE, PDT) !=
+             .tryToUnrollAndInterleaveLoop(L, DT, LI, SE, PDT) !=
          LoopUnrollResult::Unmodified;
 }
 } // namespace llvm
