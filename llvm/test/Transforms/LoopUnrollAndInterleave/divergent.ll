@@ -95,73 +95,69 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; CHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD15_COARSENED_1]], [[ADD]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START5:%.*]] = icmp eq i64 [[ADD15]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START5]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
-; CHECK:       sw.bb8.drs.0:
-; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[MUL10_DRS_0:%.*]] = mul nsw i32 [[TMP11]], 3
-; CHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0:%.*]]
-; CHECK:       sw.bb.drs.0:
-; CHECK-NEXT:    [[TMP12:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[MUL6_DRS_0:%.*]] = shl nsw i32 [[TMP12]], 1
-; CHECK-NEXT:    store i32 [[MUL6_DRS_0]], ptr [[A]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
-; CHECK:       sw.default.drs.0:
-; CHECK-NEXT:    [[ARRAYIDX12_DRS_0:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_033_DRS_0_REG2MEM_0:%.*]]
-; CHECK-NEXT:    [[TMP13:%.*]] = load i32, ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[MUL13_DRS_0:%.*]] = shl nsw i32 [[TMP13]], 2
-; CHECK-NEXT:    store i32 [[MUL13_DRS_0]], ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.0:
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]]
-; CHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.1:
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.0:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0:%.*]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.1:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.0:
-; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
-; CHECK-NEXT:    [[DOTOMP_IV_033_DRS_0_REG2MEM_0]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
+; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_033_DRS_0_REG2MEM_0:%.*]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; CHECK-NEXT:    switch i64 [[DOTOMP_IV_033_DRS_0_REG2MEM_0]], label [[SW_DEFAULT_DRS_0:%.*]] [
 ; CHECK-NEXT:      i64 0, label [[SW_BB_DRS_0:%.*]]
 ; CHECK-NEXT:      i64 1, label [[SW_BB8_DRS_0:%.*]]
 ; CHECK-NEXT:    ]
+; CHECK:       sw.bb.drs.0:
+; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[MUL6_DRS_0:%.*]] = shl nsw i32 [[TMP11]], 1
+; CHECK-NEXT:    store i32 [[MUL6_DRS_0]], ptr [[A]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0:%.*]]
+; CHECK:       sw.bb8.drs.0:
+; CHECK-NEXT:    [[TMP12:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[MUL10_DRS_0:%.*]] = mul nsw i32 [[TMP12]], 3
+; CHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
+; CHECK:       sw.default.drs.0:
+; CHECK-NEXT:    [[ARRAYIDX12_DRS_0:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_033_DRS_0_REG2MEM_0]]
+; CHECK-NEXT:    [[TMP13:%.*]] = load i32, ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[MUL13_DRS_0:%.*]] = shl nsw i32 [[TMP13]], 2
+; CHECK-NEXT:    store i32 [[MUL13_DRS_0]], ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
 ; CHECK:       omp.inner.for.inc.divergent.exit.drs.0:
 ; CHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0_OUTRO_0:%.*]] [
 ; CHECK-NEXT:      i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0_OUTRO_1:%.*]]
 ; CHECK-NEXT:    ]
+; CHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.0:
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]]
+; CHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.1:
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC]]
 ; CHECK:       coarsened.end.check:
 ; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP20:![0-9]+]]
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_033_EPILOGUE:%.*]] = phi i64 [ [[ADD15]], [[COARSENED_END_CHECK]] ], [ [[ADD15_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_EPILOGUE:%.*]]
+; CHECK-NEXT:    switch i64 [[DOTOMP_IV_033_EPILOGUE]], label [[SW_DEFAULT_EPILOGUE:%.*]] [
+; CHECK-NEXT:      i64 0, label [[SW_BB_EPILOGUE:%.*]]
+; CHECK-NEXT:      i64 1, label [[SW_BB8_EPILOGUE:%.*]]
+; CHECK-NEXT:    ]
 ; CHECK:       sw.bb8.epilogue:
 ; CHECK-NEXT:    [[TMP14:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[MUL10_EPILOGUE:%.*]] = mul nsw i32 [[TMP14]], 3
 ; CHECK-NEXT:    store i32 [[MUL10_EPILOGUE]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_EPILOGUE:%.*]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; CHECK:       sw.bb.epilogue:
 ; CHECK-NEXT:    [[TMP15:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[MUL6_EPILOGUE:%.*]] = shl nsw i32 [[TMP15]], 1
 ; CHECK-NEXT:    store i32 [[MUL6_EPILOGUE]], ptr [[A]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_EPILOGUE]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; CHECK:       sw.default.epilogue:
 ; CHECK-NEXT:    [[ARRAYIDX12_EPILOGUE:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_033_EPILOGUE]]
 ; CHECK-NEXT:    [[TMP16:%.*]] = load i32, ptr [[ARRAYIDX12_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[MUL13_EPILOGUE:%.*]] = shl nsw i32 [[TMP16]], 2
 ; CHECK-NEXT:    store i32 [[MUL13_EPILOGUE]], ptr [[ARRAYIDX12_EPILOGUE]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_EPILOGUE]]
+; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; CHECK:       omp.inner.for.inc.epilogue:
 ; CHECK-NEXT:    [[ADD15_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_033_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD15_EPILOGUE]], [[ADD]]
 ; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP22:![0-9]+]]
-; CHECK:       omp.inner.for.body.divergent.entry.epilogue:
-; CHECK-NEXT:    switch i64 [[DOTOMP_IV_033_EPILOGUE]], label [[SW_DEFAULT_EPILOGUE:%.*]] [
-; CHECK-NEXT:      i64 0, label [[SW_BB_EPILOGUE:%.*]]
-; CHECK-NEXT:      i64 1, label [[SW_BB8_EPILOGUE:%.*]]
-; CHECK-NEXT:    ]
-; CHECK:       omp.inner.for.inc.divergent.exit.epilogue:
-; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; CHECK:       omp.loop.exit.loopexit:
 ; CHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; CHECK:       omp.loop.exit:
@@ -231,17 +227,17 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; DRCHECK-NEXT:    ]
 ; DRCHECK:       sw.bb:
 ; DRCHECK-NEXT:    [[TMP12:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    [[DOTCOARSENED_11:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_1:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    [[MUL6:%.*]] = shl nsw i32 [[TMP12]], 1
-; DRCHECK-NEXT:    [[MUL6_COARSENED_1:%.*]] = shl nsw i32 [[DOTCOARSENED_11]], 1
+; DRCHECK-NEXT:    [[MUL6_COARSENED_1:%.*]] = shl nsw i32 [[DOTCOARSENED_1]], 1
 ; DRCHECK-NEXT:    store i32 [[MUL6]], ptr [[A]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    store i32 [[MUL6_COARSENED_1]], ptr [[A]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT:%.*]]
 ; DRCHECK:       sw.bb8:
 ; DRCHECK-NEXT:    [[TMP13:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    [[DOTCOARSENED_1:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_11:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    [[MUL10:%.*]] = mul nsw i32 [[TMP13]], 3
-; DRCHECK-NEXT:    [[MUL10_COARSENED_1:%.*]] = mul nsw i32 [[DOTCOARSENED_1]], 3
+; DRCHECK-NEXT:    [[MUL10_COARSENED_1:%.*]] = mul nsw i32 [[DOTCOARSENED_11]], 3
 ; DRCHECK-NEXT:    store i32 [[MUL10]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    store i32 [[MUL10_COARSENED_1]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT]]
@@ -264,73 +260,69 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPii_l7_omp_outlined_
 ; DRCHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD15_COARSENED_1]], [[ADD]]
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START5:%.*]] = icmp eq i64 [[ADD15]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START5]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
-; DRCHECK:       sw.bb8.drs.0:
-; DRCHECK-NEXT:    [[TMP15:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    [[MUL10_DRS_0:%.*]] = mul nsw i32 [[TMP15]], 3
-; DRCHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0:%.*]]
-; DRCHECK:       sw.bb.drs.0:
-; DRCHECK-NEXT:    [[TMP16:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    [[MUL6_DRS_0:%.*]] = shl nsw i32 [[TMP16]], 1
-; DRCHECK-NEXT:    store i32 [[MUL6_DRS_0]], ptr [[A]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
-; DRCHECK:       sw.default.drs.0:
-; DRCHECK-NEXT:    [[ARRAYIDX12_DRS_0:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_033_DRS_0_REG2MEM_0:%.*]]
-; DRCHECK-NEXT:    [[TMP17:%.*]] = load i32, ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    [[MUL13_DRS_0:%.*]] = shl nsw i32 [[TMP17]], 2
-; DRCHECK-NEXT:    store i32 [[MUL13_DRS_0]], ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.0:
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.1:
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.0:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0:%.*]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.1:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs.0:
-; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
-; DRCHECK-NEXT:    [[DOTOMP_IV_033_DRS_0_REG2MEM_0]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
+; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ]
+; DRCHECK-NEXT:    [[DOTOMP_IV_033_DRS_0_REG2MEM_0:%.*]] = phi i64 [ [[DOTOMP_IV_033]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_033_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; DRCHECK-NEXT:    switch i64 [[DOTOMP_IV_033_DRS_0_REG2MEM_0]], label [[SW_DEFAULT_DRS_0:%.*]] [
 ; DRCHECK-NEXT:      i64 0, label [[SW_BB_DRS_0:%.*]]
 ; DRCHECK-NEXT:      i64 1, label [[SW_BB8_DRS_0:%.*]]
 ; DRCHECK-NEXT:    ]
+; DRCHECK:       sw.bb.drs.0:
+; DRCHECK-NEXT:    [[TMP15:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    [[MUL6_DRS_0:%.*]] = shl nsw i32 [[TMP15]], 1
+; DRCHECK-NEXT:    store i32 [[MUL6_DRS_0]], ptr [[A]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0:%.*]]
+; DRCHECK:       sw.bb8.drs.0:
+; DRCHECK-NEXT:    [[TMP16:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    [[MUL10_DRS_0:%.*]] = mul nsw i32 [[TMP16]], 3
+; DRCHECK-NEXT:    store i32 [[MUL10_DRS_0]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
+; DRCHECK:       sw.default.drs.0:
+; DRCHECK-NEXT:    [[ARRAYIDX12_DRS_0:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_033_DRS_0_REG2MEM_0]]
+; DRCHECK-NEXT:    [[TMP17:%.*]] = load i32, ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    [[MUL13_DRS_0:%.*]] = shl nsw i32 [[TMP17]], 2
+; DRCHECK-NEXT:    store i32 [[MUL13_DRS_0]], ptr [[ARRAYIDX12_DRS_0]], align 4, !tbaa [[TBAA16]]
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0]]
 ; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.0:
 ; DRCHECK-NEXT:    switch i32 [[DR_COARSENED_IDENT_0]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0_OUTRO_0:%.*]] [
 ; DRCHECK-NEXT:      i32 1, label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_DRS_0_OUTRO_1:%.*]]
 ; DRCHECK-NEXT:    ]
+; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.0:
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]]
+; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.1:
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC]]
 ; DRCHECK:       coarsened.end.check:
 ; DRCHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP20:![0-9]+]]
 ; DRCHECK:       omp.inner.for.body.epilogue:
 ; DRCHECK-NEXT:    [[DOTOMP_IV_033_EPILOGUE:%.*]] = phi i64 [ [[ADD15]], [[COARSENED_END_CHECK]] ], [ [[ADD15_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_EPILOGUE:%.*]]
+; DRCHECK-NEXT:    switch i64 [[DOTOMP_IV_033_EPILOGUE]], label [[SW_DEFAULT_EPILOGUE:%.*]] [
+; DRCHECK-NEXT:      i64 0, label [[SW_BB_EPILOGUE:%.*]]
+; DRCHECK-NEXT:      i64 1, label [[SW_BB8_EPILOGUE:%.*]]
+; DRCHECK-NEXT:    ]
 ; DRCHECK:       sw.bb8.epilogue:
 ; DRCHECK-NEXT:    [[TMP18:%.*]] = load i32, ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    [[MUL10_EPILOGUE:%.*]] = mul nsw i32 [[TMP18]], 3
 ; DRCHECK-NEXT:    store i32 [[MUL10_EPILOGUE]], ptr [[ARRAYIDX9]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_EPILOGUE:%.*]]
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; DRCHECK:       sw.bb.epilogue:
 ; DRCHECK-NEXT:    [[TMP19:%.*]] = load i32, ptr [[A]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    [[MUL6_EPILOGUE:%.*]] = shl nsw i32 [[TMP19]], 1
 ; DRCHECK-NEXT:    store i32 [[MUL6_EPILOGUE]], ptr [[A]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_EPILOGUE]]
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; DRCHECK:       sw.default.epilogue:
 ; DRCHECK-NEXT:    [[ARRAYIDX12_EPILOGUE:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_033_EPILOGUE]]
 ; DRCHECK-NEXT:    [[TMP20:%.*]] = load i32, ptr [[ARRAYIDX12_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; DRCHECK-NEXT:    [[MUL13_EPILOGUE:%.*]] = shl nsw i32 [[TMP20]], 2
 ; DRCHECK-NEXT:    store i32 [[MUL13_EPILOGUE]], ptr [[ARRAYIDX12_EPILOGUE]], align 4, !tbaa [[TBAA16]]
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT_EPILOGUE]]
+; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; DRCHECK:       omp.inner.for.inc.epilogue:
 ; DRCHECK-NEXT:    [[ADD15_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_033_EPILOGUE]]
 ; DRCHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD15_EPILOGUE]], [[ADD]]
 ; DRCHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP22:![0-9]+]]
-; DRCHECK:       omp.inner.for.body.divergent.entry.epilogue:
-; DRCHECK-NEXT:    switch i64 [[DOTOMP_IV_033_EPILOGUE]], label [[SW_DEFAULT_EPILOGUE:%.*]] [
-; DRCHECK-NEXT:      i64 0, label [[SW_BB_EPILOGUE:%.*]]
-; DRCHECK-NEXT:      i64 1, label [[SW_BB8_EPILOGUE:%.*]]
-; DRCHECK-NEXT:    ]
-; DRCHECK:       omp.inner.for.inc.divergent.exit.epilogue:
-; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC_EPILOGUE]]
 ; DRCHECK:       omp.loop.exit.loopexit:
 ; DRCHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; DRCHECK:       omp.loop.exit:
