@@ -91,23 +91,29 @@ static OutTy mapContainer(InTy &Container, ValueToValueMapTy &VMap) {
 }
 
 typedef SmallPtrSet<BasicBlock *, 8> BBSet;
+typedef SmallVectorImpl<BasicBlock *> BBVecImpl;
+typedef SmallVector<BasicBlock *, 8> BBVec;
 
-class LoopUnrollAndInterleave {
-private:
+class BBUnrollAndInterleave {
+protected:
   OptimizationRemarkEmitter &ORE;
-  LoopInfo *LI;
   DominatorTree *DT;
   PostDominatorTree *PDT;
 
-  // Loop data
-  Loop *TheLoop;
-  BasicBlock *CombinedLatchExiting;
-  BasicBlock *Preheader;
+  BasicBlock *DominatingBlock;
+  BasicBlock *PostDominatingBlock;
+  SmallVector<AllocaInst *> DRTmpStorage;
+  Function *F;
+
+  // Optional
+  LoopInfo *LI = nullptr;
+  Loop *TheLoop = nullptr;
 
   // Options
   const unsigned UnrollFactor;
   const bool UseDynamicConvergence;
 
+private:
   /// Divergent groups are the maximal sets of basic blocks with the following
   /// properties:
   ///
@@ -136,7 +142,6 @@ private:
     unique_ptr<ValueToValueMapTy> DRLVMap;
     unique_ptr<ValueToValueMapTy> ReverseDRLVMap;
     SmallVector<BasicBlock *> DivergentRegionsLoopBlocks;
-    Loop *DivergentRegionsLoop;
 
     BBSet ExecutedByCL;
     unique_ptr<ValueToValueMapTy> DefinedOutsideDemotedVMap;
@@ -147,7 +152,7 @@ private:
     DivergentRegion()
         : From(nullptr), To(nullptr), Entry(nullptr), Exit(nullptr),
           IsNested(false), DRLVMap(new ValueToValueMapTy),
-          ReverseDRLVMap(new ValueToValueMapTy), DivergentRegionsLoop(nullptr),
+          ReverseDRLVMap(new ValueToValueMapTy),
           DefinedOutsideDemotedVMap(new ValueToValueMapTy),
           DefinedInsideDemotedVMap(new ValueToValueMapTy) {}
   };
@@ -163,15 +168,56 @@ private:
   // invalidated
   std::list<DivergentRegion> DivergentRegions;
 
+  BBVec BBsToCoarsen;
+
   void demoteDRRegs(Loop *CL);
   void populateDivergentRegions();
-  bool isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI);
+
+public:
+  BBUnrollAndInterleave(OptimizationRemarkEmitter &ORE, unsigned UnrollFactor,
+                        bool UseDynamicConvergence)
+      : ORE(ORE), UnrollFactor(UnrollFactor),
+        UseDynamicConvergence(UseDynamicConvergence) {}
+  LoopUnrollResult tryToUnrollBBs(
+      Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
+      BasicBlock *PostDominatingBlock,
+      const ArrayRef<BasicBlock *> &BBsToCoarsen, DominatorTree &DT,
+      ScalarEvolution &SE, PostDominatorTree &PDT,
+      SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &VMaps,
+      SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &ReverseVMaps,
+      SmallPtrSet<Instruction *, 8> &DivergentBranches);
+  void cleanup();
+};
+
+class FunctionUnrollAndInterleave : public BBUnrollAndInterleave {
+private:
+  bool collectDivergentBranches(Function *F);
+
+public:
+  FunctionUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
+                              unsigned UnrollFactor, bool UseDynamicConvergence)
+      : BBUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
+  LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo &LI,
+                                   ScalarEvolution &SE, PostDominatorTree &PDT);
+};
+
+class LoopUnrollAndInterleave : public BBUnrollAndInterleave {
+private:
+  // Loop data
+  Loop *TheLoop;
+  BasicBlock *CombinedLatchExiting;
+  BasicBlock *Preheader;
+
+  SmallPtrSet<Instruction *, 8> DivergentBranches;
+
+  LoopInfo *LI;
+
+  bool collectDivergentBranches(Loop *TheLoop, LoopInfo *LI);
 
 public:
   LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE, unsigned UnrollFactor,
                           bool UseDynamicConvergence)
-      : ORE(ORE), UnrollFactor(UnrollFactor),
-        UseDynamicConvergence(UseDynamicConvergence) {}
+      : BBUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
   LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo &LI,
                                    ScalarEvolution &SE, PostDominatorTree &PDT);
 };
@@ -224,7 +270,8 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
       return false;                                                            \
   } while (0)
 
-bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
+bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
+                                                       LoopInfo *LI) {
   const bool DoExtraAnalysis = true;
   bool Result = true;
 
@@ -234,7 +281,7 @@ bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
     ILLEGAL();
   }
 
-  for (BasicBlock *BB : TheLoop->blocks()) {
+  for (BasicBlock *BB : TheLoop->getBlocks()) {
     // Check whether the BB terminator is a BranchInst. Any other terminator is
     // not supported yet.
     auto *Term = BB->getTerminator();
@@ -264,6 +311,7 @@ bool LoopUnrollAndInterleave::isLegalToCoarsen(Loop *TheLoop, LoopInfo *LI) {
       LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
     }
   }
+
   return Result;
 }
 #pragma pop_macro("ILLEGAL")
@@ -290,7 +338,7 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
   }
 }
 
-void LoopUnrollAndInterleave::populateDivergentRegions() {
+void BBUnrollAndInterleave::populateDivergentRegions() {
 
   BBSet ConvergingBlocks;
   BBSet EntryBlocks;
@@ -298,8 +346,7 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   for (Instruction *Term : DivergentBranches) {
     BasicBlock *Entry = Term->getParent();
     auto *ConvergeBlock = PDT->getNode(Entry)->getIDom()->getBlock();
-    assert(ConvergeBlock &&
-           PDT->dominates(CombinedLatchExiting, ConvergeBlock));
+    assert(ConvergeBlock && PDT->dominates(PostDominatingBlock, ConvergeBlock));
 
     BBSet Reachable;
     findReachableFromTo(Entry, ConvergeBlock, Reachable);
@@ -366,10 +413,14 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     DivergentEntry->setName(BlockName + ".divergent.entry");
     Convergent->setName(BlockName);
 
-    TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
-    TheLoop->addBasicBlockToLoop(Convergent, *LI);
-    assert(TheLoop->getHeader() != TheBlock &&
-           "A Converging block cannot be the header.");
+    if (LI && TheLoop) {
+      TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
+      TheLoop->addBasicBlockToLoop(Convergent, *LI);
+      assert(TheLoop->getHeader() != TheBlock &&
+             "A Converging block cannot be the header.");
+    }
+    BBsToCoarsen.push_back(DivergentExit);
+    BBsToCoarsen.push_back(Convergent);
 
     AddExisting(TheBlock, Convergent, DivergentExit);
     AddExit(TheBlock, DivergentExit, Convergent);
@@ -387,9 +438,12 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     DivergentEntry->setName(BlockName + ".divergent.entry");
     Convergent->setName(BlockName);
 
-    TheLoop->addBasicBlockToLoop(Convergent, *LI);
-    if (TheLoop->getHeader() == TheBlock)
-      TheLoop->moveToHeader(Convergent);
+    if (LI && TheLoop) {
+      TheLoop->addBasicBlockToLoop(Convergent, *LI);
+      if (TheLoop->getHeader() == TheBlock)
+        TheLoop->moveToHeader(Convergent);
+    }
+    BBsToCoarsen.push_back(Convergent);
 
     AddExisting(TheBlock, Convergent);
     AddEntry(TheBlock, Convergent, DivergentEntry);
@@ -406,7 +460,10 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
     Convergent->setName(BlockName);
     DivergentExit->setName(BlockName + ".divergent.exit");
 
-    TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
+    if (LI && TheLoop) {
+      TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
+    }
+    BBsToCoarsen.push_back(DivergentExit);
 
     AddExisting(TheBlock, DivergentExit);
     AddExit(TheBlock, DivergentExit, Convergent);
@@ -455,17 +512,16 @@ void LoopUnrollAndInterleave::populateDivergentRegions() {
   }
 }
 
-void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
+void BBUnrollAndInterleave::demoteDRRegs(Loop *CL) {
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDOUIAll;
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDIUOAll;
   for (auto &DR : DivergentRegions) {
-    Loop *NCL = DR.DivergentRegionsLoop;
     ValueToValueMapTy &VMap = *DR.DRLVMap;
 
     SmallVector<Instruction *> &ToDemoteDOUI = ToDemoteDOUIAll[&DR] = {};
 
-    // Demote values defined outside a DR used inside it in the Non Coarsened
-    // Loop (NCL)
+    // Demote values defined outside a DR used inside it in the non coarsened
+    // loop
     auto MappedDRBlocks = mapContainer<BBSet, BasicBlock>(DR.Blocks, VMap);
 
     DR.ExecutedByCL = {};
@@ -482,7 +538,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
         mapContainer<BBSet, BasicBlock>(DR.ExecutedByCL, VMap);
 
     // Find values defined outside the DR and used inside it
-    for (auto *BB : NCL->getBlocks()) {
+    for (auto *BB : DR.DivergentRegionsLoopBlocks) {
       if (!MappedExecutedByCL.contains(BB) && MappedDRBlocks.contains(BB))
         continue;
 
@@ -550,7 +606,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
         Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
-                                   Preheader->getFirstNonPHI());
+                                   DominatingBlock->getFirstNonPHI());
         DemotedRegsVMap[I] = Demoted;
       }
       (*DR.DefinedOutsideDemotedVMap)[I] = Demoted;
@@ -559,7 +615,7 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
       auto *Demoted = cast_or_null<AllocaInst>(DemotedRegsVMap[I]);
       if (!Demoted) {
         Demoted = DemoteRegToStack(*I, /*VolatileLoads=*/false,
-                                   Preheader->getFirstNonPHI());
+                                   DominatingBlock->getFirstNonPHI());
         DemotedRegsVMap[I] = Demoted;
       }
       (*DR.DefinedInsideDemotedVMap)[I] = Demoted;
@@ -568,7 +624,8 @@ void LoopUnrollAndInterleave::demoteDRRegs(Loop *CL) {
 }
 
 static Function *getUnrolledFunction(Function *F, unsigned UnrollFactor) {
-  std::string NewName = F->getName().str() + ".coarsened." + std::to_string(UnrollFactor);
+  std::string NewName =
+      F->getName().str() + ".coarsened." + std::to_string(UnrollFactor);
 
   if (Function *NewF = F->getParent()->getFunction(NewName))
     return NewF;
@@ -585,50 +642,45 @@ static Function *getUnrolledFunction(Function *F, unsigned UnrollFactor) {
     for (unsigned I = 0; I < UnrollFactor; I++)
       ArgTypes.push_back(FTy->getParamType(I));
 
-  FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()), ArgTypes, /*isVarArg=*/false);
-  Function *NewF = Function::Create(NewFTy, GlobalValue::InternalLinkage, NewName, F->getParent());
+  FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()),
+                                           ArgTypes, /*isVarArg=*/false);
+  Function *NewF = Function::Create(NewFTy, GlobalValue::InternalLinkage,
+                                    NewName, F->getParent());
 
   for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
     (*VMaps[0])[F->getArg(ArgN)] = NewF->getArg(UnrollFactor * ArgN);
   for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
     for (unsigned I = 1; I < UnrollFactor; I++)
-      (*VMaps[I])[NewF->getArg(UnrollFactor * ArgN)] = NewF->getArg(UnrollFactor * ArgN + I);
-
+      (*VMaps[I])[NewF->getArg(UnrollFactor * ArgN)] =
+          NewF->getArg(UnrollFactor * ArgN + I);
 
   SmallVector<ReturnInst *, 8> Returns;
-  CloneFunctionInto(NewF, F, *VMaps[0], CloneFunctionChangeType::LocalChangesOnly, Returns);
+  CloneFunctionInto(NewF, F, *VMaps[0],
+                    CloneFunctionChangeType::LocalChangesOnly, Returns);
 
   return NewF;
 }
 
-LoopUnrollResult
-LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
-                                         LoopInfo &LI, ScalarEvolution &SE,
-                                         PostDominatorTree &PDT) {
-  this->LI = &LI;
+LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
+    Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
+    BasicBlock *PostDominatingBlock, const ArrayRef<BasicBlock *> &BBArr,
+    DominatorTree &DT, ScalarEvolution &SE, PostDominatorTree &PDT,
+    SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &VMaps,
+    SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &ReverseVMaps,
+    SmallPtrSet<Instruction *, 8> &DivergentBranches) {
+  this->DivergentBranches = DivergentBranches;
+  this->BBsToCoarsen = BBVec(BBArr.begin(), BBArr.end());
+  this->PostDominatingBlock = PostDominatingBlock;
+  this->DominatingBlock = DominatingBlock;
+  this->F = PostDominatingBlock->getParent();
+
+  this->LI = LI;
   this->TheLoop = L;
+
   this->DT = &DT;
   this->PDT = &PDT;
 
-  Function *F = L->getHeader()->getParent();
   auto &Ctx = F->getContext();
-  LLVM_DEBUG(DBGS << "F[" << F->getName() << "] Loop %"
-                  << L->getHeader()->getName() << " "
-                  << "Parallel=" << L->isAnnotatedParallel() << "\n");
-
-  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
-    LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
-  }
-
-  if (!isLegalToCoarsen(L, &LI))
-    return LoopUnrollResult::Unmodified;
-
-  auto LoopBounds = L->getBounds(SE);
-  if (LoopBounds == std::nullopt) {
-    LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
-                            "loop, not coarsening\n");
-    return LoopUnrollResult::Unmodified;
-  }
 
   populateDivergentRegions();
 
@@ -638,138 +690,39 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
 
   // TODO handle convergent insts properly (e.g. __syncthreads())
 
-  // Save loop properties before it is transformed.
-  Preheader = L->getLoopPreheader();
-  if (!Preheader) {
-    // We delete the preheader of the epilogue loop so this is currently how we
-    // detect that this may be the epilogue loop, because all other loops should
-    // have a preheader after being simplified before this pass
-    LLVM_DEBUG(DBGS_FAIL << "No preheader\n");
-    return LoopUnrollResult::Unmodified;
-  }
-  BasicBlock *ExitBlock = L->getExitBlock();
-  std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
+  // Sort the BBs so that they are cloned and inserted in the original order
+  std::sort(BBsToCoarsen.begin(), BBsToCoarsen.end(),
+            [&](BasicBlock *A, BasicBlock *B) {
+              return std::distance(F->begin(), A->getIterator()) <
+                     std::distance(F->begin(), B->getIterator());
+            });
 
-  // We need the upper bound of the loop to be defined before we enter it in
-  // order to know whether we should enter the coarsened version or the
-  // epilogue.
-  Value *End = [&](Value *End) -> Value * {
-    Instruction *I = dyn_cast<Instruction>(End);
-    if (!I)
-      return End;
-
-    BasicBlock *BB = I->getParent();
-    if (BB == Preheader ||
-        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) ==
-            OriginalLoopBlocks.end())
-      return End;
-
-    return nullptr;
-  }(&LoopBounds->getFinalIVValue());
-  if (End == nullptr) {
-    LLVM_DEBUG(DBGS_FAIL << "Unusable FinalIVValue define in the loop\n");
-    return LoopUnrollResult::Unmodified;
-  }
-
-  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
-  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
-  if (!InitialIVInst) {
-    LLVM_DEBUG(DBGS_FAIL << "Unexpected initial val definition" << *InitialIVVal
-                         << "\n");
-    return LoopUnrollResult::Unmodified;
-  }
-
-  // Clone the loop to use the blocks for divergent regions
+  // Clone the bbs to use the blocks for divergent regions
   unsigned It = 0;
   for (auto &DR : DivergentRegions) {
-    DR.DivergentRegionsLoop =
-        cloneLoopWithPreheader(ExitBlock, &F->getEntryBlock(), L, *DR.DRLVMap,
-                               ".drs." + std::to_string(It++), &LI, &DT,
-                               DR.DivergentRegionsLoopBlocks);
-    // Do not remap the preheader values, the DR blocks should refer to the
-    // original preheader
-    for (Instruction &I : *Preheader) {
-      DR.DRLVMap->erase(&I);
+    // TODO We can insert the DR before or after the convergent region - PGO
+    // would help with this decision We could either also set the DR after the
+    // end of the CR for cases where the DR is especially infrequent. Alos,
+    // maybe it should depend on whether we use dynamic convergence
+    Function::iterator InsertBefore = std::next(DR.To->getIterator());
+    std::string Suffix = ".drs." + std::to_string(It++);
+    for (BasicBlock *BB : BBsToCoarsen) {
+      BasicBlock *NewBB = CloneBasicBlock(BB, *DR.DRLVMap, Suffix, F);
+      NewBB->moveBefore(InsertBefore);
+      (*DR.DRLVMap)[BB] = NewBB;
+      DR.DivergentRegionsLoopBlocks.push_back(NewBB);
     }
+
     remapInstructionsInBlocks(DR.DivergentRegionsLoopBlocks, *DR.DRLVMap);
   }
 
-  // Clone the loop once more to use as an epilogue, the original one will be
-  // coarsened in-place
-  ValueToValueMapTy EpilogueVMap;
-  SmallVector<BasicBlock *> EpilogueLoopBlocks;
-  Loop *EpilogueLoop =
-      cloneLoopWithPreheader(ExitBlock, &F->getEntryBlock(), L, EpilogueVMap,
-                             ".epilogue", &LI, &DT, EpilogueLoopBlocks);
-  auto IsInEpilogue = [&](Use &U) -> bool {
-    if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
-      if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
-                    I->getParent()) != EpilogueLoopBlocks.end())
-        return true;
-      return false;
-    }
-    llvm_unreachable("Uses of lb should only be instructions");
-  };
-
-  // VMaps for the separate interleaved iterations
-  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
-  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
-  VMaps.reserve(UnrollFactor);
-  ReverseVMaps.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++) {
-    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
-    ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
-  }
-
-  IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
-
-  // The new Step is UnrollFactor * OriginalStep
-  Value *IVStepVal = LoopBounds->getStepValue();
-  if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
-    Value *NewStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
-        "coarsened.step");
-    cast<Instruction>(NewStep)->moveAfter(IVStepInst);
-    IVStepInst->replaceUsesWithIf(
-        NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
-          return U.getUser() != NewStep && !IsInEpilogue(U);
-        });
-  } else {
-    // If the step is a constant
-    auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
-    assert(IVStepConst);
-    Value *NewStep = ConstantInt::getIntegerValue(
-        IntegerType::getInt32Ty(IVStepVal->getContext()),
-        UnrollFactor * IVStepConst->getValue());
-    Instruction *StepInst = &LoopBounds->getStepInst();
-    for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
-      if (StepInst->getOperand(It) == IVStepVal)
-        StepInst->setOperand(It, NewStep);
-  }
-
-  // Set up new initial IV values, for now we do initial + stride, initial + 2 *
-  // stride, ..., initial + (UnrollFactor - 1) * stride
-  (*VMaps[0])[InitialIVVal] = InitialIVVal;
-  (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
-  for (unsigned I = 1; I < UnrollFactor; I++) {
-    Value *CoarsenedInitialIV;
-    Value *MultipliedStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
-    CoarsenedInitialIV =
-        PreheaderBuilder.CreateAdd(InitialIVVal, MultipliedStep,
-                                   "initial.iv.coarsened." + std::to_string(I));
-    (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
-    (*ReverseVMaps[I])[CoarsenedInitialIV] = InitialIVVal;
-  }
-
   // Interleave instructions
-
   SmallVector<SmallVector<Instruction *>> ClonedInsts;
   ClonedInsts.reserve(UnrollFactor);
   for (unsigned I = 0; I < UnrollFactor; I++)
     ClonedInsts.push_back({});
 
-  for (BasicBlock *BB : OriginalLoopBlocks) {
+  for (BasicBlock *BB : BBsToCoarsen) {
     SmallVector<Instruction *> ToClone;
     for (Instruction &I : *BB) {
       ToClone.push_back(&I);
@@ -849,16 +802,6 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     for (Instruction *I : ClonedInsts[It])
       RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
 
-  BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
-  EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
-                                     EpilogueLoopBlocks.end(), EpiloguePH));
-  for (Instruction &I : *Preheader) {
-    EpilogueVMap.erase(&I);
-  }
-  EpilogueVMap.erase(Preheader);
-  remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
-  EpiloguePH->eraseFromParent();
-
   DT.recalculate(*F); // TODO another recalculation...
   // Find all values used in the divergent region but defined outside and demote
   // them to memory - now we can change the CFG easier.
@@ -871,11 +814,12 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     }
   }
 
+  IRBuilder<> PreheaderBuilder(DominatingBlock->getTerminator());
+
   // Hook into the the blocks from the DR loop to do the divergent part of the
   // coarsened computation. Generates Intro and Outro blocks which bring in the
   // appropriate coarsened values into the DR in the uncoarsened part, and then
   // bring out those values for use in the subsequent coarsened computation.
-  SmallVector<AllocaInst *> DRTmpStorage;
   Type *CoarsenedIdentifierTy = IntegerType::getInt32Ty(Ctx);
   for (auto &DR : DivergentRegions) {
     auto &DivergentRegionsVMap = *DR.DRLVMap;
@@ -980,6 +924,10 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   for (auto P : DemotedRegsVMap)
     DRTmpStorage.push_back(cast<AllocaInst>(P.second));
 
+  return LoopUnrollResult::PartiallyUnrolled;
+}
+
+void BBUnrollAndInterleave::cleanup() {
   // Now that we have done the plumbing around the divergent regions loop, erase
   // the remainders
   for (auto &DR : DivergentRegions) {
@@ -993,6 +941,182 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     SmallVector<BasicBlock *> Tmp(UnusedDRBlocks.begin(), UnusedDRBlocks.end());
     DeleteDeadBlocks(Tmp);
   }
+  // If we do not use dynamic convergence then /some/ of the coarsened versions
+  // of the DRs are unused and we have to delete them.
+  //
+  // We can still have a case like this:
+  //
+  //    |        |
+  // NonDivBB  DivBB
+  //         \ /   \
+  //          BB   BB
+  //           \   /
+  //         ConvergeBB
+  //             |
+  //
+  // Where a non-divergent flow joins a divergent regions - this means not all
+  // coarsened versions of DRs are dead - just delete the ones unreachable from
+  // the entry
+  EliminateUnreachableBlocks(*F);
+
+  // Now that we are done with the aggressive CFG restructuring and deleting
+  // dead blocks we can re-promote the regs we demoted earlier.
+  for (auto &DR : DivergentRegions) {
+    DRTmpStorage.push_back(DR.IdentPtr);
+  }
+  DT->recalculate(*F); // TODO another recalculation...
+  PromoteMemToReg(DRTmpStorage, *DT);
+}
+
+LoopUnrollResult
+LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
+                                         LoopInfo &LI, ScalarEvolution &SE,
+                                         PostDominatorTree &PDT) {
+  this->LI = &LI;
+  this->TheLoop = L;
+
+  Function *F = L->getHeader()->getParent();
+  auto &Ctx = F->getContext();
+
+  LLVM_DEBUG(DBGS << "F[" << F->getName() << "] Loop %"
+                  << L->getHeader()->getName() << " "
+                  << "Parallel=" << L->isAnnotatedParallel() << "\n");
+
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
+    LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
+  }
+
+  if (!collectDivergentBranches(L, &LI))
+    return LoopUnrollResult::Unmodified;
+
+  auto LoopBounds = L->getBounds(SE);
+  if (LoopBounds == std::nullopt) {
+    LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
+                            "loop, not coarsening\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
+  // Save loop properties before it is transformed.
+  Preheader = L->getLoopPreheader();
+  if (!Preheader) {
+    // We delete the preheader of the epilogue loop so this is currently how we
+    // detect that this may be the epilogue loop, because all other loops should
+    // have a preheader after being simplified before this pass
+    LLVM_DEBUG(DBGS_FAIL << "No preheader\n");
+    return LoopUnrollResult::Unmodified;
+  }
+  BasicBlock *ExitBlock = L->getExitBlock();
+  std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
+
+  // We need the upper bound of the loop to be defined before we enter it in
+  // order to know whether we should enter the coarsened version or the
+  // epilogue.
+  Value *End = [&](Value *End) -> Value * {
+    Instruction *I = dyn_cast<Instruction>(End);
+    if (!I)
+      return End;
+
+    BasicBlock *BB = I->getParent();
+    if (BB == Preheader ||
+        std::find(OriginalLoopBlocks.begin(), OriginalLoopBlocks.end(), BB) ==
+            OriginalLoopBlocks.end())
+      return End;
+
+    return nullptr;
+  }(&LoopBounds->getFinalIVValue());
+  if (End == nullptr) {
+    LLVM_DEBUG(DBGS_FAIL << "Unusable FinalIVValue define in the loop\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
+  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
+  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
+  if (!InitialIVInst) {
+    LLVM_DEBUG(DBGS_FAIL << "Unexpected initial val definition" << *InitialIVVal
+                         << "\n");
+    return LoopUnrollResult::Unmodified;
+  }
+
+  // Clone the loop once more to use as an epilogue, the original one will be
+  // coarsened in-place
+  ValueToValueMapTy EpilogueVMap;
+  SmallVector<BasicBlock *> EpilogueLoopBlocks;
+  Loop *EpilogueLoop =
+      cloneLoopWithPreheader(ExitBlock, &F->getEntryBlock(), L, EpilogueVMap,
+                             ".epilogue", &LI, &DT, EpilogueLoopBlocks);
+  auto IsInEpilogue = [&](Use &U) -> bool {
+    if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
+      if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
+                    I->getParent()) != EpilogueLoopBlocks.end())
+        return true;
+      return false;
+    }
+    llvm_unreachable("Uses of lb should only be instructions");
+  };
+
+  // VMaps for the separate interleaved iterations
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
+  VMaps.reserve(UnrollFactor);
+  ReverseVMaps.reserve(UnrollFactor);
+  for (unsigned I = 0; I < UnrollFactor; I++) {
+    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+    ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+  }
+
+  IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
+
+  // The new Step is UnrollFactor * OriginalStep
+  Value *IVStepVal = LoopBounds->getStepValue();
+  if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
+    Value *NewStep = PreheaderBuilder.CreateMul(
+        IVStepVal, ConstantInt::get(IVStepVal->getType(), UnrollFactor),
+        "coarsened.step");
+    cast<Instruction>(NewStep)->moveAfter(IVStepInst);
+    IVStepInst->replaceUsesWithIf(
+        NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
+          return U.getUser() != NewStep && !IsInEpilogue(U);
+        });
+  } else {
+    // If the step is a constant
+    auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
+    assert(IVStepConst);
+    Value *NewStep = ConstantInt::getIntegerValue(
+        IntegerType::getInt32Ty(IVStepVal->getContext()),
+        UnrollFactor * IVStepConst->getValue());
+    Instruction *StepInst = &LoopBounds->getStepInst();
+    for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
+      if (StepInst->getOperand(It) == IVStepVal)
+        StepInst->setOperand(It, NewStep);
+  }
+
+  // Set up new initial IV values, for now we do initial + stride, initial + 2 *
+  // stride, ..., initial + (UnrollFactor - 1) * stride
+  (*VMaps[0])[InitialIVVal] = InitialIVVal;
+  (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
+  for (unsigned I = 1; I < UnrollFactor; I++) {
+    Value *CoarsenedInitialIV;
+    Value *MultipliedStep = PreheaderBuilder.CreateMul(
+        IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
+    CoarsenedInitialIV =
+        PreheaderBuilder.CreateAdd(InitialIVVal, MultipliedStep,
+                                   "initial.iv.coarsened." + std::to_string(I));
+    (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
+    (*ReverseVMaps[I])[CoarsenedInitialIV] = InitialIVVal;
+  }
+
+  BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
+  EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
+                                     EpilogueLoopBlocks.end(), EpiloguePH));
+  for (Instruction &I : *Preheader) {
+    EpilogueVMap.erase(&I);
+  }
+  EpilogueVMap.erase(Preheader);
+  remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
+  EpiloguePH->eraseFromParent();
+
+  tryToUnrollBBs(L, &LI, Preheader, CombinedLatchExiting, TheLoop->getBlocks(),
+                 DT, SE, PDT, VMaps, ReverseVMaps, DivergentBranches);
 
   // Plumbing around the coarsened and epilogue loops
 
@@ -1083,31 +1207,7 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
     }
   }
 
-  // If we do not use dynamic convergence then /some/ of the coarsened versions
-  // of the DRs are unused and we have to delete them.
-  //
-  // We can still have a case like this:
-  //
-  //    |        |
-  // NonDivBB  DivBB
-  //         \ /   \
-  //          BB   BB
-  //           \   /
-  //         ConvergeBB
-  //             |
-  //
-  // Where a non-divergent flow joins a divergent regions - this means not all
-  // coarsened versions of DRs are dead - just delete the ones unreachable from
-  // the entry
-  EliminateUnreachableBlocks(*F);
-
-  // Now that we are done with the aggressive CFG restructuring and deleting
-  // dead blocks we can re-promote the regs we demoted earlier.
-  for (auto &DR : DivergentRegions) {
-    DRTmpStorage.push_back(DR.IdentPtr);
-  }
-  DT.recalculate(*F); // TODO another recalculation...
-  PromoteMemToReg(DRTmpStorage, DT);
+  cleanup();
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
