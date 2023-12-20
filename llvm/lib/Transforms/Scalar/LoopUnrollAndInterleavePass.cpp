@@ -182,7 +182,7 @@ public:
       Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
       BasicBlock *PostDominatingBlock,
       const ArrayRef<BasicBlock *> &BBsToCoarsen, DominatorTree &DT,
-      ScalarEvolution &SE, PostDominatorTree &PDT,
+      PostDominatorTree &PDT,
       SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &VMaps,
       SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &ReverseVMaps,
       SmallPtrSet<Instruction *, 8> &DivergentBranches);
@@ -191,14 +191,15 @@ public:
 
 class FunctionUnrollAndInterleave : public BBUnrollAndInterleave {
 private:
+  SmallPtrSet<Instruction *, 8> DivergentBranches;
+
   bool collectDivergentBranches(Function *F);
 
 public:
   FunctionUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
                               unsigned UnrollFactor, bool UseDynamicConvergence)
       : BBUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
-  LoopUnrollResult tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo &LI,
-                                   ScalarEvolution &SE, PostDominatorTree &PDT);
+  Function *tryToUnrollFunction(Function *F);
 };
 
 class LoopUnrollAndInterleave : public BBUnrollAndInterleave {
@@ -270,6 +271,41 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
       return false;                                                            \
   } while (0)
 
+bool FunctionUnrollAndInterleave::collectDivergentBranches(Function *F) {
+  const bool DoExtraAnalysis = true;
+  bool Result = true;
+
+  for (BasicBlock &BB : *F) {
+    auto *Term = BB.getTerminator();
+    auto *Br = dyn_cast<BranchInst>(Term);
+    auto *Sw = dyn_cast<SwitchInst>(Term);
+    auto *Ret = dyn_cast<ReturnInst>(Term);
+
+    // TODO Should we have a call stack and evaluate whether conditions are
+    // invariant? Currently we assume all conditional branches are divergent.
+    if (Br) {
+      if (Br->isConditional()) {
+        DivergentBranches.insert(Term);
+        LLVM_DEBUG(DBGS << "Divergent branch found:" << *Br << "\n");
+      }
+      continue;
+    }
+    if (Sw) {
+      DivergentBranches.insert(Term);
+      LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
+      continue;
+    }
+    if (Ret) {
+      continue;
+    }
+    LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator" << *Term
+                         << "\n");
+    ILLEGAL();
+  }
+
+  return Result;
+}
+
 bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
                                                        LoopInfo *LI) {
   const bool DoExtraAnalysis = true;
@@ -282,8 +318,6 @@ bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
   }
 
   for (BasicBlock *BB : TheLoop->getBlocks()) {
-    // Check whether the BB terminator is a BranchInst. Any other terminator is
-    // not supported yet.
     auto *Term = BB->getTerminator();
     auto *Br = dyn_cast<BranchInst>(Term);
     auto *Sw = dyn_cast<SwitchInst>(Term);
@@ -336,6 +370,19 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
         Queue.push(DstBB);
     }
   }
+}
+
+// TODO we can probably support functions with non-void returns but it is
+// annoying so ignored for now, we should reevaluate how we check for
+// legality of coarsening and do the check recursively on these as well
+static Function *getUnrollableCallee(Instruction *I) {
+
+  if (auto *CI = dyn_cast<CallInst>(I))
+    if (auto *Called = CI->getCalledFunction())
+      if (!Called->isDeclaration() &&
+          Called->getFunctionType()->getReturnType()->isVoidTy())
+        return Called;
+  return nullptr;
 }
 
 void BBUnrollAndInterleave::populateDivergentRegions() {
@@ -623,40 +670,103 @@ void BBUnrollAndInterleave::demoteDRRegs(Loop *CL) {
   }
 }
 
-static Function *getUnrolledFunction(Function *F, unsigned UnrollFactor) {
+Function *FunctionUnrollAndInterleave::tryToUnrollFunction(Function *F) {
   std::string NewName =
       F->getName().str() + ".coarsened." + std::to_string(UnrollFactor);
 
   if (Function *NewF = F->getParent()->getFunction(NewName))
     return NewF;
 
-  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
-  VMaps.reserve(UnrollFactor);
-  for (unsigned I = 0; I < UnrollFactor; I++)
-    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
+    LLVM_DEBUG(DBGS << "Will interleave function:\n" << *F);
+  }
 
   FunctionType *FTy = F->getFunctionType();
   assert(FTy->getReturnType()->isVoidTy());
   SmallVector<Type *> ArgTypes;
   for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
     for (unsigned I = 0; I < UnrollFactor; I++)
-      ArgTypes.push_back(FTy->getParamType(I));
+      ArgTypes.push_back(FTy->getParamType(ArgN));
 
   FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()),
                                            ArgTypes, /*isVarArg=*/false);
-  Function *NewF = Function::Create(NewFTy, GlobalValue::InternalLinkage,
-                                    NewName, F->getParent());
+  Function *NewF =
+      Function::Create(NewFTy, F->getLinkage(), NewName, F->getParent());
 
-  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
-    (*VMaps[0])[F->getArg(ArgN)] = NewF->getArg(UnrollFactor * ArgN);
-  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++)
-    for (unsigned I = 1; I < UnrollFactor; I++)
-      (*VMaps[I])[NewF->getArg(UnrollFactor * ArgN)] =
-          NewF->getArg(UnrollFactor * ArgN + I);
+  ValueToValueMapTy VMap;
+  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
+    Argument *OldArg = F->getArg(ArgN);
+    Argument *NewArg = NewF->getArg(UnrollFactor * ArgN);
+    assert(OldArg->getType() == NewArg->getType());
+    VMap[OldArg] = NewArg;
+  }
 
   SmallVector<ReturnInst *, 8> Returns;
-  CloneFunctionInto(NewF, F, *VMaps[0],
-                    CloneFunctionChangeType::LocalChangesOnly, Returns);
+  CloneFunctionInto(NewF, F, VMap, CloneFunctionChangeType::LocalChangesOnly,
+                    Returns);
+  NewF->setVisibility(GlobalValue::HiddenVisibility);
+  NewF->setLinkage(GlobalValue::InternalLinkage);
+
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
+  VMaps.reserve(UnrollFactor);
+  ReverseVMaps.reserve(UnrollFactor);
+  for (unsigned I = 0; I < UnrollFactor; I++) {
+    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+    ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+  }
+
+  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
+    for (unsigned I = 0; I < UnrollFactor; I++) {
+      auto *NCArg = NewF->getArg(UnrollFactor * ArgN);
+      auto *CArg = NewF->getArg(UnrollFactor * ArgN + I);
+      assert(NCArg->getType() == CArg->getType());
+      (*VMaps[I])[NCArg] = CArg;
+    }
+  }
+
+  auto &Ctx = F->getContext();
+  BasicBlock *ReturnBB =
+      BasicBlock::Create(Ctx, "unified.exit", NewF, &NewF->front());
+  ReturnBB->moveAfter(&NewF->back());
+  auto *NewRet = ReturnInst::Create(Ctx);
+  NewRet->insertInto(ReturnBB, ReturnBB->end());
+
+  for (auto &BB : *NewF) {
+    for (auto &I : BB) {
+      if (auto *Ret = dyn_cast<ReturnInst>(&I)) {
+        if (Ret != NewRet)
+          break;
+        BranchInst::Create(ReturnBB, Ret);
+        Ret->eraseFromParent();
+        break;
+      }
+    }
+  }
+
+  if (!collectDivergentBranches(NewF)) {
+    // TODO we should probably do these checks before we clone the function...
+    NewF->eraseFromParent();
+    return nullptr;
+  }
+
+  for (unsigned I = 0; I < UnrollFactor; I++)
+    for (auto M : *VMaps[I])
+      (*ReverseVMaps[I])[cast<Value>(M.second)] = const_cast<Value *>(M.first);
+
+  BBVec BBs;
+  for (auto &BB : *NewF)
+    if (&BB != ReturnBB)
+      BBs.push_back(&BB);
+  auto DT = DominatorTree(*NewF);
+  auto PDT = PostDominatorTree(*NewF);
+  tryToUnrollBBs(nullptr, nullptr, &NewF->getEntryBlock(), ReturnBB, BBs, DT,
+                 PDT, VMaps, ReverseVMaps, DivergentBranches);
+  cleanup();
+
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
+    LLVM_DEBUG(DBGS << "After interleaving function:\n" << *NewF);
+  }
 
   return NewF;
 }
@@ -664,7 +774,7 @@ static Function *getUnrolledFunction(Function *F, unsigned UnrollFactor) {
 LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
     Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
     BasicBlock *PostDominatingBlock, const ArrayRef<BasicBlock *> &BBArr,
-    DominatorTree &DT, ScalarEvolution &SE, PostDominatorTree &PDT,
+    DominatorTree &DT, PostDominatorTree &PDT,
     SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &VMaps,
     SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &ReverseVMaps,
     SmallPtrSet<Instruction *, 8> &DivergentBranches) {
@@ -731,6 +841,35 @@ LoopUnrollResult BBUnrollAndInterleave::tryToUnrollBBs(
       Instruction *LastI = I;
       (*VMaps[0])[I] = I;
       (*ReverseVMaps[0])[I] = I;
+
+      Function *UnrollableCallee = getUnrollableCallee(I);
+      Function *UnrolledF = nullptr;
+      if (UnrollableCallee)
+        UnrolledF = FunctionUnrollAndInterleave(ORE, UnrollFactor,
+                                                UseDynamicConvergence)
+                        .tryToUnrollFunction(UnrollableCallee);
+      if (UnrolledF) {
+        auto *CB = cast<CallBase>(I);
+        SmallVector<Value *> Args;
+        FunctionType *FTy = UnrollableCallee->getFunctionType();
+        for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
+          Value *Arg = CB->getArgOperand(ArgN);
+          for (unsigned It = 0; It < UnrollFactor; It++) {
+            Value *CoarsenedArg = (*VMaps[It])[Arg];
+            if (!CoarsenedArg) {
+              assert(!isa<Instruction>(Arg) ||
+                     find(BBsToCoarsen,
+                          (dyn_cast<Instruction>(Arg)->getParent())) ==
+                         BBsToCoarsen.end());
+              CoarsenedArg = Arg;
+            }
+            Args.push_back(CoarsenedArg);
+          }
+        }
+        CallInst::Create(UnrolledF, Args, "", I);
+        I->eraseFromParent();
+        continue;
+      }
 
       bool IsTerminator = I->isTerminator();
       for (unsigned It = 1; It < UnrollFactor; It++) {
@@ -1113,10 +1252,12 @@ LoopUnrollAndInterleave::tryToUnrollLoop(Loop *L, DominatorTree &DT,
   }
   EpilogueVMap.erase(Preheader);
   remapInstructionsInBlocks(EpilogueLoopBlocks, EpilogueVMap);
+  if (LI.getLoopFor(EpiloguePH))
+    LI.removeBlock(EpiloguePH);
   EpiloguePH->eraseFromParent();
 
   tryToUnrollBBs(L, &LI, Preheader, CombinedLatchExiting, TheLoop->getBlocks(),
-                 DT, SE, PDT, VMaps, ReverseVMaps, DivergentBranches);
+                 DT, PDT, VMaps, ReverseVMaps, DivergentBranches);
 
   // Plumbing around the coarsened and epilogue loops
 
