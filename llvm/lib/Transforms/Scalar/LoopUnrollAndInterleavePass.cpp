@@ -496,6 +496,8 @@ void BBInterleave::populateDivergentRegions() {
       if (TheLoop->getHeader() == TheBlock)
         TheLoop->moveToHeader(Convergent);
     }
+    if (DominatingBlock == TheBlock)
+      DominatingBlock = Convergent;
     BBsToCoarsen.push_back(Convergent);
 
     AddExisting(TheBlock, Convergent);
@@ -777,16 +779,16 @@ Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
 }
 
 LoopUnrollResult BBInterleave::tryToUnrollBBs(
-    Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
-    BasicBlock *PostDominatingBlock, const ArrayRef<BasicBlock *> &BBArr,
+    Loop *L, LoopInfo *LI, BasicBlock *DominatingBlockIn,
+    BasicBlock *PostDominatingBlockIn, const ArrayRef<BasicBlock *> &BBArr,
     DominatorTree &DT, PostDominatorTree &PDT,
     SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &VMaps,
     SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> &ReverseVMaps,
-    SmallPtrSet<Instruction *, 8> &DivergentBranches) {
-  this->DivergentBranches = DivergentBranches;
+    SmallPtrSet<Instruction *, 8> &DivergentBranchesIn) {
+  this->DivergentBranches = DivergentBranchesIn;
   this->BBsToCoarsen = BBVec(BBArr.begin(), BBArr.end());
-  this->PostDominatingBlock = PostDominatingBlock;
-  this->DominatingBlock = DominatingBlock;
+  this->PostDominatingBlock = PostDominatingBlockIn;
+  this->DominatingBlock = DominatingBlockIn;
   this->F = PostDominatingBlock->getParent();
 
   this->LI = LI;
