@@ -172,7 +172,7 @@ private:
 
   BBVec BBsToCoarsen;
 
-  void demoteDRRegs(Loop *CL);
+  void demoteDRRegs();
   void populateDivergentRegions();
 
 public:
@@ -513,9 +513,8 @@ void BBInterleave::populateDivergentRegions() {
     Convergent->setName(BlockName);
     DivergentExit->setName(BlockName + ".divergent.exit");
 
-    if (LI && TheLoop) {
+    if (LI && TheLoop)
       TheLoop->addBasicBlockToLoop(DivergentExit, *LI);
-    }
     BBsToCoarsen.push_back(DivergentExit);
 
     AddExisting(TheBlock, DivergentExit);
@@ -565,7 +564,7 @@ void BBInterleave::populateDivergentRegions() {
   }
 }
 
-void BBInterleave::demoteDRRegs(Loop *CL) {
+void BBInterleave::demoteDRRegs() {
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDOUIAll;
   DenseMap<DivergentRegion *, SmallVector<Instruction *>> ToDemoteDIUOAll;
   for (auto &DR : DivergentRegions) {
@@ -579,7 +578,7 @@ void BBInterleave::demoteDRRegs(Loop *CL) {
 
     DR.ExecutedByConvergent = {};
     // The blocks that dominate the Entry and are in the DR will be executed by
-    // the coarsened loop first, which means the values that are defined in them
+    // the coarsened BBs first, which means the values that are defined in them
     // are considered to be "defined outside" the DR
     auto *DomBlock = DR.From;
     while (DR.Blocks.contains(DomBlock)) {
@@ -710,7 +709,7 @@ Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
   SmallVector<ReturnInst *, 8> Returns;
   CloneFunctionInto(NewF, F, VMap, CloneFunctionChangeType::LocalChangesOnly,
                     Returns);
-  NewF->setVisibility(GlobalValue::HiddenVisibility);
+  NewF->setVisibility(GlobalValue::DefaultVisibility);
   NewF->setLinkage(GlobalValue::InternalLinkage);
 
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
@@ -741,7 +740,7 @@ Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
   for (auto &BB : *NewF) {
     for (auto &I : BB) {
       if (auto *Ret = dyn_cast<ReturnInst>(&I)) {
-        if (Ret != NewRet)
+        if (Ret == NewRet)
           break;
         BranchInst::Create(ReturnBB, Ret);
         Ret->eraseFromParent();
@@ -951,7 +950,7 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
   DT.recalculate(*F); // TODO another recalculation...
   // Find all values used in the divergent region but defined outside and demote
   // them to memory - now we can change the CFG easier.
-  demoteDRRegs(TheLoop);
+  demoteDRRegs();
 
   for (auto &DR : DivergentRegions) {
     ValueToValueMapTy &ReverseDRLVMap = *DR.ReverseDRVMap;
