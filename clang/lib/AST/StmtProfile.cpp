@@ -927,6 +927,16 @@ void OMPClauseProfiler::VisitOMPXDynCGroupMemClause(
   if (Expr *Size = C->getSize())
     Profiler->VisitStmt(Size);
 }
+void OMPClauseProfiler::VisitOMPXCoarsenForClause(
+    const OMPXCoarsenForClause *C) {
+  if (C->getFactor())
+    Profiler->VisitStmt(C->getFactor());
+}
+void OMPClauseProfiler::VisitOMPXCoarsenDistributeClause(
+    const OMPXCoarsenDistributeClause *C) {
+  if (C->getFactor())
+    Profiler->VisitStmt(C->getFactor());
+}
 void OMPClauseProfiler::VisitOMPDoacrossClause(const OMPDoacrossClause *C) {
   VisitOMPClauseList(C);
 }

@@ -29,8 +29,40 @@
 
 #ifndef OMP5
 
-void ompx_static_coarsen(float *a, float *b, float *c, float *d) {
-  #pragma omp parallel for schedule(ompx_static_coarsen, 5)
+void with_var_schedule() {
+  double a = 5;
+
+#pragma omp parallel for schedule(static, char(a)) private(a)
+  for (unsigned long long i = 1; i < 2 + a; ++i) {
+  }
+}
+
+void without_schedule_clause(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for
+// UB = min(UB, GlobalUB)
+// Loop header
+  for (int i = 33; i < 32000000; i += 7) {
+// Start of body: calculate i from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+}
+
+void static_not_chunked(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for schedule(static)
+// UB = min(UB, GlobalUB)
+// Loop header
+  for (int i = 32000000; i > 33; i += -7) {
+// Start of body: calculate i from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+}
+
+void static_chunked(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for schedule(static, 5)
 // UB = min(UB, GlobalUB)
 
 // Outer loop header
@@ -44,13 +76,182 @@ void ompx_static_coarsen(float *a, float *b, float *c, float *d) {
   }
 // Update the counters, adding stride
 
-  #pragma unroll
+}
+
+void ompx_static_coarsen(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for ompx_coarsen_for(2)
+// UB = min(UB, GlobalUB)
+
+// Outer loop header
+
+// Loop header
   for (unsigned i = 131071; i <= 2147483647; i += 127) {
 // Start of body: calculate i from IV:
 // ... loop body ...
 // End of body: store into a[i]:
     a[i] = b[i] * c[i] * d[i];
   }
+// Update the counters, adding stride
+
+}
+
+void dynamic1(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for schedule(dynamic)
+
+// Loop header
+
+  for (unsigned long long i = 131071; i < 2147483647; i += 127) {
+// Start of body: calculate i from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+}
+
+void guided7(float *a, float *b, float *c, float *d) {
+  #pragma omp parallel for schedule(guided, 7)
+
+// Loop header
+
+  for (unsigned long long i = 131071; i < 2147483647; i += 127) {
+// Start of body: calculate i from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+}
+
+void test_auto(float *a, float *b, float *c, float *d) {
+  unsigned int x = 0;
+  unsigned int y = 0;
+  #pragma omp parallel for schedule(auto) collapse(2)
+
+// Loop header
+
+// FIXME: When the iteration count of some nested loop is not a known constant,
+// we should pre-calculate it, like we do for the total number of iterations!
+  for (char i = static_cast<char>(y); i <= '9'; ++i)
+    for (x = 11; x > 0; --x) {
+// Start of body: indices are calculated from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+}
+
+void runtime(float *a, float *b, float *c, float *d) {
+  int x = 0;
+  #pragma omp parallel for collapse(2) schedule(runtime)
+
+// Loop header
+
+  for (unsigned char i = '0' ; i <= '9'; ++i)
+    for (x = -10; x < 10; ++x) {
+// Start of body: indices are calculated from IV:
+// ... loop body ...
+// End of body: store into a[i]:
+    a[i] = b[i] * c[i] * d[i];
+  }
+}
+
+int foo() { extern void mayThrow(); mayThrow(); return 0; };
+
+void parallel_for(float *a, const int n) {
+  float arr[n];
+#pragma omp parallel for schedule(static, 5) private(arr) default(none) firstprivate(n) shared(a)
+  for (unsigned i = 131071; i <= 2147483647; i += 127)
+    a[i] += foo() + arr[i] + n;
+}
+// Check source line corresponds to "#pragma omp parallel for schedule(static, 5)" above:
+
+#else // OMP5
+int increment () {
+  #pragma omp for
+// Determine UB = min(UB, GlobalUB)
+
+// Loop header
+
+  for (int i = 0 ; i != 5; ++i)
+// Start of body: calculate i from IV:
+    ;
+  return 0;
+}
+
+int decrement_nowait () {
+  #pragma omp for nowait
+// Determine UB = min(UB, GlobalUB)
+
+// Loop header
+  for (int j = 5 ; j != 0; --j)
+// Start of body: calculate i from IV:
+    ;
+  return 0;
+}
+
+void range_for_single() {
+  int arr[10] = {0};
+#pragma omp parallel for
+  for (auto &a : arr)
+    (void)a;
+}
+
+
+// __range = arr;
+
+// __end = end(_range);
+
+
+// calculate number of elements.
+
+// __begin = begin(range);
+
+// __begin >= __end ? goto then : goto exit;
+
+
+// lb = 0;
+
+// ub = number of elements
+
+// stride = 1;
+
+// is_last = 0;
+
+// loop.
+
+// ub = (ub > number_of_elems ? number_of_elems : ub);
+
+
+
+// OMP%: store i64 [[MIN]], ptr [[UB]],
+
+// iv = lb;
+
+// goto loop;
+// loop:
+
+
+// iv <= ub ? goto body : goto end;
+
+// body:
+// __begin = begin(arr) + iv * 1;
+
+// a = *__begin;
+
+// (void)a;
+
+// iv += 1;
+
+// goto loop;
+
+// end:
+// exit:
+
+void range_for_collapsed() {
+  int arr[10] = {0};
+#pragma omp parallel for collapse(2)
+  for (auto &a : arr)
+    for (auto b : arr)
+      a = b;
 }
 #endif // OMP5
 

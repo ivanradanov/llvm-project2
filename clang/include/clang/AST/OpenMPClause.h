@@ -32,6 +32,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Frontend/OpenMP/OMP.h.inc"
 #include "llvm/Frontend/OpenMP/OMPAssume.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Frontend/OpenMP/OMPContext.h"
@@ -515,6 +516,33 @@ public:
   static bool classof(const OMPClause *T) {
     return T->getClauseKind() == llvm::omp::OMPC_allocate;
   }
+};
+
+class OMPXCoarsenForClause
+    : public OMPOneStmtClause<llvm::omp::OMPC_ompx_coarsen_for, OMPClause> {
+  friend class OMPClauseReader;
+  void setFactor(Expr *Factor) { setStmt(Factor); }
+
+public:
+  OMPXCoarsenForClause(Expr *Factor, SourceLocation StartLoc,
+                       SourceLocation LParenLoc, SourceLocation EndLoc)
+      : OMPOneStmtClause(Factor, StartLoc, LParenLoc, EndLoc) {}
+  explicit OMPXCoarsenForClause() : OMPOneStmtClause() {}
+  Expr *getFactor() const { return getStmtAs<Expr>(); }
+};
+
+class OMPXCoarsenDistributeClause
+    : public OMPOneStmtClause<llvm::omp::OMPC_ompx_coarsen_distribute,
+                              OMPClause> {
+  friend class OMPClauseReader;
+  void setFactor(Expr *Factor) { setStmt(Factor); }
+
+public:
+  OMPXCoarsenDistributeClause(Expr *Factor, SourceLocation StartLoc,
+                              SourceLocation LParenLoc, SourceLocation EndLoc)
+      : OMPOneStmtClause(Factor, StartLoc, LParenLoc, EndLoc) {}
+  explicit OMPXCoarsenDistributeClause() : OMPOneStmtClause() {}
+  Expr *getFactor() const { return getStmtAs<Expr>(); }
 };
 
 /// This represents 'if' clause in the '#pragma omp ...' directive.

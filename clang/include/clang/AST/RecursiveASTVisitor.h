@@ -3875,6 +3875,20 @@ bool RecursiveASTVisitor<Derived>::VisitOMPXDynCGroupMemClause(
 }
 
 template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPXCoarsenForClause(
+    OMPXCoarsenForClause *C) {
+  TRY_TO(TraverseStmt(C->getFactor()));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPXCoarsenDistributeClause(
+    OMPXCoarsenDistributeClause *C) {
+  TRY_TO(TraverseStmt(C->getFactor()));
+  return true;
+}
+
+template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPDoacrossClause(
     OMPDoacrossClause *C) {
   TRY_TO(VisitOMPClauseList(C));

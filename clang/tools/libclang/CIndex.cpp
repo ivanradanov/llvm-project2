@@ -2732,6 +2732,14 @@ void OMPClauseEnqueue::VisitOMPXDynCGroupMemClause(
   VisitOMPClauseWithPreInit(C);
   Visitor->AddStmt(C->getSize());
 }
+void OMPClauseEnqueue::VisitOMPXCoarsenForClause(
+    const OMPXCoarsenForClause *C) {
+  Visitor->AddStmt(C->getFactor());
+}
+void OMPClauseEnqueue::VisitOMPXCoarsenDistributeClause(
+    const OMPXCoarsenDistributeClause *C) {
+  Visitor->AddStmt(C->getFactor());
+}
 void OMPClauseEnqueue::VisitOMPDoacrossClause(const OMPDoacrossClause *C) {
   VisitOMPClauseList(C);
 }

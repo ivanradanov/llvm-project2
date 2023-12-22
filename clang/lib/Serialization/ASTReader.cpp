@@ -107,6 +107,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Bitstream/BitstreamReader.h"
+#include "llvm/Frontend/OpenMP/OMP.h.inc"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Compression.h"
@@ -10516,6 +10517,12 @@ OMPClause *OMPClauseReader::readClause() {
   case llvm::omp::OMPC_ompx_dyn_cgroup_mem:
     C = new (Context) OMPXDynCGroupMemClause();
     break;
+  case llvm::omp::OMPC_ompx_coarsen_for:
+    C = new (Context) OMPXCoarsenForClause();
+    break;
+  case llvm::omp::OMPC_ompx_coarsen_distribute:
+    C = new (Context) OMPXCoarsenDistributeClause();
+    break;
   case llvm::omp::OMPC_doacross: {
     unsigned NumVars = Record.readInt();
     unsigned NumLoops = Record.readInt();
@@ -11611,6 +11618,17 @@ void OMPClauseReader::VisitOMPAlignClause(OMPAlignClause *C) {
 void OMPClauseReader::VisitOMPXDynCGroupMemClause(OMPXDynCGroupMemClause *C) {
   VisitOMPClauseWithPreInit(C);
   C->setSize(Record.readSubExpr());
+  C->setLParenLoc(Record.readSourceLocation());
+}
+
+void OMPClauseReader::VisitOMPXCoarsenForClause(OMPXCoarsenForClause *C) {
+  C->setFactor(Record.readSubExpr());
+  C->setLParenLoc(Record.readSourceLocation());
+}
+
+void OMPClauseReader::VisitOMPXCoarsenDistributeClause(
+    OMPXCoarsenDistributeClause *C) {
+  C->setFactor(Record.readSubExpr());
   C->setLParenLoc(Record.readSourceLocation());
 }
 

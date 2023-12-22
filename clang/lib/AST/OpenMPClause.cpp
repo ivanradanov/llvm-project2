@@ -2529,6 +2529,19 @@ void OMPClausePrinter::VisitOMPXDynCGroupMemClause(
   OS << ")";
 }
 
+void OMPClausePrinter::VisitOMPXCoarsenForClause(OMPXCoarsenForClause *Node) {
+  OS << "ompx_coarsen_for(";
+  Node->getFactor()->printPretty(OS, nullptr, Policy, 0);
+  OS << ")";
+}
+
+void OMPClausePrinter::VisitOMPXCoarsenDistributeClause(
+    OMPXCoarsenDistributeClause *Node) {
+  OS << "ompx_coarsen_distribute(";
+  Node->getFactor()->printPretty(OS, nullptr, Policy, 0);
+  OS << ")";
+}
+
 void OMPClausePrinter::VisitOMPDoacrossClause(OMPDoacrossClause *Node) {
   OS << "doacross(";
   OpenMPDoacrossClauseModifier DepType = Node->getDependenceType();

@@ -35,6 +35,12 @@ def OMPC_Allocator : Clause<"allocator"> {
   let clangClass = "OMPAllocatorClause";
   let flangClass = "ScalarIntExpr";
 }
+def OMPC_CoarsenFor : Clause<"ompx_coarsen_for"> {
+  let clangClass = "OMPXCoarsenForClause";
+}
+def OMPC_CoarsenDistribute : Clause<"ompx_coarsen_distribute"> {
+  let clangClass = "OMPXCoarsenDistributeClause";
+}
 def OMPC_If : Clause<"if"> {
   let clangClass = "OMPIfClause";
   let flangClass = "OmpIfClause";

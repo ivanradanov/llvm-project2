@@ -12552,6 +12552,17 @@ public:
                                             SourceLocation LParenLoc,
                                             SourceLocation EndLoc);
 
+  /// Called on a well-formed 'ompx_coarsen_for' clause.
+  OMPClause *ActOnOpenMPXCoarsenForClause(Expr *Factor, SourceLocation StartLoc,
+                                          SourceLocation LParenLoc,
+                                          SourceLocation EndLoc);
+
+  /// Called on a well-formed 'ompx_coarsen_distribute' clause.
+  OMPClause *ActOnOpenMPXCoarsenDistributeClause(Expr *Factor,
+                                                 SourceLocation StartLoc,
+                                                 SourceLocation LParenLoc,
+                                                 SourceLocation EndLoc);
+
   /// Called on well-formed 'doacross' clause.
   OMPClause *
   ActOnOpenMPDoacrossClause(OpenMPDoacrossClauseModifier DepType,

@@ -445,6 +445,8 @@ CheckForIncompatibleAttributes(Sema &S,
     // The vector predication only has a state form that is exposed by
     // #pragma clang loop vectorize_predicate (enable | disable).
     VectorizePredicate,
+    // This only has a count type
+    UnrollAndInterleave,
     // This serves as a indicator to how many category are listed in this enum.
     NumberOfCategories
   };
@@ -491,6 +493,9 @@ CheckForIncompatibleAttributes(Sema &S,
       break;
     case LoopHintAttr::VectorizePredicate:
       Category = VectorizePredicate;
+      break;
+    case LoopHintAttr::UnrollAndInterleaveCount:
+      Category = UnrollAndInterleave;
       break;
     };
 

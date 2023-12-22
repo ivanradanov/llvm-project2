@@ -39,6 +39,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Frontend/OpenMP/OMP.h.inc"
 #include "llvm/Frontend/OpenMP/OMPAssume.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include <optional>
@@ -15503,6 +15504,13 @@ OMPClause *Sema::ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind, Expr *Expr,
   case OMPC_ompx_dyn_cgroup_mem:
     Res = ActOnOpenMPXDynCGroupMemClause(Expr, StartLoc, LParenLoc, EndLoc);
     break;
+  case OMPC_ompx_coarsen_for:
+    Res = ActOnOpenMPXCoarsenForClause(Expr, StartLoc, LParenLoc, EndLoc);
+    break;
+  case OMPC_ompx_coarsen_distribute:
+    Res =
+        ActOnOpenMPXCoarsenDistributeClause(Expr, StartLoc, LParenLoc, EndLoc);
+    break;
   case OMPC_grainsize:
   case OMPC_num_tasks:
   case OMPC_device:
@@ -24332,6 +24340,32 @@ OMPClause *Sema::ActOnOpenMPXDynCGroupMemClause(Expr *Size,
 
   return new (Context) OMPXDynCGroupMemClause(
       ValExpr, HelperValStmt, CaptureRegion, StartLoc, LParenLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPXCoarsenForClause(Expr *Factor,
+                                              SourceLocation StartLoc,
+                                              SourceLocation LParenLoc,
+                                              SourceLocation EndLoc) {
+  ExprResult FactorResult =
+      VerifyPositiveIntegerConstantInClause(Factor, OMPC_ompx_coarsen_for,
+                                            /*StrictlyPositive=*/true);
+  if (FactorResult.isInvalid())
+    return nullptr;
+  return new (Context)
+      OMPXCoarsenForClause(FactorResult.get(), StartLoc, LParenLoc, EndLoc);
+}
+
+OMPClause *Sema::ActOnOpenMPXCoarsenDistributeClause(Expr *Factor,
+                                                     SourceLocation StartLoc,
+                                                     SourceLocation LParenLoc,
+                                                     SourceLocation EndLoc) {
+  ExprResult FactorResult = VerifyPositiveIntegerConstantInClause(
+      Factor, OMPC_ompx_coarsen_distribute,
+      /*StrictlyPositive=*/true);
+  if (FactorResult.isInvalid())
+    return nullptr;
+  return new (Context) OMPXCoarsenDistributeClause(FactorResult.get(), StartLoc,
+                                                   LParenLoc, EndLoc);
 }
 
 OMPClause *Sema::ActOnOpenMPDoacrossClause(

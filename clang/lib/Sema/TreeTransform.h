@@ -2379,6 +2379,21 @@ public:
                                                     EndLoc);
   }
 
+  OMPClause *RebuildOMPXCoarsenForClause(Expr *Size, SourceLocation StartLoc,
+                                         SourceLocation LParenLoc,
+                                         SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPXCoarsenForClause(Size, StartLoc, LParenLoc,
+                                                  EndLoc);
+  }
+
+  OMPClause *RebuildOMPXCoarsenDistributeClause(Expr *Size,
+                                                SourceLocation StartLoc,
+                                                SourceLocation LParenLoc,
+                                                SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPXCoarsenDistributeClause(Size, StartLoc,
+                                                         LParenLoc, EndLoc);
+  }
+
   /// Build a new OpenMP 'ompx_attribute' clause.
   ///
   /// By default, performs semantic analysis to build the new OpenMP clause.
@@ -10800,6 +10815,26 @@ OMPClause *TreeTransform<Derived>::TransformOMPXDynCGroupMemClause(
     return nullptr;
   return getDerived().RebuildOMPXDynCGroupMemClause(
       Size.get(), C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
+}
+
+template <typename Derived>
+OMPClause *
+TreeTransform<Derived>::TransformOMPXCoarsenForClause(OMPXCoarsenForClause *C) {
+  ExprResult E = getDerived().TransformExpr(C->getFactor());
+  if (E.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPXCoarsenForClause(
+      E.get(), C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
+}
+
+template <typename Derived>
+OMPClause *TreeTransform<Derived>::TransformOMPXCoarsenDistributeClause(
+    OMPXCoarsenDistributeClause *C) {
+  ExprResult E = getDerived().TransformExpr(C->getFactor());
+  if (E.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPXCoarsenDistributeClause(
+      E.get(), C->getBeginLoc(), C->getLParenLoc(), C->getEndLoc());
 }
 
 template <typename Derived>
