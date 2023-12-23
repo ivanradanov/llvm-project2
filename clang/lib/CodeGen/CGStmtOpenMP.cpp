@@ -2100,6 +2100,19 @@ void CodeGenFunction::EmitOMPInnerLoop(
     auto SA = AS->getAttrs();
     Attrs = SmallVector<const Attr *>(SA.begin(), SA.end());
   }
+  bool Coarsened = false;
+  for (auto *CoarsenClause : S.getClausesOfKind<OMPXCoarsenForClause>()) {
+    Expr::EvalResult Result;
+    if (CoarsenClause->getFactor()->EvaluateAsInt(Result, getContext())) {
+      llvm::APSInt EvaluatedFactor = Result.Val.getInt();
+      Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(),
+                                              EvaluatedFactor.getExtValue()));
+      assert(!Coarsened);
+      Coarsened = true;
+    } else {
+      llvm_unreachable("should have been checked in sema");
+    }
+  }
   for (auto *ScheduleClause : S.getClausesOfKind<OMPScheduleClause>()) {
     if (ScheduleClause->getScheduleKind() ==
             OMPC_SCHEDULE_ompx_static_coarsen ||
@@ -2110,6 +2123,8 @@ void CodeGenFunction::EmitOMPInnerLoop(
         llvm::APSInt EvaluatedChunk = Result.Val.getInt();
         Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(),
                                                 EvaluatedChunk.getExtValue()));
+        assert(!Coarsened);
+        Coarsened = true;
       } else {
         llvm_unreachable("should have been checked in sema");
       }
