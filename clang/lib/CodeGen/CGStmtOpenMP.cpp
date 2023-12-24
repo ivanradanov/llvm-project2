@@ -2077,11 +2077,37 @@ void CodeGenFunction::EmitOMPCanonicalLoop(const OMPCanonicalLoop *S) {
   OMPLoopNestStack.push_back(CL);
 }
 
+static unsigned getCoarsenFactor(const ASTContext &Ctx,
+                                 const OMPExecutableDirective &S, bool isFor) {
+  if (isFor) {
+    for (auto *CoarsenClause : S.getClausesOfKind<OMPXCoarsenForClause>()) {
+      Expr::EvalResult Result;
+      if (CoarsenClause->getFactor()->EvaluateAsInt(Result, Ctx)) {
+        llvm::APSInt EvaluatedFactor = Result.Val.getInt();
+        return EvaluatedFactor.getExtValue();
+      }
+      llvm_unreachable("should have been checked in sema");
+    }
+  } else {
+    for (auto *CoarsenClause :
+         S.getClausesOfKind<OMPXCoarsenDistributeClause>()) {
+      Expr::EvalResult Result;
+      if (CoarsenClause->getFactor()->EvaluateAsInt(Result, Ctx)) {
+        llvm::APSInt EvaluatedFactor = Result.Val.getInt();
+        return EvaluatedFactor.getExtValue();
+      }
+      llvm_unreachable("should have been checked in sema");
+    }
+  }
+  return 1;
+}
+
 void CodeGenFunction::EmitOMPInnerLoop(
     const OMPExecutableDirective &S, bool RequiresCleanup, const Expr *LoopCond,
     const Expr *IncExpr,
     const llvm::function_ref<void(CodeGenFunction &)> BodyGen,
-    const llvm::function_ref<void(CodeGenFunction &)> PostIncGen) {
+    const llvm::function_ref<void(CodeGenFunction &)> PostIncGen,
+    const unsigned CoarsenFactor) {
   auto LoopExit = getJumpDestInCurrentScope("omp.inner.for.end");
 
   // Start the loop with a block that tests the condition.
@@ -2100,35 +2126,8 @@ void CodeGenFunction::EmitOMPInnerLoop(
     auto SA = AS->getAttrs();
     Attrs = SmallVector<const Attr *>(SA.begin(), SA.end());
   }
-  bool Coarsened = false;
-  for (auto *CoarsenClause : S.getClausesOfKind<OMPXCoarsenForClause>()) {
-    Expr::EvalResult Result;
-    if (CoarsenClause->getFactor()->EvaluateAsInt(Result, getContext())) {
-      llvm::APSInt EvaluatedFactor = Result.Val.getInt();
-      Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(),
-                                              EvaluatedFactor.getExtValue()));
-      assert(!Coarsened);
-      Coarsened = true;
-    } else {
-      llvm_unreachable("should have been checked in sema");
-    }
-  }
-  for (auto *ScheduleClause : S.getClausesOfKind<OMPScheduleClause>()) {
-    if (ScheduleClause->getScheduleKind() ==
-            OMPC_SCHEDULE_ompx_static_coarsen ||
-        ScheduleClause->getScheduleKind() ==
-            OMPC_SCHEDULE_ompx_dynamic_coarsen) {
-      Expr::EvalResult Result;
-      if (ScheduleClause->getChunkSize()->EvaluateAsInt(Result, getContext())) {
-        llvm::APSInt EvaluatedChunk = Result.Val.getInt();
-        Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(),
-                                                EvaluatedChunk.getExtValue()));
-        assert(!Coarsened);
-        Coarsened = true;
-      } else {
-        llvm_unreachable("should have been checked in sema");
-      }
-    }
+  if (CoarsenFactor > 1) {
+    Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(), CoarsenFactor));
   }
   LoopStack.push(CondBlock, CGM.getContext(), CGM.getCodeGenOpts(),
                  Attrs, SourceLocToDebugLoc(R.getBegin()),
@@ -3480,7 +3479,8 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
                   [&S, LoopExit](CodeGenFunction &CGF) {
                     emitOMPLoopBodyWithStopPoint(CGF, S, LoopExit);
                   },
-                  [](CodeGenFunction &) {});
+                  [](CodeGenFunction &) {},
+                  getCoarsenFactor(CGF.getContext(), S, /*isFor=*/true));
             });
         EmitBlock(LoopExit.getBlock());
         // Tell the runtime we are done.
@@ -5816,7 +5816,8 @@ void CodeGenFunction::EmitOMPDistributeLoop(const OMPLoopDirective &S,
                       CGF.EmitIgnoredExpr(S.getCombinedEnsureUpperBound());
                       CGF.EmitIgnoredExpr(S.getCombinedInit());
                     }
-                  });
+                  },
+                  getCoarsenFactor(CGF.getContext(), S, false));
             });
         EmitBlock(LoopExit.getBlock());
         // Tell the runtime we are done.

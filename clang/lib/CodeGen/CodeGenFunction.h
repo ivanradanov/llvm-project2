@@ -3727,11 +3727,12 @@ public:
   /// \param BodyGen Generator for the inner body of the inner loop.
   /// \param PostIncGen Genrator for post-increment code (required for ordered
   /// loop directvies).
-  void EmitOMPInnerLoop(
-      const OMPExecutableDirective &S, bool RequiresCleanup,
-      const Expr *LoopCond, const Expr *IncExpr,
-      const llvm::function_ref<void(CodeGenFunction &)> BodyGen,
-      const llvm::function_ref<void(CodeGenFunction &)> PostIncGen);
+  void
+  EmitOMPInnerLoop(const OMPExecutableDirective &S, bool RequiresCleanup,
+                   const Expr *LoopCond, const Expr *IncExpr,
+                   const llvm::function_ref<void(CodeGenFunction &)> BodyGen,
+                   const llvm::function_ref<void(CodeGenFunction &)> PostIncGen,
+                   const unsigned CoarsenFactor = 1);
 
   JumpDest getOMPCancelDestination(OpenMPDirectiveKind Kind);
   /// Emit initial code for loop counters of loop-based directives.
