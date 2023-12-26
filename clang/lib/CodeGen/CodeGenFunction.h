@@ -3732,7 +3732,7 @@ public:
                    const Expr *LoopCond, const Expr *IncExpr,
                    const llvm::function_ref<void(CodeGenFunction &)> BodyGen,
                    const llvm::function_ref<void(CodeGenFunction &)> PostIncGen,
-                   const unsigned CoarsenFactor = 1);
+                   const OMPXCoarsenAttr *CoarsenAttr = nullptr);
 
   JumpDest getOMPCancelDestination(OpenMPDirectiveKind Kind);
   /// Emit initial code for loop counters of loop-based directives.

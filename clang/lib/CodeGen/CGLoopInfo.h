@@ -72,6 +72,8 @@ struct LoopAttributes {
 
   unsigned UnrollAndInterleaveCount;
 
+  int UnrollAndInterleaveLevel;
+
   /// Value for llvm.loop.distribute.enable metadata.
   LVEnableState DistributeEnable;
 
@@ -286,6 +288,11 @@ public:
 
   /// \brief Set the unroll count for the next loop pushed.
   void setUnrollAndInterleaveCount(unsigned C) { StagedAttrs.UnrollAndInterleaveCount = C; }
+
+  /// \brief Set the unroll count for the next loop pushed.
+  void setUnrollAndInterleaveLevel(int C) {
+    StagedAttrs.UnrollAndInterleaveLevel = C;
+  }
 
   /// Set the pipeline disabled state.
   void setPipelineDisabled(bool S) { StagedAttrs.PipelineDisabled = S; }

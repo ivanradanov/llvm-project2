@@ -399,11 +399,16 @@ MDNode *LoopInfo::createUnrollAndInterleaveMetadata(const LoopAttributes &Attrs,
   SmallVector<Metadata *, 4> Args;
   Args.push_back(nullptr);
   Args.append(LoopProperties.begin(), LoopProperties.end());
-  Metadata *Vals[] = {
-    MDString::get(Ctx, "llvm.loop.unroll_and_interleave.count"),
-    ConstantAsMetadata::get(ConstantInt::get(llvm::Type::getInt32Ty(Ctx),
-                                             Attrs.UnrollAndInterleaveCount))};
-  Args.push_back(MDNode::get(Ctx, Vals));
+  Metadata *CountVals[] = {
+      MDString::get(Ctx, "llvm.loop.unroll_and_interleave.count"),
+      ConstantAsMetadata::get(ConstantInt::get(
+          llvm::Type::getInt32Ty(Ctx), Attrs.UnrollAndInterleaveCount))};
+  Args.push_back(MDNode::get(Ctx, CountVals));
+  Metadata *LevelVals[] = {
+      MDString::get(Ctx, "llvm.loop.unroll_and_interleave.level"),
+      ConstantAsMetadata::get(ConstantInt::get(
+          llvm::Type::getInt32Ty(Ctx), Attrs.UnrollAndInterleaveLevel))};
+  Args.push_back(MDNode::get(Ctx, LevelVals));
 
   MDNode *LoopID = MDNode::getDistinct(Ctx, Args);
   LoopID->replaceOperandWith(0, LoopID);
@@ -495,6 +500,7 @@ LoopAttributes::LoopAttributes(bool IsParallel)
       VectorizePredicateEnable(LoopAttributes::Unspecified), VectorizeWidth(0),
       VectorizeScalable(LoopAttributes::Unspecified), InterleaveCount(0),
       UnrollCount(0), UnrollAndJamCount(0), UnrollAndInterleaveCount(0),
+      UnrollAndInterleaveLevel(0),
       DistributeEnable(LoopAttributes::Unspecified), PipelineDisabled(false),
       PipelineInitiationInterval(0), CodeAlign(0), MustProgress(false) {}
 
@@ -506,6 +512,7 @@ void LoopAttributes::clear() {
   UnrollCount = 0;
   UnrollAndJamCount = 0;
   UnrollAndInterleaveCount = 0;
+  UnrollAndInterleaveLevel = 0;
   VectorizeEnable = LoopAttributes::Unspecified;
   UnrollEnable = LoopAttributes::Unspecified;
   UnrollAndJamEnable = LoopAttributes::Unspecified;
@@ -659,6 +666,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
     LoopHintAttr::OptionType Option = LoopHintAttr::Unroll;
     LoopHintAttr::LoopHintState State = LoopHintAttr::Disable;
     unsigned ValueInt = 1;
+    int LevelInt = 0;
     // Translate opencl_unroll_hint attribute argument to
     // equivalent LoopHintAttr enums.
     // OpenCL v2.0 s6.11.5:
@@ -675,7 +683,9 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       }
     } else if (OMPXCoarsen) {
       ValueInt = OMPXCoarsen->getFactor();
+      LevelInt = OMPXCoarsen->getLevel();
       assert(ValueInt >= 1);
+      assert(LevelInt >= -1);
       if (ValueInt != 1) {
         Option = LoopHintAttr::UnrollAndInterleaveCount;
         State = LoopHintAttr::Numeric;
@@ -831,6 +841,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         break;
       case LoopHintAttr::UnrollAndInterleaveCount:
         setUnrollAndInterleaveCount(ValueInt);
+        setUnrollAndInterleaveLevel(LevelInt);
         break;
       case LoopHintAttr::PipelineInitiationInterval:
         setPipelineInitiationInterval(ValueInt);

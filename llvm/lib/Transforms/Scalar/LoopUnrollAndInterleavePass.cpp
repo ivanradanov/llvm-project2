@@ -75,8 +75,8 @@ using std::unique_ptr;
 
 #define DEBUG_TYPE "loop-unroll-and-interleave"
 
-static cl::opt<int> UnrollFactorOpt("luai-factor", cl::init(1), cl::Hidden,
-                                    cl::desc("Factor to coarsen with"));
+static cl::opt<int> FactorOpt("luai-factor", cl::init(1), cl::Hidden,
+                              cl::desc("Factor to coarsen with"));
 
 static cl::opt<bool> UseDynamicConvergenceOpt(
     "luai-use-dynamic-convergence", cl::init(false), cl::Hidden,
@@ -113,7 +113,7 @@ protected:
   // Options
   const unsigned Factor;
   const bool UseDynamicConvergence;
-  const bool UseInterProceduralInterleaving;
+  const int InterProceduralInterleavingLevel;
 
 private:
   /// Divergent groups are the maximal sets of basic blocks with the following
@@ -177,9 +177,9 @@ private:
 
 public:
   BBInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
-               bool UseDynamicConvergence)
+               bool UseDynamicConvergence, int InterProceduralInterleavingLevel)
       : ORE(ORE), Factor(Factor), UseDynamicConvergence(UseDynamicConvergence),
-        UseInterProceduralInterleaving(true) {}
+        InterProceduralInterleavingLevel(InterProceduralInterleavingLevel) {}
   LoopUnrollResult tryToUnrollBBs(
       Loop *L, LoopInfo *LI, BasicBlock *DominatingBlock,
       BasicBlock *PostDominatingBlock,
@@ -199,8 +199,10 @@ private:
 
 public:
   FunctionInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
-                     bool UseDynamicConvergence)
-      : BBInterleave(ORE, Factor, UseDynamicConvergence) {}
+                     bool UseDynamicConvergence,
+                     int InterProceduralInterleavingLevel)
+      : BBInterleave(ORE, Factor, UseDynamicConvergence,
+                     InterProceduralInterleavingLevel) {}
   Function *tryToInterleaveFunction(Function *F);
 };
 
@@ -219,8 +221,10 @@ private:
 
 public:
   LoopUnrollAndInterleave(OptimizationRemarkEmitter &ORE, unsigned UnrollFactor,
-                          bool UseDynamicConvergence)
-      : BBInterleave(ORE, UnrollFactor, UseDynamicConvergence) {}
+                          bool UseDynamicConvergence,
+                          int InterProceduralInterleavingLevel)
+      : BBInterleave(ORE, UnrollFactor, UseDynamicConvergence,
+                     InterProceduralInterleavingLevel) {}
   LoopUnrollResult tryToUnrollAndInterleaveLoop(Loop *L, DominatorTree &DT,
                                                 LoopInfo &LI,
                                                 ScalarEvolution &SE,
@@ -257,6 +261,20 @@ static unsigned getLoopCoarseningFactor(Loop *L) {
         mdconst::extract<ConstantInt>(MD->getOperand(1))->getZExtValue();
     assert(Count >= 1 && "Unroll and interleave factor must be positive.");
     return Count;
+  }
+  return 0;
+}
+
+static unsigned getLoopCoarseningLevel(Loop *L) {
+  MDNode *MD =
+      getUnrollMetadataForLoop(L, "llvm.loop.unroll_and_interleave.level");
+  if (MD) {
+    assert(MD->getNumOperands() == 2 &&
+           "Unroll level hint metadata should have two operands.");
+    int Level =
+        mdconst::extract<ConstantInt>(MD->getOperand(1))->getZExtValue();
+    assert(Level >= -1 && "Unroll and interleave factor must be >= -1.");
+    return Level;
   }
   return 0;
 }
@@ -849,11 +867,12 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
       (*VMaps[0])[I] = I;
       (*ReverseVMaps[0])[I] = I;
 
-      if (UseInterProceduralInterleaving) {
+      if (InterProceduralInterleavingLevel) {
         Function *InterleavableCallee = getInterleavableCallee(I);
         Function *UnrolledF = nullptr;
         if (InterleavableCallee)
-          UnrolledF = FunctionInterleave(ORE, Factor, UseDynamicConvergence)
+          UnrolledF = FunctionInterleave(ORE, Factor, UseDynamicConvergence,
+                                         InterProceduralInterleavingLevel - 1)
                           .tryToInterleaveFunction(InterleavableCallee);
         if (UnrolledF) {
           auto *CB = cast<CallBase>(I);
@@ -1389,8 +1408,8 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
         LLVM_DEBUG(DBGS_FAIL << "Coarsening disabled\n");
         continue;
       }
-      auto UnrollFactor = getLoopCoarseningFactor(L);
-      if (UnrollFactor == 0) {
+      auto Factor = getLoopCoarseningFactor(L);
+      if (Factor == 0) {
         LLVM_DEBUG(DBGS_FAIL << "Coarsening metadata missing - ignoring\n");
         continue;
       }
@@ -1398,20 +1417,20 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
     }
     // TODO No nested UAI'ing allowed - either support it or check
     for (auto *L : ToUAI) {
-      auto UnrollFactor = getLoopCoarseningFactor(L);
-      if (UnrollFactor == 0) {
+      auto Factor = getLoopCoarseningFactor(L);
+      if (Factor == 0) {
         LLVM_DEBUG(DBGS_FAIL << "Coarsening metadata missing - ignoring\n");
         continue;
       }
-      if (UnrollFactorOpt.getNumOccurrences() > 0) {
+      if (FactorOpt.getNumOccurrences() > 0) {
         LLVM_DEBUG(DBGS << "Setting factor from cl opt\n");
-        UnrollFactor = UnrollFactorOpt;
+        Factor = FactorOpt;
       }
       if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR")) {
         LLVM_DEBUG(DBGS << "Setting factor from env var\n");
-        StringRef(Env).getAsInteger(10, UnrollFactor);
+        StringRef(Env).getAsInteger(10, Factor);
       }
-      if (UnrollFactor <= 1) {
+      if (Factor <= 1) {
         LLVM_DEBUG(DBGS_FAIL << "Coarsening factor of 1 or 0 - ignoring\n");
         continue;
       }
@@ -1422,13 +1441,15 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
         UseDynamicConvergence = Int;
       }
 
+      int Level = getLoopCoarseningLevel(L);
+
       OptimizationRemarkEmitter ORE(&F);
 
       Changed |= formLCSSARecursively(*L, DT, &LI, &SE);
       Changed |= simplifyLoop(L, &DT, &LI, &SE, /*AC=*/nullptr,
                               /*MSSAU=*/nullptr, /*PreserveLCSSA=*/true);
       Changed |=
-          LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergence)
+          LoopUnrollAndInterleave(ORE, Factor, UseDynamicConvergence, Level)
               .tryToUnrollAndInterleaveLoop(L, DT, LI, SE, PDT) !=
           LoopUnrollResult::Unmodified;
     }
@@ -1443,13 +1464,15 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
 namespace llvm {
 bool loopUnrollAndInterleave(OptimizationRemarkEmitter &ORE,
                              unsigned UnrollFactor, bool UseDynamicConvergence,
-                             Loop *L, DominatorTree &DT, LoopInfo &LI,
+                             int InterProceduralInterleavingLevel, Loop *L,
+                             DominatorTree &DT, LoopInfo &LI,
                              ScalarEvolution &SE, PostDominatorTree &PDT) {
   if (UnrollFactor <= 1) {
     LLVM_DEBUG(DBGS << "Unroll factor of 1 or 0 - ignoring\n");
     return false;
   }
-  return LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergenceOpt)
+  return LoopUnrollAndInterleave(ORE, UnrollFactor, UseDynamicConvergenceOpt,
+                                 InterProceduralInterleavingLevel)
              .tryToUnrollAndInterleaveLoop(L, DT, LI, SE, PDT) !=
          LoopUnrollResult::Unmodified;
 }

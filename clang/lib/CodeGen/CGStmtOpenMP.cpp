@@ -2078,31 +2078,39 @@ void CodeGenFunction::EmitOMPCanonicalLoop(const OMPCanonicalLoop *S) {
   OMPLoopNestStack.push_back(CL);
 }
 
-static unsigned getCoarsenFactor(const ASTContext &Ctx,
-                                 const OMPExecutableDirective &S, Directive D) {
+static OMPXCoarsenAttr *
+getCoarsenAttr(ASTContext &Ctx, const OMPExecutableDirective &S, Directive D) {
   if (D == OMPD_for) {
+    int Level = 0;
+    if (char *EnvVar = getenv("OMPX_COARSEN_FOR_OVERRIDE"))
+      return OMPXCoarsenAttr::Create(Ctx, std::stoul(EnvVar), Level);
     for (auto *CoarsenClause : S.getClausesOfKind<OMPXCoarsenForClause>()) {
       Expr::EvalResult Result;
       if (CoarsenClause->getFactor()->EvaluateAsInt(Result, Ctx)) {
         llvm::APSInt EvaluatedFactor = Result.Val.getInt();
-        return EvaluatedFactor.getExtValue();
+        return OMPXCoarsenAttr::Create(Ctx, EvaluatedFactor.getExtValue(),
+                                       Level);
       }
       llvm_unreachable("should have been checked in sema");
     }
   } else if (D == OMPD_distribute) {
+    int Level = 1;
+    if (char *EnvVar = getenv("OMPX_COARSEN_DISTRIBUTE_OVERRIDE"))
+      return OMPXCoarsenAttr::Create(Ctx, std::stoul(EnvVar), Level);
     for (auto *CoarsenClause :
          S.getClausesOfKind<OMPXCoarsenDistributeClause>()) {
       Expr::EvalResult Result;
       if (CoarsenClause->getFactor()->EvaluateAsInt(Result, Ctx)) {
         llvm::APSInt EvaluatedFactor = Result.Val.getInt();
-        return EvaluatedFactor.getExtValue();
+        return OMPXCoarsenAttr::Create(Ctx, EvaluatedFactor.getExtValue(),
+                                       Level);
       }
       llvm_unreachable("should have been checked in sema");
     }
   } else {
     llvm_unreachable("Unexpected directive");
   }
-  return 1;
+  return nullptr;
 }
 
 void CodeGenFunction::EmitOMPInnerLoop(
@@ -2110,7 +2118,7 @@ void CodeGenFunction::EmitOMPInnerLoop(
     const Expr *IncExpr,
     const llvm::function_ref<void(CodeGenFunction &)> BodyGen,
     const llvm::function_ref<void(CodeGenFunction &)> PostIncGen,
-    const unsigned CoarsenFactor) {
+    const OMPXCoarsenAttr *CoarsenAttr) {
   auto LoopExit = getJumpDestInCurrentScope("omp.inner.for.end");
 
   // Start the loop with a block that tests the condition.
@@ -2129,8 +2137,8 @@ void CodeGenFunction::EmitOMPInnerLoop(
     auto SA = AS->getAttrs();
     Attrs = SmallVector<const Attr *>(SA.begin(), SA.end());
   }
-  if (CoarsenFactor > 1) {
-    Attrs.push_back(OMPXCoarsenAttr::Create(CGM.getContext(), CoarsenFactor));
+  if (CoarsenAttr) {
+    Attrs.push_back(CoarsenAttr);
   }
   LoopStack.push(CondBlock, CGM.getContext(), CGM.getCodeGenOpts(),
                  Attrs, SourceLocToDebugLoc(R.getBegin()),
@@ -2929,7 +2937,7 @@ void CodeGenFunction::EmitOMPOuterLoop(
             [IVSize, IVSigned, Loc, &CodeGenOrdered](CodeGenFunction &CGF) {
               CodeGenOrdered(CGF, Loc, IVSize, IVSigned);
             },
-            getCoarsenFactor(CGF.getContext(), S, D));
+            getCoarsenAttr(CGF.getContext(), S, D));
       });
 
   EmitBlock(Continue.getBlock());
@@ -3487,7 +3495,7 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
                     emitOMPLoopBodyWithStopPoint(CGF, S, LoopExit);
                   },
                   [](CodeGenFunction &) {},
-                  getCoarsenFactor(CGF.getContext(), S, OMPD_for));
+                  getCoarsenAttr(CGF.getContext(), S, OMPD_for));
             });
         EmitBlock(LoopExit.getBlock());
         // Tell the runtime we are done.
@@ -5824,7 +5832,7 @@ void CodeGenFunction::EmitOMPDistributeLoop(const OMPLoopDirective &S,
                       CGF.EmitIgnoredExpr(S.getCombinedInit());
                     }
                   },
-                  getCoarsenFactor(CGF.getContext(), S, OMPD_distribute));
+                  getCoarsenAttr(CGF.getContext(), S, OMPD_distribute));
             });
         EmitBlock(LoopExit.getBlock());
         // Tell the runtime we are done.

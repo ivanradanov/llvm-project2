@@ -3847,11 +3847,13 @@ def LoopHint : Attr {
   /// State of the loop optimization specified by the spelling.
   let Args = [EnumArgument<"Option", "OptionType",
                           ["vectorize", "vectorize_width", "interleave", "interleave_count",
-                           "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count", "unroll_and_interleave_count",
+                           "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count",
+                           "unroll_and_interleave_count", "unroll_and_interleave_level",
                            "pipeline", "pipeline_initiation_interval", "distribute",
                            "vectorize_predicate"],
                           ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount",
-                           "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount", "UnrollAndInterleaveCount",
+                           "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount",
+                           "UnrollAndInterleaveCount", "UnrollAndInterleaveLevel",
                            "PipelineDisabled", "PipelineInitiationInterval", "Distribute",
                            "VectorizePredicate"]>,
               EnumArgument<"State", "LoopHintState",
@@ -3873,6 +3875,7 @@ def LoopHint : Attr {
     case UnrollAndJam: return "unroll_and_jam";
     case UnrollAndJamCount: return "unroll_and_jam_count";
     case UnrollAndInterleaveCount: return "unroll_and_interleave_count";
+    case UnrollAndInterleaveLevel: return "unroll_and_interleave_level";
     case PipelineDisabled: return "pipeline";
     case PipelineInitiationInterval: return "pipeline_initiation_interval";
     case Distribute: return "distribute";
@@ -3906,7 +3909,8 @@ def OMPXCoarsen : StmtAttr {
   let Spellings = [];
   let SemaHandler = 0;
   let Documentation = [InternalOnly];
-  let Args = [UnsignedArgument<"Factor", /*opt*/1>];
+  let Args = [UnsignedArgument<"Factor", /*opt*/1>,
+              IntArgument<"Level", /*opt*/0>];
 }
 
 def OMPThreadPrivateDecl : InheritableAttr {
