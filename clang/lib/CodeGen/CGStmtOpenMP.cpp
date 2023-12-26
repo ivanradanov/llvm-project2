@@ -26,6 +26,7 @@
 #include "clang/Basic/PrettyStackTrace.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/Frontend/OpenMP/OMP.h.inc"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/Constants.h"
@@ -2078,8 +2079,8 @@ void CodeGenFunction::EmitOMPCanonicalLoop(const OMPCanonicalLoop *S) {
 }
 
 static unsigned getCoarsenFactor(const ASTContext &Ctx,
-                                 const OMPExecutableDirective &S, bool isFor) {
-  if (isFor) {
+                                 const OMPExecutableDirective &S, Directive D) {
+  if (D == OMPD_for) {
     for (auto *CoarsenClause : S.getClausesOfKind<OMPXCoarsenForClause>()) {
       Expr::EvalResult Result;
       if (CoarsenClause->getFactor()->EvaluateAsInt(Result, Ctx)) {
@@ -2088,7 +2089,7 @@ static unsigned getCoarsenFactor(const ASTContext &Ctx,
       }
       llvm_unreachable("should have been checked in sema");
     }
-  } else {
+  } else if (D == OMPD_distribute) {
     for (auto *CoarsenClause :
          S.getClausesOfKind<OMPXCoarsenDistributeClause>()) {
       Expr::EvalResult Result;
@@ -2098,6 +2099,8 @@ static unsigned getCoarsenFactor(const ASTContext &Ctx,
       }
       llvm_unreachable("should have been checked in sema");
     }
+  } else {
+    llvm_unreachable("Unexpected directive");
   }
   return 1;
 }
@@ -2837,7 +2840,10 @@ void CodeGenFunction::EmitOMPOuterLoop(
     CodeGenFunction::OMPPrivateScope &LoopScope,
     const CodeGenFunction::OMPLoopArguments &LoopArgs,
     const CodeGenFunction::CodeGenLoopTy &CodeGenLoop,
-    const CodeGenFunction::CodeGenOrderedTy &CodeGenOrdered) {
+    const CodeGenFunction::CodeGenOrderedTy &CodeGenOrdered,
+    const llvm::omp::Directive D) {
+  assert(D == OMPD_for || D == OMPD_distribute);
+
   CGOpenMPRuntime &RT = CGM.getOpenMPRuntime();
 
   const Expr *IVExpr = S.getIterationVariable();
@@ -2908,7 +2914,7 @@ void CodeGenFunction::EmitOMPOuterLoop(
         }
       },
       [&S, &LoopArgs, LoopExit, &CodeGenLoop, IVSize, IVSigned, &CodeGenOrdered,
-       &LoopScope](CodeGenFunction &CGF, PrePostActionTy &) {
+       &LoopScope, D](CodeGenFunction &CGF, PrePostActionTy &) {
         SourceLocation Loc = S.getBeginLoc();
         // when 'distribute' is not combined with a 'for':
         // while (idx <= UB) { BODY; ++idx; }
@@ -2922,7 +2928,8 @@ void CodeGenFunction::EmitOMPOuterLoop(
             },
             [IVSize, IVSigned, Loc, &CodeGenOrdered](CodeGenFunction &CGF) {
               CodeGenOrdered(CGF, Loc, IVSize, IVSigned);
-            });
+            },
+            getCoarsenFactor(CGF.getContext(), S, D));
       });
 
   EmitBlock(Continue.getBlock());
@@ -3052,7 +3059,7 @@ void CodeGenFunction::EmitOMPForOuterLoop(
   OuterLoopArgs.NextLB = S.getNextLowerBound();
   OuterLoopArgs.NextUB = S.getNextUpperBound();
   EmitOMPOuterLoop(DynamicOrOrdered, IsMonotonic, S, LoopScope, OuterLoopArgs,
-                   emitOMPLoopBodyWithStopPoint, CodeGenOrdered);
+                   emitOMPLoopBodyWithStopPoint, CodeGenOrdered, OMPD_for);
 }
 
 static void emitEmptyOrdered(CodeGenFunction &, SourceLocation Loc,
@@ -3115,7 +3122,7 @@ void CodeGenFunction::EmitOMPDistributeOuterLoop(
 
   EmitOMPOuterLoop(/* DynamicOrOrdered = */ false, /* IsMonotonic = */ false, S,
                    LoopScope, OuterLoopArgs, CodeGenLoopContent,
-                   emitEmptyOrdered);
+                   emitEmptyOrdered, OMPD_distribute);
 }
 
 static std::pair<LValue, LValue>
@@ -3480,7 +3487,7 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
                     emitOMPLoopBodyWithStopPoint(CGF, S, LoopExit);
                   },
                   [](CodeGenFunction &) {},
-                  getCoarsenFactor(CGF.getContext(), S, /*isFor=*/true));
+                  getCoarsenFactor(CGF.getContext(), S, OMPD_for));
             });
         EmitBlock(LoopExit.getBlock());
         // Tell the runtime we are done.
@@ -5817,7 +5824,7 @@ void CodeGenFunction::EmitOMPDistributeLoop(const OMPLoopDirective &S,
                       CGF.EmitIgnoredExpr(S.getCombinedInit());
                     }
                   },
-                  getCoarsenFactor(CGF.getContext(), S, false));
+                  getCoarsenFactor(CGF.getContext(), S, OMPD_distribute));
             });
         EmitBlock(LoopExit.getBlock());
         // Tell the runtime we are done.
