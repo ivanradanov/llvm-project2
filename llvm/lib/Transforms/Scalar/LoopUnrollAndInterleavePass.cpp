@@ -911,6 +911,7 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
         Cloned->insertAfter(LastI);
         if (!Cloned->getType()->isVoidTy())
           Cloned->setName(I->getName() + ".coarsened." + std::to_string(It));
+        Cloned->cloneDebugInfoFrom(I);
         ClonedInsts[It].push_back(Cloned);
         (*VMaps[It])[I] = Cloned;
         (*ReverseVMaps[It])[Cloned] = I;
@@ -966,7 +967,9 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
 
   for (unsigned It = 1; It < Factor; It++)
     for (Instruction *I : ClonedInsts[It])
-      RemapInstruction(I, *VMaps[It], RemapFlags::RF_IgnoreMissingLocals);
+      RemapInstruction(I, *VMaps[It],
+                       RemapFlags::RF_IgnoreMissingLocals |
+                           RemapFlags::RF_NoModuleLevelChanges);
 
   DT.recalculate(*F); // TODO another recalculation...
   // Find all values used in the divergent region but defined outside and demote
@@ -1349,6 +1352,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
                               TheLoop->getHeader());
     Instruction *Cloned = BackEdge->clone();
     Cloned->insertInto(EndCheckBB, EndCheckBB->begin());
+    Cloned->cloneDebugInfoFrom(BackEdge);
     BackEdge->eraseFromParent();
     ExitBlock->replacePhiUsesWith(CombinedLatchExiting, EndCheckBB);
     Cloned->replaceSuccessorWith(TheLoop->getHeader(),
