@@ -1291,7 +1291,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
 
   for (auto &PN : ExitBlock->phis()) {
     Value *IncomingVal = PN.getIncomingValueForBlock(CombinedLatchExiting);
-    PN.addIncoming(EpilogueVMap[IncomingVal],
+    Value *MappedIncoming = EpilogueVMap[IncomingVal];
+    // If the value is defined outside the loop.
+    if (!MappedIncoming)
+      continue;
+
+    PN.addIncoming(MappedIncoming,
                    cast<BasicBlock>(EpilogueVMap[CombinedLatchExiting]));
   }
 
