@@ -346,6 +346,7 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l19_omp_outlined_o
 ; CHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD7]], [[ADD]]
 ; CHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD7_COARSENED_1]], [[ADD]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD7]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD7_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP21:![0-9]+]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.0:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0:%.*]]
@@ -470,6 +471,7 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l19_omp_outlined_o
 ; DRCHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD7]], [[ADD]]
 ; DRCHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD7_COARSENED_1]], [[ADD]]
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD7]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD7_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP21:![0-9]+]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.0:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0:%.*]]

@@ -104,6 +104,7 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD7]], [[ADD]]
 ; CHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD7_COARSENED_1]], [[ADD]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD7]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD7_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[FOR_COND_PREHEADER]], !llvm.loop [[LOOP18:![0-9]+]]
 ; CHECK:       for.cond.drs.0:
 ; CHECK-NEXT:    [[CALL_DRS_0:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_DRS_0_REG2MEM_0:%.*]]) #[[ATTR6]]
@@ -225,6 +226,7 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD7]], [[ADD]]
 ; DRCHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD7_COARSENED_1]], [[ADD]]
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD7]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD7_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[FOR_COND_PREHEADER]], !llvm.loop [[LOOP20:![0-9]+]]
 ; DRCHECK:       for.cond.drs.0:
 ; DRCHECK-NEXT:    [[CALL_DRS_0:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_DRS_0_REG2MEM_0:%.*]]) #[[ATTR6]]
