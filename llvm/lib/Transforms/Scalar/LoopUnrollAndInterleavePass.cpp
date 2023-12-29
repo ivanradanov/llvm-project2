@@ -1284,9 +1284,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     LI.removeBlock(EpiloguePH);
   EpiloguePH->eraseFromParent();
 
-  tryToUnrollBBs(L, &LI, Preheader, CombinedLatchExiting, TheLoop->getBlocks(),
-                 DT, PDT, VMaps, ReverseVMaps, DivergentBranches);
-
   // Plumbing around the coarsened and epilogue loops
 
   for (auto &PN : ExitBlock->phis()) {
@@ -1382,6 +1379,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     }
   }
 
+  tryToUnrollBBs(L, &LI, Preheader, CombinedLatchExiting, TheLoop->getBlocks(),
+                 DT, PDT, VMaps, ReverseVMaps, DivergentBranches);
   cleanup();
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
