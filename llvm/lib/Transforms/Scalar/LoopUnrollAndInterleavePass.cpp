@@ -285,6 +285,7 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
 
 #define DBGS llvm::dbgs() << "LUAI: "
 #define DBGS_FAIL llvm::dbgs() << "LUAI: FAIL: "
+#define DBGS_DISABLED llvm::dbgs() << "LUAI: DISABLED: "
 
 #pragma push_macro("ILLEGAL")
 #define ILLEGAL()                                                              \
@@ -310,19 +311,19 @@ bool FunctionInterleave::collectDivergentBranches(Function *F) {
     if (Br) {
       if (Br->isConditional()) {
         DivergentBranches.insert(Term);
-        LLVM_DEBUG(DBGS << "Divergent branch found:" << *Br << "\n");
+        LLVM_DEBUG(DBGS << "Divergent branch found: " << *Br << "\n");
       }
       continue;
     }
     if (Sw) {
       DivergentBranches.insert(Term);
-      LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
+      LLVM_DEBUG(DBGS << "Divergent switch found: " << *Sw << "\n");
       continue;
     }
     if (Ret) {
       continue;
     }
-    LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator" << *Term
+    LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator " << *Term
                          << "\n");
     ILLEGAL();
   }
@@ -346,7 +347,7 @@ bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
     auto *Br = dyn_cast<BranchInst>(Term);
     auto *Sw = dyn_cast<SwitchInst>(Term);
     if (!Br && !Sw) {
-      LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator" << *Term
+      LLVM_DEBUG(DBGS_FAIL << "Unsupported basic block terminator " << *Term
                            << "\n");
       ILLEGAL();
     }
@@ -362,11 +363,11 @@ bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
         !LI->isLoopHeader(Br->getSuccessor(0)) &&
         !LI->isLoopHeader(Br->getSuccessor(1))) {
       DivergentBranches.insert(Term);
-      LLVM_DEBUG(DBGS << "Divergent branch found:" << *Br << "\n");
+      LLVM_DEBUG(DBGS << "Divergent branch found: " << *Br << "\n");
     }
     if (Sw && !TheLoop->isLoopInvariant(Sw->getCondition())) {
       DivergentBranches.insert(Term);
-      LLVM_DEBUG(DBGS << "Divergent switch found:" << *Sw << "\n");
+      LLVM_DEBUG(DBGS << "Divergent switch found: " << *Sw << "\n");
     }
   }
 
@@ -1199,7 +1200,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   Value *InitialIVVal = &LoopBounds->getInitialIVValue();
   Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
   if (!InitialIVInst) {
-    LLVM_DEBUG(DBGS_FAIL << "Unexpected initial val definition" << *InitialIVVal
+    LLVM_DEBUG(DBGS_FAIL << "Unexpected initial val definition " << *InitialIVVal
                          << "\n");
     return LoopUnrollResult::Unmodified;
   }
@@ -1413,12 +1414,12 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
     SmallVector<Loop *> ToUAI;
     for (auto &L : LI.getLoopsInPreorder()) {
       if (getLoopAlreadyCoarsened(L)) {
-        LLVM_DEBUG(DBGS_FAIL << "Coarsening disabled\n");
+        LLVM_DEBUG(DBGS_DISABLED << "Coarsening disabled\n");
         continue;
       }
       auto Factor = getLoopCoarseningFactor(L);
       if (Factor == 0) {
-        LLVM_DEBUG(DBGS_FAIL << "Coarsening metadata missing - ignoring\n");
+        LLVM_DEBUG(DBGS_DISABLED << "Coarsening metadata missing - ignoring\n");
         continue;
       }
       ToUAI.push_back(L);
@@ -1427,7 +1428,7 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
     for (auto *L : ToUAI) {
       auto Factor = getLoopCoarseningFactor(L);
       if (Factor == 0) {
-        LLVM_DEBUG(DBGS_FAIL << "Coarsening metadata missing - ignoring\n");
+        LLVM_DEBUG(DBGS_DISABLED << "Coarsening metadata missing - ignoring\n");
         continue;
       }
       if (FactorOpt.getNumOccurrences() > 0) {
@@ -1439,7 +1440,7 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
         StringRef(Env).getAsInteger(10, Factor);
       }
       if (Factor <= 1) {
-        LLVM_DEBUG(DBGS_FAIL << "Coarsening factor of 1 or 0 - ignoring\n");
+        LLVM_DEBUG(DBGS_DISABLED << "Coarsening factor of 1 or 0 - ignoring\n");
         continue;
       }
       bool UseDynamicConvergence = UseDynamicConvergenceOpt;
