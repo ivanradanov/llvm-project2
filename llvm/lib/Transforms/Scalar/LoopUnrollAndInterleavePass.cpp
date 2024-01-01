@@ -1196,14 +1196,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     LLVM_DEBUG(DBGS_FAIL << "Unusable FinalIVValue define in the loop\n");
     return LoopUnrollResult::Unmodified;
   }
-
   Value *InitialIVVal = &LoopBounds->getInitialIVValue();
-  Instruction *InitialIVInst = dyn_cast<Instruction>(InitialIVVal);
-  if (!InitialIVInst) {
-    LLVM_DEBUG(DBGS_FAIL << "Unexpected initial val definition " << *InitialIVVal
-                         << "\n");
-    return LoopUnrollResult::Unmodified;
-  }
 
   // Clone the loop once more to use as an epilogue, the original one will be
   // coarsened in-place
