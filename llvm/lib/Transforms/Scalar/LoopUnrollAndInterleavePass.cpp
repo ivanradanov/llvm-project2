@@ -16,6 +16,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -195,8 +196,6 @@ class FunctionInterleave : public BBInterleave {
 private:
   SmallPtrSet<Instruction *, 8> DivergentBranches;
 
-  bool collectDivergentBranches(Function *F);
-
 public:
   FunctionInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
                      bool UseDynamicConvergence,
@@ -204,6 +203,19 @@ public:
       : BBInterleave(ORE, Factor, UseDynamicConvergence,
                      InterProceduralInterleavingLevel) {}
   Function *tryToInterleaveFunction(Function *F);
+};
+
+class KmpcParallel51Interleave : public BBInterleave {
+private:
+  SmallPtrSet<Instruction *, 8> DivergentBranches;
+
+public:
+  KmpcParallel51Interleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
+                     bool UseDynamicConvergence,
+                     int InterProceduralInterleavingLevel)
+      : BBInterleave(ORE, Factor, UseDynamicConvergence,
+                     InterProceduralInterleavingLevel) {}
+  bool tryToInterleave(Instruction *I);
 };
 
 class LoopUnrollAndInterleave : public BBInterleave {
@@ -296,7 +308,7 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
       return false;                                                            \
   } while (0)
 
-bool FunctionInterleave::collectDivergentBranches(Function *F) {
+bool collectDivergentBranches(Function *F, SmallPtrSetImpl<Instruction *> &DivergentBranches) {
   const bool DoExtraAnalysis = true;
   bool Result = true;
 
@@ -401,7 +413,6 @@ static void findReachableFromTo(BasicBlock *From, BasicBlock *To,
 // annoying so ignored for now, we should reevaluate how we check for
 // legality of coarsening and do the check recursively on these as well
 static Function *getInterleavableCallee(Instruction *I) {
-
   if (auto *CI = dyn_cast<CallInst>(I))
     if (auto *Called = CI->getCalledFunction())
       if (!Called->isDeclaration() &&
@@ -696,6 +707,149 @@ void BBInterleave::demoteDRRegs() {
   }
 }
 
+bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
+  Function *F = [&]() {
+    if (auto *CI = dyn_cast<CallInst>(I))
+      if (auto *Called = CI->getCalledFunction())
+        if (Called->getName() == "__kmpc_parallel_51")
+          if (auto *Callback = dyn_cast<Function>(CI->getArgOperand(5)))
+            return Callback;
+    return (Function *) nullptr;
+  }();
+  if (!F)
+    return false;
+
+  auto &Ctx = F->getContext();
+  std::string NewName =
+      F->getName().str() + ".__kmpc_parallel_51.callback.coarsened." + std::to_string(Factor);
+
+  if (Function *NewF = F->getParent()->getFunction(NewName))
+    return true;
+
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
+    LLVM_DEBUG(DBGS << "Will interleave __kmpc_parallel_51 callback function:\n" << *F);
+  }
+
+  FunctionType *FTy = F->getFunctionType();
+  assert(FTy->getReturnType()->isVoidTy());
+  LLVM_DEBUG({
+    for (auto ParamTy : FTy->params())
+      assert(ParamTy->isPointerTy());
+    });
+  PointerType *PtrTy = PointerType::get(Ctx, 0);
+  SmallVector<Type *> ArgTypes(2 + Factor, PtrTy);
+
+  FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()),
+                                           ArgTypes, /*isVarArg=*/false);
+  Function *NewF =
+      Function::Create(NewFTy, F->getLinkage(), NewName, F->getParent());
+  assert(Factor <= 16 && "Currently we only support factor up to 16 because of libomptarget limitations.");
+
+  unsigned NumArgs = FTy->getNumParams() - 2;
+
+  ValueToValueMapTy VMap;
+  assert(FTy->getNumParams() >= 2);
+  BasicBlock *EntryBlock = BasicBlock::Create(Ctx, "entry", NewF);
+  IRBuilder<> Builder(EntryBlock);
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
+  SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
+  VMaps.reserve(Factor);
+  ReverseVMaps.reserve(Factor);
+  for (unsigned I = 0; I < Factor; I++) {
+    VMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+    ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
+  }
+
+  for (unsigned ArgN = 0; ArgN < 2; ArgN++) {
+    // Global Tid and Bound Tid
+    Argument *OldArg = F->getArg(ArgN);
+    Argument *NewArg = NewF->getArg(Factor * ArgN);
+    assert(OldArg->getType() == NewArg->getType());
+    VMap[OldArg] = NewArg;
+    (*VMaps[0])[OldArg] = NewArg;
+  }
+
+  for (unsigned I = 0; I < Factor; I++) {
+    Argument *FactorArgs = NewF->getArg(2 + Factor * I + 1);
+    for (unsigned ArgN = 0; ArgN < NumArgs; ArgN++) {
+      // The actual args
+      Argument *OriginalArg = F->getArg(ArgN);
+      Value *Gep = Builder.CreateGEP(PtrTy, FactorArgs,
+                                     {Builder.getInt32(ArgN)}, "clonegep");
+      Value *NewArg = Builder.CreateLoad(PtrTy, Gep, "clonearg");
+      assert(OriginalArg->getType() == NewArg->getType());
+      if (I == 0)
+        VMap[OriginalArg] = NewArg;
+      (*VMaps[I])[VMap[OriginalArg]] = NewArg;
+    }
+    if (I != 0) {
+      for (unsigned ArgN = 0; ArgN < 2; ArgN++) {
+        // The actual args
+        Argument *OriginalArg = F->getArg(ArgN);
+        Value *Gep = Builder.CreateGEP(PtrTy, FactorArgs,
+                                       {Builder.getInt32(NumArgs + ArgN)}, "clonegep");
+        Value *NewArg = Builder.CreateLoad(PtrTy, Gep, "cloneargtid");
+        assert(OriginalArg->getType() == NewArg->getType());
+        (*VMaps[I])[VMap[OriginalArg]] = NewArg;
+      }
+    }
+  }
+
+  SmallVector<ReturnInst *, 8> Returns;
+  CloneFunctionInto(NewF, F, VMap, CloneFunctionChangeType::LocalChangesOnly,
+                    Returns);
+  NewF->setVisibility(GlobalValue::DefaultVisibility);
+  NewF->setLinkage(GlobalValue::InternalLinkage);
+
+  Builder.CreateBr(cast<BasicBlock>(VMap[&F->getEntryBlock()]));
+
+  BasicBlock *ReturnBB =
+      BasicBlock::Create(Ctx, "unified.exit", NewF, &NewF->front());
+  ReturnBB->moveAfter(&NewF->back());
+  auto *NewRet = ReturnInst::Create(Ctx);
+  NewRet->insertInto(ReturnBB, ReturnBB->end());
+
+  for (auto &BB : *NewF) {
+    for (auto &I : BB) {
+      if (auto *Ret = dyn_cast<ReturnInst>(&I)) {
+        if (Ret == NewRet)
+          break;
+        BranchInst::Create(ReturnBB, Ret);
+        Ret->eraseFromParent();
+        break;
+      }
+    }
+  }
+
+  if (!collectDivergentBranches(NewF, DivergentBranches)) {
+    // TODO we should probably do these checks before we clone the function...
+    NewF->eraseFromParent();
+    return false;
+  }
+
+  for (unsigned I = 0; I < Factor; I++)
+    for (auto M : *VMaps[I])
+      (*ReverseVMaps[I])[cast<Value>(M.second)] = const_cast<Value *>(M.first);
+
+  BBVec BBs;
+  for (auto &BB : *NewF)
+    if (&BB != ReturnBB)
+      BBs.push_back(&BB);
+  auto DT = DominatorTree(*NewF);
+  auto PDT = PostDominatorTree(*NewF);
+  tryToUnrollBBs(nullptr, nullptr, &NewF->getEntryBlock(), ReturnBB, BBs, DT,
+                 PDT, VMaps, ReverseVMaps, DivergentBranches);
+  cleanup();
+
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
+    LLVM_DEBUG(DBGS << "After interleaving function:\n" << *NewF);
+  }
+
+
+
+  return true;
+}
+
 Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
   std::string NewName =
       F->getName().str() + ".coarsened." + std::to_string(Factor);
@@ -770,7 +924,7 @@ Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
     }
   }
 
-  if (!collectDivergentBranches(NewF)) {
+  if (!collectDivergentBranches(NewF, DivergentBranches)) {
     // TODO we should probably do these checks before we clone the function...
     NewF->eraseFromParent();
     return nullptr;
@@ -869,6 +1023,11 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
       (*ReverseVMaps[0])[I] = I;
 
       if (InterProceduralInterleavingLevel) {
+        if (KmpcParallel51Interleave(ORE, Factor, UseDynamicConvergence,
+                                     InterProceduralInterleavingLevel - 1)
+                .tryToInterleave(I))
+          continue;
+
         Function *InterleavableCallee = getInterleavableCallee(I);
         Function *UnrolledF = nullptr;
         if (InterleavableCallee)
