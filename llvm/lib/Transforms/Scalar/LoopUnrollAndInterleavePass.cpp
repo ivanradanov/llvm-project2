@@ -211,11 +211,13 @@ private:
 
 public:
   KmpcParallel51Interleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
-                     bool UseDynamicConvergence,
-                     int InterProceduralInterleavingLevel)
+                           bool UseDynamicConvergence,
+                           int InterProceduralInterleavingLevel)
       : BBInterleave(ORE, Factor, UseDynamicConvergence,
                      InterProceduralInterleavingLevel) {}
-  bool tryToInterleave(Instruction *I);
+  bool tryToInterleave(
+      Instruction *I,
+      SmallVectorImpl<std::unique_ptr<ValueToValueMapTy>> &OuterVMaps);
 };
 
 class LoopUnrollAndInterleave : public BBInterleave {
@@ -308,7 +310,8 @@ static bool getLoopAlreadyCoarsened(Loop *L) {
       return false;                                                            \
   } while (0)
 
-bool collectDivergentBranches(Function *F, SmallPtrSetImpl<Instruction *> &DivergentBranches) {
+bool collectDivergentBranches(
+    Function *F, SmallPtrSetImpl<Instruction *> &DivergentBranches) {
   const bool DoExtraAnalysis = true;
   bool Result = true;
 
@@ -707,27 +710,35 @@ void BBInterleave::demoteDRRegs() {
   }
 }
 
-bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
+bool KmpcParallel51Interleave::tryToInterleave(
+    Instruction *I,
+    SmallVectorImpl<std::unique_ptr<ValueToValueMapTy>> &OuterVMaps) {
+  // TODO Handle the `if_expr` param of `__kmpc_parallel_51`.
+  const unsigned FuncArgNo = 5;
+  const unsigned NargsArgNo = 8;
+  const unsigned ArgsArgNo = 8;
   Function *F = [&]() {
     if (auto *CI = dyn_cast<CallInst>(I))
       if (auto *Called = CI->getCalledFunction())
         if (Called->getName() == "__kmpc_parallel_51")
-          if (auto *Callback = dyn_cast<Function>(CI->getArgOperand(5)))
+          if (auto *Callback = dyn_cast<Function>(CI->getArgOperand(FuncArgNo)))
             return Callback;
-    return (Function *) nullptr;
+    return (Function *)nullptr;
   }();
   if (!F)
     return false;
 
   auto &Ctx = F->getContext();
-  std::string NewName =
-      F->getName().str() + ".__kmpc_parallel_51.callback.coarsened." + std::to_string(Factor);
+  std::string NewName = F->getName().str() +
+                        ".__kmpc_parallel_51.callback.coarsened." +
+                        std::to_string(Factor);
 
   if (Function *NewF = F->getParent()->getFunction(NewName))
     return true;
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
-    LLVM_DEBUG(DBGS << "Will interleave __kmpc_parallel_51 callback function:\n" << *F);
+    LLVM_DEBUG(DBGS << "Will interleave __kmpc_parallel_51 callback function:\n"
+                    << *F);
   }
 
   FunctionType *FTy = F->getFunctionType();
@@ -735,7 +746,7 @@ bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
   LLVM_DEBUG({
     for (auto ParamTy : FTy->params())
       assert(ParamTy->isPointerTy());
-    });
+  });
   PointerType *PtrTy = PointerType::get(Ctx, 0);
   SmallVector<Type *> ArgTypes(2 + Factor, PtrTy);
 
@@ -743,7 +754,8 @@ bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
                                            ArgTypes, /*isVarArg=*/false);
   Function *NewF =
       Function::Create(NewFTy, F->getLinkage(), NewName, F->getParent());
-  assert(Factor <= 16 && "Currently we only support factor up to 16 because of libomptarget limitations.");
+  assert(Factor <= 16 && "Currently we only support factor up to 16 because of "
+                         "libomptarget limitations.");
 
   unsigned NumArgs = FTy->getNumParams() - 2;
 
@@ -760,20 +772,11 @@ bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
     ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
   }
 
-  for (unsigned ArgN = 0; ArgN < 2; ArgN++) {
-    // Global Tid and Bound Tid
-    Argument *OldArg = F->getArg(ArgN);
-    Argument *NewArg = NewF->getArg(Factor * ArgN);
-    assert(OldArg->getType() == NewArg->getType());
-    VMap[OldArg] = NewArg;
-    (*VMaps[0])[OldArg] = NewArg;
-  }
-
   for (unsigned I = 0; I < Factor; I++) {
-    Argument *FactorArgs = NewF->getArg(2 + Factor * I + 1);
+    Argument *FactorArgs = NewF->getArg(I);
     for (unsigned ArgN = 0; ArgN < NumArgs; ArgN++) {
       // The actual args
-      Argument *OriginalArg = F->getArg(ArgN);
+      Argument *OriginalArg = F->getArg(ArgN + 2);
       Value *Gep = Builder.CreateGEP(PtrTy, FactorArgs,
                                      {Builder.getInt32(ArgN)}, "clonegep");
       Value *NewArg = Builder.CreateLoad(PtrTy, Gep, "clonearg");
@@ -781,17 +784,6 @@ bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
       if (I == 0)
         VMap[OriginalArg] = NewArg;
       (*VMaps[I])[VMap[OriginalArg]] = NewArg;
-    }
-    if (I != 0) {
-      for (unsigned ArgN = 0; ArgN < 2; ArgN++) {
-        // The actual args
-        Argument *OriginalArg = F->getArg(ArgN);
-        Value *Gep = Builder.CreateGEP(PtrTy, FactorArgs,
-                                       {Builder.getInt32(NumArgs + ArgN)}, "clonegep");
-        Value *NewArg = Builder.CreateLoad(PtrTy, Gep, "cloneargtid");
-        assert(OriginalArg->getType() == NewArg->getType());
-        (*VMaps[I])[VMap[OriginalArg]] = NewArg;
-      }
     }
   }
 
@@ -845,7 +837,22 @@ bool KmpcParallel51Interleave::tryToInterleave(Instruction *I) {
     LLVM_DEBUG(DBGS << "After interleaving function:\n" << *NewF);
   }
 
+  IRBuilder<> CallSiteBuilder(I);
+  AllocaInst *NewArgs = CallSiteBuilder.CreateAlloca(PtrTy, Factor);
 
+  Value *Args = I->getOperand(ArgsArgNo);
+  for (unsigned It = 0; It < Factor; It++) {
+    Value *CoarsenedArgs = (*OuterVMaps[It])[Args];
+    Value *GepArgs = CallSiteBuilder.CreateConstGEP1_32(PtrTy, NewArgs, It);
+    CallSiteBuilder.CreateStore(CoarsenedArgs, GepArgs);
+  }
+
+  // Set the callback function to the coarsened one.
+  I->setOperand(FuncArgNo, NewF);
+  // Set the callback nargs (not including the global and bounds tid).
+  I->setOperand(NargsArgNo, Builder.getInt64(Factor));
+  // Set the new args.
+  I->setOperand(ArgsArgNo, NewArgs);
 
   return true;
 }
@@ -1025,7 +1032,7 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
       if (InterProceduralInterleavingLevel) {
         if (KmpcParallel51Interleave(ORE, Factor, UseDynamicConvergence,
                                      InterProceduralInterleavingLevel - 1)
-                .tryToInterleave(I))
+                .tryToInterleave(I, VMaps))
           continue;
 
         Function *InterleavableCallee = getInterleavableCallee(I);
