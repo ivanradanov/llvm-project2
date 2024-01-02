@@ -209,6 +209,8 @@ class KmpcParallel51Interleave : public BBInterleave {
 private:
   SmallPtrSet<Instruction *, 8> DivergentBranches;
 
+  Function *interleaveFunction(Function *F);
+
 public:
   KmpcParallel51Interleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
                            bool UseDynamicConvergence,
@@ -710,31 +712,14 @@ void BBInterleave::demoteDRRegs() {
   }
 }
 
-bool KmpcParallel51Interleave::tryToInterleave(
-    Instruction *I,
-    SmallVectorImpl<std::unique_ptr<ValueToValueMapTy>> &OuterVMaps) {
-  // TODO Handle the `if_expr` param of `__kmpc_parallel_51`.
-  const unsigned FuncArgNo = 5;
-  const unsigned NargsArgNo = 8;
-  const unsigned ArgsArgNo = 8;
-  Function *F = [&]() {
-    if (auto *CI = dyn_cast<CallInst>(I))
-      if (auto *Called = CI->getCalledFunction())
-        if (Called->getName() == "__kmpc_parallel_51")
-          if (auto *Callback = dyn_cast<Function>(CI->getArgOperand(FuncArgNo)))
-            return Callback;
-    return (Function *)nullptr;
-  }();
-  if (!F)
-    return false;
-
+Function *KmpcParallel51Interleave::interleaveFunction(Function *F) {
   auto &Ctx = F->getContext();
   std::string NewName = F->getName().str() +
                         ".__kmpc_parallel_51.callback.coarsened." +
                         std::to_string(Factor);
-
-  if (Function *NewF = F->getParent()->getFunction(NewName))
-    return true;
+  Function *NewF = F->getParent()->getFunction(NewName);
+  if (NewF)
+    return NewF;
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "Will interleave __kmpc_parallel_51 callback function:\n"
@@ -743,17 +728,12 @@ bool KmpcParallel51Interleave::tryToInterleave(
 
   FunctionType *FTy = F->getFunctionType();
   assert(FTy->getReturnType()->isVoidTy());
-  LLVM_DEBUG({
-    for (auto ParamTy : FTy->params())
-      assert(ParamTy->isPointerTy());
-  });
   PointerType *PtrTy = PointerType::get(Ctx, 0);
   SmallVector<Type *> ArgTypes(2 + Factor, PtrTy);
 
   FunctionType *NewFTy = FunctionType::get(Type::getVoidTy(F->getContext()),
                                            ArgTypes, /*isVarArg=*/false);
-  Function *NewF =
-      Function::Create(NewFTy, F->getLinkage(), NewName, F->getParent());
+  NewF = Function::Create(NewFTy, F->getLinkage(), NewName, F->getParent());
   assert(Factor <= 16 && "Currently we only support factor up to 16 because of "
                          "libomptarget limitations.");
 
@@ -772,15 +752,24 @@ bool KmpcParallel51Interleave::tryToInterleave(
     ReverseVMaps.emplace_back(std::make_unique<ValueToValueMapTy>());
   }
 
+  for (unsigned ArgN = 0; ArgN < 2; ArgN++) {
+    Argument *OriginalArg = F->getArg(ArgN);
+    Argument *NewArg = NewF->getArg(ArgN);
+    assert(OriginalArg->getType() && NewArg->getType());
+    VMap[OriginalArg] = NewArg;
+  }
+
   for (unsigned I = 0; I < Factor; I++) {
-    Argument *FactorArgs = NewF->getArg(I);
+    Argument *FactorArgs = NewF->getArg(I + 2);
     for (unsigned ArgN = 0; ArgN < NumArgs; ArgN++) {
       // The actual args
       Argument *OriginalArg = F->getArg(ArgN + 2);
       Value *Gep = Builder.CreateGEP(PtrTy, FactorArgs,
                                      {Builder.getInt32(ArgN)}, "clonegep");
-      Value *NewArg = Builder.CreateLoad(PtrTy, Gep, "clonearg");
-      assert(OriginalArg->getType() == NewArg->getType());
+      // FactorArgs is of type `void **`, however, the types of the function may
+      // be type punned. Thus use the original type for the load.
+      Value *NewArg =
+          Builder.CreateLoad(OriginalArg->getType(), Gep, "clonearg");
       if (I == 0)
         VMap[OriginalArg] = NewArg;
       (*VMaps[I])[VMap[OriginalArg]] = NewArg;
@@ -816,7 +805,7 @@ bool KmpcParallel51Interleave::tryToInterleave(
   if (!collectDivergentBranches(NewF, DivergentBranches)) {
     // TODO we should probably do these checks before we clone the function...
     NewF->eraseFromParent();
-    return false;
+    return nullptr;
   }
 
   for (unsigned I = 0; I < Factor; I++)
@@ -837,20 +826,51 @@ bool KmpcParallel51Interleave::tryToInterleave(
     LLVM_DEBUG(DBGS << "After interleaving function:\n" << *NewF);
   }
 
+  return NewF;
+}
+
+bool KmpcParallel51Interleave::tryToInterleave(
+    Instruction *I,
+    SmallVectorImpl<std::unique_ptr<ValueToValueMapTy>> &OuterVMaps) {
+  // TODO Handle the `if_expr` param of `__kmpc_parallel_51`, which may have
+  // different values for the different original iterations?
+  const unsigned FuncArgNo = 5;
+  const unsigned ArgsArgNo = 7;
+  const unsigned NargsArgNo = 8;
+  Function *F = [&]() {
+    if (auto *CI = dyn_cast<CallInst>(I))
+      if (auto *Called = CI->getCalledFunction())
+        if (Called->getName() == "__kmpc_parallel_51")
+          if (auto *Callback = dyn_cast<Function>(CI->getArgOperand(FuncArgNo)))
+            return Callback;
+    return (Function *)nullptr;
+  }();
+  if (!F)
+    return false;
+
+  Function *NewF = interleaveFunction(F);
+
+  auto &Ctx = F->getContext();
+  PointerType *PtrTy = PointerType::get(Ctx, 0);
+
   IRBuilder<> CallSiteBuilder(I);
-  AllocaInst *NewArgs = CallSiteBuilder.CreateAlloca(PtrTy, Factor);
+  Type *NewArgsTy = ArrayType::get(PtrTy, Factor);
+  AllocaInst *NewArgs = CallSiteBuilder.CreateAlloca(
+      NewArgsTy, 0, CallSiteBuilder.getInt32(1), "coarsenedargs");
 
   Value *Args = I->getOperand(ArgsArgNo);
   for (unsigned It = 0; It < Factor; It++) {
     Value *CoarsenedArgs = (*OuterVMaps[It])[Args];
-    Value *GepArgs = CallSiteBuilder.CreateConstGEP1_32(PtrTy, NewArgs, It);
+    assert(CoarsenedArgs);
+    Value *GepArgs =
+        CallSiteBuilder.CreateConstGEP2_32(NewArgsTy, NewArgs, 0, It);
     CallSiteBuilder.CreateStore(CoarsenedArgs, GepArgs);
   }
 
   // Set the callback function to the coarsened one.
   I->setOperand(FuncArgNo, NewF);
   // Set the callback nargs (not including the global and bounds tid).
-  I->setOperand(NargsArgNo, Builder.getInt64(Factor));
+  I->setOperand(NargsArgNo, CallSiteBuilder.getInt64(Factor));
   // Set the new args.
   I->setOperand(ArgsArgNo, NewArgs);
 
