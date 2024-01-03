@@ -731,6 +731,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::UnrollAndInterleaveCount:
+      case LoopHintAttr::UnrollAndInterleaveLevel:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::PipelineInitiationInterval:
@@ -759,6 +760,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::UnrollAndInterleaveCount:
+      case LoopHintAttr::UnrollAndInterleaveLevel:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::PipelineDisabled:
@@ -781,6 +783,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::UnrollAndInterleaveCount:
+      case LoopHintAttr::UnrollAndInterleaveLevel:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::Distribute:
@@ -803,6 +806,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
       case LoopHintAttr::UnrollAndInterleaveCount:
+      case LoopHintAttr::UnrollAndInterleaveLevel:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::Distribute:
@@ -840,6 +844,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         setUnrollAndJamCount(ValueInt);
         break;
       case LoopHintAttr::UnrollAndInterleaveCount:
+        setParallel(true);
         setUnrollAndInterleaveCount(ValueInt);
         setUnrollAndInterleaveLevel(LevelInt);
         break;
@@ -854,6 +859,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::Interleave:
       case LoopHintAttr::Distribute:
       case LoopHintAttr::PipelineDisabled:
+      case LoopHintAttr::UnrollAndInterleaveLevel:
         llvm_unreachable("Options cannot be assigned a value.");
         break;
       }
