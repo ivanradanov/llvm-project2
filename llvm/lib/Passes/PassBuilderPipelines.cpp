@@ -1451,8 +1451,6 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   MPM.addPass(createModuleToFunctionPassAdaptor(std::move(OptimizePM),
                                                 PTO.EagerlyInvalidateAnalyses));
 
-  MPM.addPass(LoopUnrollAndInterleavePass());
-
   invokeOptimizerLastEPCallbacks(MPM, Level);
 
   // Split out cold code. Splitting is done late to avoid hiding context from
@@ -1826,6 +1824,11 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   MPM.addPass(GlobalOptPass());
 
   // Run the OpenMPOpt pass again after global optimizations.
+  MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
+
+  MPM.addPass(LoopUnrollAndInterleavePass());
+  MPM.addPass(createModuleToFunctionPassAdaptor(SimplifyCFGPass()));
+  MPM.addPass(createModuleToFunctionPassAdaptor(EarlyCSEPass()));
   MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
 
   // Garbage collect dead functions.
