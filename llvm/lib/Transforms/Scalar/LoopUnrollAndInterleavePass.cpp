@@ -1329,21 +1329,21 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   this->LI = &LI;
   this->TheLoop = L;
 
-  Function *F = L->getHeader()->getParent();
+  Function *F = TheLoop->getHeader()->getParent();
   auto &Ctx = F->getContext();
 
   LLVM_DEBUG(DBGS << "F[" << F->getName() << "] Loop %"
-                  << L->getHeader()->getName() << " "
-                  << "Parallel=" << L->isAnnotatedParallel() << "\n");
+                  << TheLoop->getHeader()->getName() << " "
+                  << "Parallel=" << TheLoop->isAnnotatedParallel() << "\n");
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
   }
 
-  if (!collectDivergentBranches(L, &LI))
+  if (!collectDivergentBranches(TheLoop, &LI))
     return LoopUnrollResult::Unmodified;
 
-  auto LoopBounds = L->getBounds(SE);
+  auto LoopBounds = TheLoop->getBounds(SE);
   if (LoopBounds == std::nullopt) {
     LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
                             "loop, not coarsening\n");
@@ -1351,7 +1351,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   }
 
   // Save loop properties before it is transformed.
-  Preheader = L->getLoopPreheader();
+  Preheader = TheLoop->getLoopPreheader();
   if (!Preheader) {
     // We delete the preheader of the epilogue loop so this is currently how we
     // detect that this may be the epilogue loop, because all other loops should
@@ -1359,8 +1359,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     LLVM_DEBUG(DBGS_FAIL << "No preheader\n");
     return LoopUnrollResult::Unmodified;
   }
-  BasicBlock *ExitBlock = L->getExitBlock();
-  std::vector<BasicBlock *> OriginalLoopBlocks = L->getBlocks();
+  BasicBlock *ExitBlock = TheLoop->getExitBlock();
+  std::vector<BasicBlock *> OriginalLoopBlocks = TheLoop->getBlocks();
 
   // We need the upper bound of the loop to be defined before we enter it in
   // order to know whether we should enter the coarsened version or the
@@ -1388,9 +1388,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   // coarsened in-place
   ValueToValueMapTy EpilogueVMap;
   SmallVector<BasicBlock *> EpilogueLoopBlocks;
-  Loop *EpilogueLoop =
-      cloneLoopWithPreheader(ExitBlock, &F->getEntryBlock(), L, EpilogueVMap,
-                             ".epilogue", &LI, &DT, EpilogueLoopBlocks);
+  Loop *EpilogueLoop = cloneLoopWithPreheader(
+      ExitBlock, &F->getEntryBlock(), TheLoop, EpilogueVMap, ".epilogue", &LI,
+      &DT, EpilogueLoopBlocks);
   auto IsInEpilogue = [&](Use &U) -> bool {
     if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
       if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
@@ -1559,15 +1559,16 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     }
   }
 
-  tryToUnrollBBs(L, &LI, Preheader, CombinedLatchExiting, TheLoop->getBlocks(),
-                 DT, PDT, VMaps, ReverseVMaps, DivergentBranches);
+  tryToUnrollBBs(TheLoop, &LI, Preheader, CombinedLatchExiting,
+                 TheLoop->getBlocks(), DT, PDT, VMaps, ReverseVMaps,
+                 DivergentBranches);
   cleanup();
 
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "After unroll and interleave:\n" << *F);
   }
 
-  setLoopAlreadyCoarsened(L);
+  setLoopAlreadyCoarsened(TheLoop);
   setLoopAlreadyCoarsened(EpilogueLoop);
 
   LLVM_DEBUG(DBGS << "SUCCESS\n");
