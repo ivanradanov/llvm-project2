@@ -256,8 +256,14 @@ static void setLoopAlreadyCoarsened(Loop *L) {
       Context,
       MDString::get(Context, "llvm.loop.unroll_and_interleave.disable"));
   MDNode *LoopID = L->getLoopID();
+  // NOTE Currently hacky solution - we need to remove llvm.loop.parallel_access
+  // because we set that in the frontend for omp distribute for loops in order
+  // to make sure each iteration gets its own alloca. However, we need to then
+  // hoist those allocas outside the loop because the backend cannot emit code
+  // for them. We run LICM after this pass for this purpose. TODO We should
+  // probably hoist them ourselves.
   MDNode *NewLoopID = makePostTransformationMetadata(
-      Context, LoopID, {"llvm.loop.unroll_and_interleave."}, {DisableUnrollMD});
+      Context, LoopID, {"llvm.loop.unroll_and_interleave.", "llvm.loop.parallel_access"}, {DisableUnrollMD});
   L->setLoopID(NewLoopID);
 }
 
