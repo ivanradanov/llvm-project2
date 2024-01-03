@@ -1530,12 +1530,13 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
         "is.epilogue.start");
     BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
         Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
-    LatchBuilder.CreateCondBr(IsAtEpilogueStart, EndCheckBB,
-                              TheLoop->getHeader());
-    Instruction *Cloned = BackEdge->clone();
+    Instruction *Cloned =
+        BranchInst::Create(BackEdge->getSuccessor(0), BackEdge->getSuccessor(1),
+                           BackEdge->getCondition());
+    BackEdge->setCondition(IsAtEpilogueStart);
+    BackEdge->setSuccessor(0, EndCheckBB);
+    BackEdge->setSuccessor(1, TheLoop->getHeader());
     Cloned->insertInto(EndCheckBB, EndCheckBB->begin());
-    Cloned->cloneDebugInfoFrom(BackEdge);
-    BackEdge->eraseFromParent();
     ExitBlock->replacePhiUsesWith(CombinedLatchExiting, EndCheckBB);
     Cloned->replaceSuccessorWith(TheLoop->getHeader(),
                                  EpilogueLoop->getHeader());
