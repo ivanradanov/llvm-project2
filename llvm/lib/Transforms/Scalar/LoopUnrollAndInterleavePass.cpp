@@ -192,24 +192,28 @@ public:
   void cleanup();
 };
 
-class FunctionInterleave : public BBInterleave {
+class CallInterleave : public BBInterleave {
 private:
   SmallPtrSet<Instruction *, 8> DivergentBranches;
 
+  Function *tryToInterleaveFunction(Function *F);
+
 public:
-  FunctionInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
-                     bool UseDynamicConvergence,
-                     int InterProceduralInterleavingLevel)
+  CallInterleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
+                 bool UseDynamicConvergence,
+                 int InterProceduralInterleavingLevel)
       : BBInterleave(ORE, Factor, UseDynamicConvergence,
                      InterProceduralInterleavingLevel) {}
-  Function *tryToInterleaveFunction(Function *F);
+  bool tryToInterleave(
+      Instruction *I,
+      SmallVectorImpl<std::unique_ptr<ValueToValueMapTy>> &OuterVMaps);
 };
 
 class KmpcParallel51Interleave : public BBInterleave {
 private:
   SmallPtrSet<Instruction *, 8> DivergentBranches;
 
-  Function *interleaveFunction(Function *F);
+  Function *tryToInterleaveFunction(Function *F);
 
 public:
   KmpcParallel51Interleave(OptimizationRemarkEmitter &ORE, unsigned Factor,
@@ -712,7 +716,7 @@ void BBInterleave::demoteDRRegs() {
   }
 }
 
-Function *KmpcParallel51Interleave::interleaveFunction(Function *F) {
+Function *KmpcParallel51Interleave::tryToInterleaveFunction(Function *F) {
   auto &Ctx = F->getContext();
   std::string NewName = F->getName().str() +
                         ".__kmpc_parallel_51.callback.coarsened." +
@@ -848,7 +852,7 @@ bool KmpcParallel51Interleave::tryToInterleave(
   if (!F)
     return false;
 
-  Function *NewF = interleaveFunction(F);
+  Function *NewF = tryToInterleaveFunction(F);
 
   auto &Ctx = F->getContext();
   PointerType *PtrTy = PointerType::get(Ctx, 0);
@@ -877,7 +881,7 @@ bool KmpcParallel51Interleave::tryToInterleave(
   return true;
 }
 
-Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
+Function *CallInterleave::tryToInterleaveFunction(Function *F) {
   std::string NewName =
       F->getName().str() + ".coarsened." + std::to_string(Factor);
 
@@ -978,6 +982,36 @@ Function *FunctionInterleave::tryToInterleaveFunction(Function *F) {
   return NewF;
 }
 
+bool CallInterleave::tryToInterleave(
+    Instruction *I,
+    SmallVectorImpl<std::unique_ptr<ValueToValueMapTy>> &OuterVMaps) {
+
+  Function *InterleavableCallee = getInterleavableCallee(I);
+  if (!InterleavableCallee)
+    return false;
+  Function *UnrolledF = CallInterleave(ORE, Factor, UseDynamicConvergence,
+                                       InterProceduralInterleavingLevel - 1)
+                            .tryToInterleaveFunction(InterleavableCallee);
+  if (!UnrolledF)
+    return false;
+  auto *CB = cast<CallBase>(I);
+  SmallVector<Value *> Args;
+  FunctionType *FTy = InterleavableCallee->getFunctionType();
+  for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
+    Value *Arg = CB->getArgOperand(ArgN);
+    for (unsigned It = 0; It < Factor; It++) {
+      Value *CoarsenedArg = (*OuterVMaps[It])[Arg];
+      if (!CoarsenedArg) {
+        CoarsenedArg = Arg;
+      }
+      Args.push_back(CoarsenedArg);
+    }
+  }
+  CallInst::Create(UnrolledF, Args, "", I);
+  I->eraseFromParent();
+  return true;
+}
+
 LoopUnrollResult BBInterleave::tryToUnrollBBs(
     Loop *L, LoopInfo *LI, BasicBlock *DominatingBlockIn,
     BasicBlock *PostDominatingBlockIn, const ArrayRef<BasicBlock *> &BBArr,
@@ -1054,35 +1088,10 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
                                      InterProceduralInterleavingLevel - 1)
                 .tryToInterleave(I, VMaps))
           continue;
-
-        Function *InterleavableCallee = getInterleavableCallee(I);
-        Function *UnrolledF = nullptr;
-        if (InterleavableCallee)
-          UnrolledF = FunctionInterleave(ORE, Factor, UseDynamicConvergence,
-                                         InterProceduralInterleavingLevel - 1)
-                          .tryToInterleaveFunction(InterleavableCallee);
-        if (UnrolledF) {
-          auto *CB = cast<CallBase>(I);
-          SmallVector<Value *> Args;
-          FunctionType *FTy = InterleavableCallee->getFunctionType();
-          for (unsigned ArgN = 0; ArgN < FTy->getNumParams(); ArgN++) {
-            Value *Arg = CB->getArgOperand(ArgN);
-            for (unsigned It = 0; It < Factor; It++) {
-              Value *CoarsenedArg = (*VMaps[It])[Arg];
-              if (!CoarsenedArg) {
-                assert(!isa<Instruction>(Arg) ||
-                       find(BBsToCoarsen,
-                            (dyn_cast<Instruction>(Arg)->getParent())) ==
-                           BBsToCoarsen.end());
-                CoarsenedArg = Arg;
-              }
-              Args.push_back(CoarsenedArg);
-            }
-          }
-          CallInst::Create(UnrolledF, Args, "", I);
-          I->eraseFromParent();
+        if (CallInterleave(ORE, Factor, UseDynamicConvergence,
+                           InterProceduralInterleavingLevel - 1)
+                .tryToInterleave(I, VMaps))
           continue;
-        }
       }
 
       bool IsTerminator = I->isTerminator();
@@ -1345,8 +1354,8 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
 
   auto LoopBounds = TheLoop->getBounds(SE);
   if (LoopBounds == std::nullopt) {
-    LLVM_DEBUG(DBGS_FAIL << "Unable to find loop bounds of the omp workshare "
-                            "loop, not coarsening\n");
+    LLVM_DEBUG(
+        DBGS_FAIL << "Unable to find loop bounds of loop, not coarsening\n");
     return LoopUnrollResult::Unmodified;
   }
 
