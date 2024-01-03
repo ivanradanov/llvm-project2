@@ -1246,9 +1246,27 @@ void CGOpenMPRuntimeGPU::emitParallelCall(CodeGenFunction &CGF,
     // TODO: Is that needed?
     CodeGenFunction::OMPPrivateScope PrivateArgScope(CGF);
 
-    Address CapturedVarsAddrs = CGF.CreateDefaultAlignTempAlloca(
-        llvm::ArrayType::get(CGM.VoidPtrTy, CapturedVars.size()),
-        "captured_vars_addrs");
+    llvm::Value *IfCondVal = nullptr;
+    if (IfCond)
+      IfCondVal = Bld.CreateIntCast(CGF.EvaluateExprAsBool(IfCond), CGF.Int32Ty,
+                                    /* isSigned */ false);
+    else
+      IfCondVal = llvm::ConstantInt::get(CGF.Int32Ty, 1);
+
+    if (!NumThreadsVal)
+      NumThreadsVal = llvm::ConstantInt::get(CGF.Int32Ty, -1);
+    else
+      NumThreadsVal = Bld.CreateZExtOrTrunc(NumThreadsVal, CGF.Int32Ty),
+
+      assert(IfCondVal && "Expected a value");
+
+    llvm::Type *CapturedVarsTy =
+        llvm::ArrayType::get(CGM.VoidPtrTy, CapturedVars.size());
+    Address CapturedVarsAddrs = CGF.CreateTempAlloca(
+        CapturedVarsTy,
+        CharUnits::fromQuantity(
+            CGM.getDataLayout().getPrefTypeAlign(CapturedVarsTy)),
+        "captured_vars_addrs", Bld.getInt32(1));
     // There's something to share.
     if (!CapturedVars.empty()) {
       // Prepare for parallel region. Indicate the outlined function.
@@ -1267,19 +1285,6 @@ void CGOpenMPRuntimeGPU::emitParallelCall(CodeGenFunction &CGF,
       }
     }
 
-    llvm::Value *IfCondVal = nullptr;
-    if (IfCond)
-      IfCondVal = Bld.CreateIntCast(CGF.EvaluateExprAsBool(IfCond), CGF.Int32Ty,
-                                    /* isSigned */ false);
-    else
-      IfCondVal = llvm::ConstantInt::get(CGF.Int32Ty, 1);
-
-    if (!NumThreadsVal)
-      NumThreadsVal = llvm::ConstantInt::get(CGF.Int32Ty, -1);
-    else
-      NumThreadsVal = Bld.CreateZExtOrTrunc(NumThreadsVal, CGF.Int32Ty),
-
-      assert(IfCondVal && "Expected a value");
     llvm::Value *RTLoc = emitUpdateLocation(CGF, Loc);
     llvm::Value *Args[] = {
         RTLoc,
