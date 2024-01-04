@@ -1826,11 +1826,6 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   // Run the OpenMPOpt pass again after global optimizations.
   MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
 
-  MPM.addPass(LoopUnrollAndInterleavePass());
-  MPM.addPass(createModuleToFunctionPassAdaptor(SimplifyCFGPass()));
-  MPM.addPass(createModuleToFunctionPassAdaptor(EarlyCSEPass()));
-  MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
-
   // Garbage collect dead functions.
   MPM.addPass(GlobalDCEPass(/*InLTOPostLink=*/true));
 
@@ -1934,6 +1929,11 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   MainFPM.addPass(JumpThreadingPass());
   MPM.addPass(createModuleToFunctionPassAdaptor(std::move(MainFPM),
                                                 PTO.EagerlyInvalidateAnalyses));
+
+  MPM.addPass(LoopUnrollAndInterleavePass());
+  MPM.addPass(createModuleToFunctionPassAdaptor(SimplifyCFGPass()));
+  MPM.addPass(createModuleToFunctionPassAdaptor(EarlyCSEPass()));
+  MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
 
   // Lower type metadata and the type.test intrinsic. This pass supports
   // clang's control flow integrity mechanisms (-fsanitize=cfi*) and needs
