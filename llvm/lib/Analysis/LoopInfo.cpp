@@ -180,21 +180,6 @@ ICmpInst *Loop::getLatchCmpInst() const {
   return nullptr;
 }
 
-static Value *cmpOperandFollow(Value *V) {
-  Instruction *I = dyn_cast<Instruction>(V);
-  if (!I)
-    return V;
-  switch (I->getOpcode()) {
-  case Instruction::ZExt:
-  case Instruction::SExt:
-  case Instruction::Trunc:
-  case Instruction::Freeze:
-    return cmpOperandFollow(I->getOperand(0));
-  default:
-    return V;
-  }
-}
-
 /// Return the final value of the loop induction variable if found.
 static Value *findFinalIVValue(const Loop &L, const PHINode &IndVar,
                                const Instruction &StepInst) {
@@ -202,8 +187,8 @@ static Value *findFinalIVValue(const Loop &L, const PHINode &IndVar,
   if (!LatchCmpInst)
     return nullptr;
 
-  Value *Op0 = cmpOperandFollow(LatchCmpInst->getOperand(0));
-  Value *Op1 = cmpOperandFollow(LatchCmpInst->getOperand(1));
+  Value *Op0 = LatchCmpInst->getOperand(0);
+  Value *Op1 = LatchCmpInst->getOperand(1);
   if (Op0 == &IndVar || Op0 == &StepInst)
     return Op1;
 
@@ -316,8 +301,8 @@ PHINode *Loop::getInductionVariable(ScalarEvolution &SE) const {
   if (!CmpInst)
     return nullptr;
 
-  Value *LatchCmpOp0 = cmpOperandFollow(CmpInst->getOperand(0));
-  Value *LatchCmpOp1 = cmpOperandFollow(CmpInst->getOperand(1));
+  Value *LatchCmpOp0 = CmpInst->getOperand(0);
+  Value *LatchCmpOp1 = CmpInst->getOperand(1);
 
   for (PHINode &IndVar : Header->phis()) {
     InductionDescriptor IndDesc;

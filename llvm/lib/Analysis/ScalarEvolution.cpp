@@ -7962,9 +7962,6 @@ const SCEV *ScalarEvolution::createSCEV(Value *V) {
       return getSCEV(U->getOperand(0));
     break;
 
-  case Instruction::Freeze:
-    return getSCEV(U->getOperand(0));
-
   case Instruction::PtrToInt: {
     // Pointer to integer cast is straight-forward, so do model it.
     const SCEV *Op = getSCEV(U->getOperand(0));
