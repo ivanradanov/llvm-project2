@@ -2094,7 +2094,7 @@ getCoarsenAttr(ASTContext &Ctx, const OMPExecutableDirective &S, Directive D) {
       llvm_unreachable("should have been checked in sema");
     }
   } else if (D == OMPD_distribute) {
-    int Level = 1;
+    int Level = 0;
     if (char *EnvVar = getenv("OMPX_COARSEN_DISTRIBUTE_OVERRIDE"))
       return OMPXCoarsenAttr::Create(Ctx, std::stoul(EnvVar), Level);
     for (auto *CoarsenClause :
