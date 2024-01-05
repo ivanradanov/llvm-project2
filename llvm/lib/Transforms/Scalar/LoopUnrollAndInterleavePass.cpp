@@ -1409,6 +1409,9 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
       break;
     }
 
+    if (!IV->getType()->isIntegerTy())
+      break;
+
     BinaryOperator *BEInst = dyn_cast<BinaryOperator>(BEValueV);
     if (!BEInst)
       break;
@@ -1439,10 +1442,46 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
     if (!FinalIVValue)
       break;
 
-    LoopBounds.StepInst = BEInst;
-    LoopBounds.StepValue = StepVal;
-    LoopBounds.FinalIVValue = FinalIVValue;
-    LoopBounds.InitialIVValue = StartValueV;
+    SmallVector<Value *> Bounds = {
+        BEInst,
+        StepVal,
+        FinalIVValue,
+        StartValueV,
+    };
+    auto TypeWidthsMap = map_range(Bounds, [](Value *V) -> unsigned {
+      if (auto *IntTy = dyn_cast<IntegerType>(V->getType()))
+        return IntTy->getBitWidth();
+      return 0;
+    });
+    SmallVector<unsigned> TypeWidths(TypeWidthsMap.begin(),
+                                     TypeWidthsMap.end());
+    assert(all_of(TypeWidths, [](unsigned W) { return W != 0; }));
+
+    std::function<Value *(Value *)> FixUp;
+    if (all_of(TypeWidths,
+               [&](unsigned W) { return W == *TypeWidths.begin(); })) {
+      FixUp = [](Value *V) { return V; };
+    } else {
+      sort(TypeWidths);
+      unsigned MinWidth = *TypeWidths.begin();
+
+      IntegerType *MinTy = IntegerType::get(BEInst->getContext(), MinWidth);
+      FixUp = [&](Value *Bound) -> Value * {
+        if (Bound->getType()->getIntegerBitWidth() > MinWidth) {
+          IRBuilder<> Builder(TheLoop.getLoopPreheader()->getFirstNonPHI());
+          if (auto *I = dyn_cast<Instruction>(Bound))
+            Builder.SetInsertPoint(I);
+          return Builder.CreateTrunc(Bound, MinTy);
+        }
+        return Bound;
+      };
+    }
+
+    LoopBounds.StepInst = cast<Instruction>(FixUp(BEInst));
+    LoopBounds.StepValue = FixUp(StepVal);
+    LoopBounds.FinalIVValue = FixUp(FinalIVValue);
+    LoopBounds.InitialIVValue = FixUp(StartValueV);
+
     return true;
   }
 
