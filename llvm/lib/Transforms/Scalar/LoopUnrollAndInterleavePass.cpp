@@ -237,6 +237,19 @@ private:
 
   LoopInfo *LI;
 
+  struct {
+    Value *FinalIVValue;
+    Value &getFinalIVValue() { return *FinalIVValue; }
+    Value *InitialIVValue;
+    Value &getInitialIVValue() { return *InitialIVValue; }
+    Value *StepValue;
+    Value &getStepValue() { return *StepValue; }
+    Instruction *StepInst;
+    Instruction &getStepInst() { return *StepInst; }
+  } LoopBounds;
+
+  bool populateLoopBounds(Loop &TheLoop, ScalarEvolution &SE);
+
   bool collectDivergentBranches(Loop *TheLoop, LoopInfo *LI);
 
 public:
@@ -1332,6 +1345,110 @@ void BBInterleave::cleanup() {
   PromoteMemToReg(DRTmpStorage, *DT);
 }
 
+static Value *followFTE(Value *V) {
+  Instruction *I = dyn_cast<Instruction>(V);
+  if (!I)
+    return V;
+  switch (I->getOpcode()) {
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::Trunc:
+  case Instruction::Freeze:
+    return followFTE(I->getOperand(0));
+  default:
+    return V;
+  }
+}
+
+bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
+                                                 ScalarEvolution &SE) {
+  auto LB = TheLoop.getBounds(SE);
+  if (LB != std::nullopt && LB->getStepValue() != nullptr) {
+    LoopBounds.FinalIVValue = &LB->getFinalIVValue();
+    LoopBounds.InitialIVValue = &LB->getInitialIVValue();
+    LoopBounds.StepValue = LB->getStepValue();
+    LoopBounds.StepInst = &LB->getStepInst();
+    return true;
+  }
+
+  // If the SE analysis could not find the loop bounds (which happens when there
+  // is a freeze instruction involved) try to recognize simple cases like this,
+  // while allowing freezes, truncs, and exts.
+  //
+  // for.body:
+  //   %i = phi i32 [ 0, %for.preheader ], [ %inc, %for.body ]
+  //   ...
+  //   %inc = add nsw i32 %i, 1
+  //   %cmp = icmp slt i32 %inc, %ub
+  //   br i1 %cmp, label %for.body, label %for.exit
+  //
+
+  BasicBlock *Latch = TheLoop.getLoopLatch();
+  Instruction *LatchCmpInst = TheLoop.getLatchCmpInst();
+  if (!Latch || !LatchCmpInst)
+    return false;
+  BasicBlock *Header = TheLoop.getHeader();
+  assert(Header);
+
+  PHINode *IV;
+  Value *BEValueV, *StartValueV;
+  for (auto &PN : Header->phis()) {
+    BEValueV = nullptr;
+    StartValueV = nullptr;
+    for (unsigned I = 0, E = PN.getNumIncomingValues(); I != E; ++I) {
+      Value *V = PN.getIncomingValue(I);
+      if (Latch == PN.getIncomingBlock(I)) {
+        BEValueV = followFTE(V);
+      } else if (!StartValueV) {
+        StartValueV = V;
+      }
+    }
+    if (BEValueV && StartValueV) {
+      IV = &PN;
+    } else {
+      break;
+    }
+
+    BinaryOperator *BEInst = dyn_cast<BinaryOperator>(BEValueV);
+    if (!BEInst)
+      break;
+
+    if (BEInst->getOpcode() != Instruction::Add)
+      break;
+
+    Value *LHS = followFTE(BEInst->getOperand(0));
+    Value *RHS = followFTE(BEInst->getOperand(1));
+
+    Value *StepVal = nullptr;
+    if (TheLoop.isLoopInvariant(LHS) && RHS == IV)
+      StepVal = LHS;
+    if (TheLoop.isLoopInvariant(RHS) && LHS == IV)
+      StepVal = RHS;
+
+    if (!StepVal)
+      break;
+
+    Value *FinalIVValue = nullptr;
+    Value *Op0 = followFTE(LatchCmpInst->getOperand(0));
+    Value *Op1 = followFTE(LatchCmpInst->getOperand(1));
+    if (Op0 == IV || Op0 == BEInst)
+      FinalIVValue = Op1;
+    if (Op1 == IV || Op1 == BEInst)
+      FinalIVValue = Op0;
+
+    if (!FinalIVValue)
+      break;
+
+    LoopBounds.StepInst = BEInst;
+    LoopBounds.StepValue = StepVal;
+    LoopBounds.FinalIVValue = FinalIVValue;
+    LoopBounds.InitialIVValue = StartValueV;
+    return true;
+  }
+
+  return false;
+}
+
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     Loop *L, DominatorTree &DT, LoopInfo &LI, ScalarEvolution &SE,
     PostDominatorTree &PDT) {
@@ -1352,8 +1469,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   if (!collectDivergentBranches(TheLoop, &LI))
     return LoopUnrollResult::Unmodified;
 
-  auto LoopBounds = TheLoop->getBounds(SE);
-  if (LoopBounds == std::nullopt) {
+  if (!populateLoopBounds(*TheLoop, SE)) {
     LLVM_DEBUG(
         DBGS_FAIL << "Unable to find loop bounds of loop, not coarsening\n");
     return LoopUnrollResult::Unmodified;
@@ -1386,12 +1502,12 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       return End;
 
     return nullptr;
-  }(&LoopBounds->getFinalIVValue());
+  }(&LoopBounds.getFinalIVValue());
   if (End == nullptr) {
     LLVM_DEBUG(DBGS_FAIL << "Unusable FinalIVValue define in the loop\n");
     return LoopUnrollResult::Unmodified;
   }
-  Value *InitialIVVal = &LoopBounds->getInitialIVValue();
+  Value *InitialIVVal = &LoopBounds.getInitialIVValue();
 
   // Clone the loop once more to use as an epilogue, the original one will be
   // coarsened in-place
@@ -1423,7 +1539,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
   // The new Step is UnrollFactor * OriginalStep
-  Value *IVStepVal = LoopBounds->getStepValue();
+  Value *IVStepVal = &LoopBounds.getStepValue();
   if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
     Value *NewStep = PreheaderBuilder.CreateMul(
         IVStepVal, ConstantInt::get(IVStepVal->getType(), Factor),
@@ -1440,7 +1556,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     Value *NewStep = ConstantInt::getIntegerValue(
         IntegerType::getInt32Ty(IVStepVal->getContext()),
         Factor * IVStepConst->getValue());
-    Instruction *StepInst = &LoopBounds->getStepInst();
+    Instruction *StepInst = &LoopBounds.getStepInst();
     for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
       if (StepInst->getOperand(It) == IVStepVal)
         StepInst->setOperand(It, NewStep);
@@ -1493,16 +1609,16 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   // Stride.
   // I.e. when we are done with our iterations of the coarsened loop.
   Value *EpilogueStart;
-  Value *Start = &LoopBounds->getInitialIVValue();
-  // Value *End = GetEnd(&LoopBounds->getFinalIVValue()); // Defined above.
-  Value *Stride = LoopBounds->getStepValue();
+  Value *Start = &LoopBounds.getInitialIVValue();
+  // Value *End = GetEnd(&LoopBounds.getFinalIVValue()); // Defined above.
+  Value *Stride = &LoopBounds.getStepValue();
   Value *One = ConstantInt::get(Start->getType(), 1);
   Value *UnrollFactorCst = ConstantInt::get(Start->getType(), Factor);
   {
     Value *Diff = PreheaderBuilder.CreateSub(End, Start);
     Value *CeilDiv = PreheaderBuilder.CreateUDiv(
         PreheaderBuilder.CreateSub(
-            PreheaderBuilder.CreateAdd(Diff, LoopBounds->getStepValue()), One),
+            PreheaderBuilder.CreateAdd(Diff, &LoopBounds.getStepValue()), One),
         Stride);
     Value *FloorDiv = PreheaderBuilder.CreateUDiv(CeilDiv, UnrollFactorCst);
     Value *Offset = PreheaderBuilder.CreateNSWMul(
@@ -1535,7 +1651,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     assert(BackEdge && BackEdge->isConditional());
     IRBuilder<> LatchBuilder(BackEdge);
     Value *IsAtEpilogueStart = LatchBuilder.CreateCmp(
-        CmpInst::Predicate::ICMP_EQ, &LoopBounds->getStepInst(), EpilogueStart,
+        CmpInst::Predicate::ICMP_EQ, &LoopBounds.getStepInst(), EpilogueStart,
         "is.epilogue.start");
     BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
         Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
