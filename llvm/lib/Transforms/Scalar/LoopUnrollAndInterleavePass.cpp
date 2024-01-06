@@ -18,6 +18,8 @@
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/DomTreeUpdater.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
@@ -510,6 +512,7 @@ void BBInterleave::populateDivergentRegions() {
   for (auto *TheBlock : EntryAndConvergingBlocks) {
     std::string BlockName = TheBlock->getName().str();
     auto *DivergentEntry = TheBlock;
+    // TODO there are versions of splitBB that update LI and DT, use them
     auto *Convergent =
         DivergentEntry->splitBasicBlockBefore(DivergentEntry->getTerminator());
     auto *DivergentExit =
@@ -1235,6 +1238,8 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
 
       auto *Intro = BasicBlock::Create(
           Ctx, DREntry->getName() + ".intro." + std::to_string(It), F, DREntry);
+      if (TheLoop)
+        TheLoop->addBasicBlockToLoop(Intro, *LI);
       Intros.push_back(Intro);
       IRBuilder<> IntroBuilder(Intro);
       IntroBuilder.CreateStore(ThisFactorIdentifier, CoarsenedIdentPtr);
@@ -1272,6 +1277,8 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
 
       auto *Outro = LastOutro = BasicBlock::Create(
           Ctx, DRExit->getName() + ".outro." + std::to_string(It), F, DRTo);
+      if (TheLoop)
+        TheLoop->addBasicBlockToLoop(Outro, *LI);
       for (auto P : *DR.DefinedInsideDemotedVMap) {
         auto *CoarsenedValue = P.first;
         auto *OriginalValue =
@@ -1334,6 +1341,9 @@ void BBInterleave::cleanup() {
   // Where a non-divergent flow joins a divergent regions - this means not all
   // coarsened versions of DRs are dead - just delete the ones unreachable from
   // the entry
+  // TODO if we want to use a loop pass manager we need to update the loop info
+  // here and above (by making an class that inherits from DomTreeUpdater and
+  // making it update the LI as well, above at DeleteDeadBlocks too)
   EliminateUnreachableBlocks(*F);
 
   // Now that we are done with the aggressive CFG restructuring and deleting
@@ -1470,7 +1480,7 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
         if (Bound->getType()->getIntegerBitWidth() > MinWidth) {
           IRBuilder<> Builder(TheLoop.getLoopPreheader()->getFirstNonPHI());
           if (auto *I = dyn_cast<Instruction>(Bound))
-            Builder.SetInsertPoint(I);
+            Builder.SetInsertPoint(I->getParent()->getTerminator());
           return Builder.CreateTrunc(Bound, MinTy);
         }
         return Bound;
@@ -1694,6 +1704,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
         "is.epilogue.start");
     BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
         Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
+    Loop *ParentLoop = TheLoop->getParentLoop();
+    if (ParentLoop)
+      ParentLoop->addBasicBlockToLoop(EndCheckBB, LI);
     Instruction *Cloned =
         BranchInst::Create(BackEdge->getSuccessor(0), BackEdge->getSuccessor(1),
                            BackEdge->getCondition());
@@ -1741,8 +1754,48 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   return LoopUnrollResult::PartiallyUnrolled;
 }
 
-PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
-                                                   ModuleAnalysisManager &AM) {
+PreservedAnalyses
+LoopUnrollAndInterleavePass::run(Loop &L, LoopAnalysisManager &AM,
+                                 LoopStandardAnalysisResults &AR,
+                                 LPMUpdater &U) {
+  Function *F = L.getHeader()->getParent();
+
+  if (getLoopAlreadyCoarsened(&L)) {
+    LLVM_DEBUG(DBGS_DISABLED << "Coarsening disabled\n");
+    return PreservedAnalyses::all();
+  }
+  auto Factor = getLoopCoarseningFactor(&L);
+  if (Factor == 0) {
+    LLVM_DEBUG(DBGS_DISABLED << "Coarsening metadata missing - ignoring\n");
+    return PreservedAnalyses::all();
+  }
+
+  bool UseDynamicConvergence = UseDynamicConvergenceOpt;
+  if (char *Env = getenv("UNROLL_AND_INTERLEAVE_DYNAMIC_CONVERGENCE")) {
+    unsigned Int = 0;
+    StringRef(Env).getAsInteger(10, Int);
+    UseDynamicConvergence = Int;
+  }
+
+  int Level = getLoopCoarseningLevel(&L);
+
+  auto PDT = PostDominatorTree(*F);
+
+  OptimizationRemarkEmitter ORE(F);
+  bool Changed = false;
+  Changed |= LoopUnrollAndInterleave(ORE, Factor, UseDynamicConvergence, Level)
+                 .tryToUnrollAndInterleaveLoop(&L, AR.DT, AR.LI, AR.SE, PDT) !=
+             LoopUnrollResult::Unmodified;
+
+  if (Changed) {
+    AM.clear(L, L.getName());
+    return PreservedAnalyses::none();
+  }
+  return PreservedAnalyses::all();
+}
+
+PreservedAnalyses UnrollAndInterleavePass::run(Module &M,
+                                               ModuleAnalysisManager &AM) {
 
   auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
 
@@ -1751,62 +1804,63 @@ PreservedAnalyses LoopUnrollAndInterleavePass::run(Module &M,
   for (Function &F : M.getFunctionList()) {
     if (F.isDeclaration())
       continue;
-    auto &LI = FAM.getResult<LoopAnalysis>(F);
-    auto &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
-    auto &DT = FAM.getResult<DominatorTreeAnalysis>(F);
-    auto &PDT = FAM.getResult<PostDominatorTreeAnalysis>(F);
 
-    SmallVector<Loop *> ToUAI;
-    for (auto &L : LI.getLoopsInPreorder()) {
-      if (getLoopAlreadyCoarsened(L)) {
-        LLVM_DEBUG(DBGS_DISABLED << "Coarsening disabled\n");
-        continue;
-      }
-      auto Factor = getLoopCoarseningFactor(L);
-      if (Factor == 0) {
-        LLVM_DEBUG(DBGS_DISABLED << "Coarsening metadata missing - ignoring\n");
-        continue;
-      }
-      ToUAI.push_back(L);
-    }
-    // TODO No nested UAI'ing allowed - either support it or check
-    for (auto *L : ToUAI) {
-      auto Factor = getLoopCoarseningFactor(L);
-      if (Factor == 0) {
-        LLVM_DEBUG(DBGS_DISABLED << "Coarsening metadata missing - ignoring\n");
-        continue;
-      }
-      if (FactorOpt.getNumOccurrences() > 0) {
-        LLVM_DEBUG(DBGS << "Setting factor from cl opt\n");
-        Factor = FactorOpt;
-      }
-      if (char *Env = getenv("UNROLL_AND_INTERLEAVE_FACTOR")) {
-        LLVM_DEBUG(DBGS << "Setting factor from env var\n");
-        StringRef(Env).getAsInteger(10, Factor);
-      }
-      if (Factor <= 1) {
-        LLVM_DEBUG(DBGS_DISABLED << "Coarsening factor of 1 or 0 - ignoring\n");
-        continue;
-      }
-      bool UseDynamicConvergence = UseDynamicConvergenceOpt;
-      if (char *Env = getenv("UNROLL_AND_INTERLEAVE_DYNAMIC_CONVERGENCE")) {
-        unsigned Int = 0;
-        StringRef(Env).getAsInteger(10, Int);
-        UseDynamicConvergence = Int;
-      }
+    auto &TLI = FAM.getResult<TargetLibraryAnalysis>(F);
+    auto &AC = FAM.getResult<AssumptionAnalysis>(F);
 
-      int Level = getLoopCoarseningLevel(L);
+    bool ChangedThisIt;
+    do {
+      auto DT = DominatorTree(F);
+      auto LI = LoopInfo(DT);
+      auto SE = ScalarEvolution(F, TLI, AC, DT, LI);
+      ChangedThisIt = false;
 
-      OptimizationRemarkEmitter ORE(&F);
+      auto Preorder = LI.getLoopsInPreorder();
+      for (auto &L : llvm::reverse(Preorder)) {
+        if (getLoopAlreadyCoarsened(L)) {
+          LLVM_DEBUG(DBGS_DISABLED << "Coarsening disabled\n");
+          continue;
+        }
 
-      Changed |= formLCSSARecursively(*L, DT, &LI, &SE);
-      Changed |= simplifyLoop(L, &DT, &LI, &SE, /*AC=*/nullptr,
-                              /*MSSAU=*/nullptr, /*PreserveLCSSA=*/true);
-      Changed |=
-          LoopUnrollAndInterleave(ORE, Factor, UseDynamicConvergence, Level)
-              .tryToUnrollAndInterleaveLoop(L, DT, LI, SE, PDT) !=
-          LoopUnrollResult::Unmodified;
-    }
+        auto Factor = getLoopCoarseningFactor(L);
+        if (Factor == 0) {
+          LLVM_DEBUG(DBGS_DISABLED
+                     << "Coarsening metadata missing - ignoring\n");
+          continue;
+        }
+        if (Factor <= 1) {
+          LLVM_DEBUG(DBGS_DISABLED
+                     << "Coarsening factor of 1 or 0 - ignoring\n");
+          continue;
+        }
+
+        bool UseDynamicConvergence = UseDynamicConvergenceOpt;
+        if (char *Env = getenv("UNROLL_AND_INTERLEAVE_DYNAMIC_CONVERGENCE")) {
+          unsigned Int = 0;
+          StringRef(Env).getAsInteger(10, Int);
+          UseDynamicConvergence = Int;
+        }
+
+        int Level = getLoopCoarseningLevel(L);
+
+        OptimizationRemarkEmitter ORE(&F);
+
+        ChangedThisIt |= formLCSSARecursively(*L, DT, &LI, &SE);
+        ChangedThisIt |=
+            simplifyLoop(L, &DT, &LI, &SE, /*AC=*/nullptr,
+                         /*MSSAU=*/nullptr, /*PreserveLCSSA=*/true);
+        auto PDT = PostDominatorTree(F);
+        ChangedThisIt |=
+            LoopUnrollAndInterleave(ORE, Factor, UseDynamicConvergence, Level)
+                .tryToUnrollAndInterleaveLoop(L, DT, LI, SE, PDT) !=
+            LoopUnrollResult::Unmodified;
+
+        Changed |= ChangedThisIt;
+
+        if (ChangedThisIt)
+          break;
+      }
+    } while (ChangedThisIt);
   }
 
   if (!Changed)

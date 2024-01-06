@@ -9,6 +9,7 @@
 #ifndef LLVM_TRANSFORMS_SCALAR_LOOPUNROLLANDINTERLEAVEPASS_H
 #define LLVM_TRANSFORMS_SCALAR_LOOPUNROLLANDINTERLEAVEPASS_H
 
+#include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/IR/PassManager.h"
 
 namespace llvm {
@@ -22,6 +23,15 @@ class LoopUnrollAndInterleavePass
 
 public:
   explicit LoopUnrollAndInterleavePass() {}
+
+  PreservedAnalyses run(Loop &L, LoopAnalysisManager &AM,
+                        LoopStandardAnalysisResults &AR, LPMUpdater &U);
+};
+
+class UnrollAndInterleavePass : public PassInfoMixin<UnrollAndInterleavePass> {
+
+public:
+  explicit UnrollAndInterleavePass() {}
 
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 };

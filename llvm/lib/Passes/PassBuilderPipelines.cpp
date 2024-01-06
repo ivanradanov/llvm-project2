@@ -1930,7 +1930,7 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   MPM.addPass(createModuleToFunctionPassAdaptor(std::move(MainFPM),
                                                 PTO.EagerlyInvalidateAnalyses));
 
-  MPM.addPass(LoopUnrollAndInterleavePass());
+  MPM.addPass(UnrollAndInterleavePass());
   MPM.addPass(createModuleToFunctionPassAdaptor(SimplifyCFGPass()));
   MPM.addPass(createModuleToFunctionPassAdaptor(EarlyCSEPass()));
   MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
