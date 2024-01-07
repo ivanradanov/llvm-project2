@@ -225,14 +225,14 @@ attributes #9 = { convergent nounwind }
 ; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD7_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
 ; CHECK:       coarsened.end.check:
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP20:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_014_EPILOGUE:%.*]] = phi i64 [ [[ADD7]], [[COARSENED_END_CHECK]] ], [ [[ADD7_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; CHECK-NEXT:    [[CONV6_EPILOGUE:%.*]] = trunc i64 [[DOTOMP_IV_014_EPILOGUE]] to i32
 ; CHECK-NEXT:    tail call void @_Z3fooPii(ptr noundef [[A]], i32 noundef [[CONV6_EPILOGUE]]) #[[ATTR7:[0-9]+]]
 ; CHECK-NEXT:    [[ADD7_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_014_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD7_EPILOGUE]], [[ADD]]
-; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP23:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP20:![0-9]+]]
 ; CHECK:       omp.loop.exit.loopexit:
 ; CHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; CHECK:       omp.loop.exit:
@@ -321,14 +321,14 @@ attributes #9 = { convergent nounwind }
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD7_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
 ; DRCHECK:       coarsened.end.check:
-; DRCHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP20:![0-9]+]]
+; DRCHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; DRCHECK:       omp.inner.for.body.epilogue:
 ; DRCHECK-NEXT:    [[DOTOMP_IV_014_EPILOGUE:%.*]] = phi i64 [ [[ADD7]], [[COARSENED_END_CHECK]] ], [ [[ADD7_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; DRCHECK-NEXT:    [[CONV6_EPILOGUE:%.*]] = trunc i64 [[DOTOMP_IV_014_EPILOGUE]] to i32
 ; DRCHECK-NEXT:    tail call void @_Z3fooPii(ptr noundef [[A]], i32 noundef [[CONV6_EPILOGUE]]) #[[ATTR7:[0-9]+]]
 ; DRCHECK-NEXT:    [[ADD7_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_014_EPILOGUE]]
 ; DRCHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD7_EPILOGUE]], [[ADD]]
-; DRCHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP23:![0-9]+]]
+; DRCHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP20:![0-9]+]]
 ; DRCHECK:       omp.loop.exit.loopexit:
 ; DRCHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; DRCHECK:       omp.loop.exit:
@@ -367,10 +367,7 @@ attributes #9 = { convergent nounwind }
 ; CHECK: [[META17]] = !{!"int", [[META14]], i64 0}
 ; CHECK: [[LOOP18]] = distinct !{[[LOOP18]], [[META19:![0-9]+]]}
 ; CHECK: [[META19]] = !{!"llvm.loop.unroll_and_interleave.disable"}
-; CHECK: [[LOOP20]] = distinct !{[[LOOP20]], [[META21:![0-9]+]], [[META22:![0-9]+]]}
-; CHECK: [[META21]] = !{!"llvm.loop.unroll_and_interleave.count", i32 2}
-; CHECK: [[META22]] = !{!"llvm.loop.unroll_and_interleave.level", i32 1}
-; CHECK: [[LOOP23]] = distinct !{[[LOOP23]], [[META19]]}
+; CHECK: [[LOOP20]] = distinct !{[[LOOP20]], [[META19]]}
 ;.
 ; DRCHECK: [[TBAA12]] = !{[[META13:![0-9]+]], [[META13]], i64 0}
 ; DRCHECK: [[META13]] = !{!"long", [[META14:![0-9]+]], i64 0}
@@ -380,8 +377,5 @@ attributes #9 = { convergent nounwind }
 ; DRCHECK: [[META17]] = !{!"int", [[META14]], i64 0}
 ; DRCHECK: [[LOOP18]] = distinct !{[[LOOP18]], [[META19:![0-9]+]]}
 ; DRCHECK: [[META19]] = !{!"llvm.loop.unroll_and_interleave.disable"}
-; DRCHECK: [[LOOP20]] = distinct !{[[LOOP20]], [[META21:![0-9]+]], [[META22:![0-9]+]]}
-; DRCHECK: [[META21]] = !{!"llvm.loop.unroll_and_interleave.count", i32 2}
-; DRCHECK: [[META22]] = !{!"llvm.loop.unroll_and_interleave.level", i32 1}
-; DRCHECK: [[LOOP23]] = distinct !{[[LOOP23]], [[META19]]}
+; DRCHECK: [[LOOP20]] = distinct !{[[LOOP20]], [[META19]]}
 ;.

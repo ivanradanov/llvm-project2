@@ -105,7 +105,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_36e080__Z6veca
 ; CHECK-NEXT:    [[ADD9_I:%.*]] = add i64 [[STOREMERGE4_I]], [[TMP7]]
 ; CHECK-NEXT:    [[COND14_I]] = call i64 @llvm.umin.i64(i64 [[ADD9_I]], i64 [[SUB2_I]])
 ; CHECK-NEXT:    [[CMP6_I:%.*]] = icmp ult i64 [[ADD8_I]], [[CONV_I]]
-; CHECK-NEXT:    br i1 [[CMP6_I]], label [[OMP_INNER_FOR_BODY_I]], label [[OMP_LOOP_EXIT_I]]
+; CHECK-NEXT:    br i1 [[CMP6_I]], label [[OMP_INNER_FOR_BODY_I]], label [[OMP_LOOP_EXIT_I_LOOPEXIT:%.*]]
+; CHECK:       omp.loop.exit.i.loopexit:
+; CHECK-NEXT:    br label [[OMP_LOOP_EXIT_I]]
 ; CHECK:       omp.loop.exit.i:
 ; CHECK-NEXT:    call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @anon.5850cc43cb84c4daeb899343980e443b.2 to ptr), i32 [[TMP1]]) #[[ATTR2]]
 ; CHECK-NEXT:    br label [[__OMP_OFFLOADING_58_36E080__Z6VECADDPII_L17_OMP_OUTLINED_EXIT]]
@@ -181,7 +183,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_36e080__Z6veca
 ; DRCHECK-NEXT:    [[ADD9_I:%.*]] = add i64 [[STOREMERGE4_I]], [[TMP7]]
 ; DRCHECK-NEXT:    [[COND14_I]] = call i64 @llvm.umin.i64(i64 [[ADD9_I]], i64 [[SUB2_I]])
 ; DRCHECK-NEXT:    [[CMP6_I:%.*]] = icmp ult i64 [[ADD8_I]], [[CONV_I]]
-; DRCHECK-NEXT:    br i1 [[CMP6_I]], label [[OMP_INNER_FOR_BODY_I]], label [[OMP_LOOP_EXIT_I]]
+; DRCHECK-NEXT:    br i1 [[CMP6_I]], label [[OMP_INNER_FOR_BODY_I]], label [[OMP_LOOP_EXIT_I_LOOPEXIT:%.*]]
+; DRCHECK:       omp.loop.exit.i.loopexit:
+; DRCHECK-NEXT:    br label [[OMP_LOOP_EXIT_I]]
 ; DRCHECK:       omp.loop.exit.i:
 ; DRCHECK-NEXT:    call void @__kmpc_distribute_static_fini(ptr addrspacecast (ptr addrspace(1) @anon.5850cc43cb84c4daeb899343980e443b.2 to ptr), i32 [[TMP1]]) #[[ATTR2]]
 ; DRCHECK-NEXT:    br label [[__OMP_OFFLOADING_58_36E080__Z6VECADDPII_L17_OMP_OUTLINED_EXIT]]
@@ -355,8 +359,8 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.0:
 ; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ]
-; CHECK-NEXT:    [[CMP6_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP6]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP6_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; CHECK-NEXT:    [[CONV7_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[CONV7]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CONV7_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
+; CHECK-NEXT:    [[CMP6_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP6]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP6_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; CHECK-NEXT:    br i1 [[CMP6_DRS_0_REG2MEM_0]], label [[IF_THEN_DRS_0:%.*]], label [[IF_ELSE9_DRS_0:%.*]]
 ; CHECK:       if.then.drs.0:
 ; CHECK-NEXT:    [[CALL_DRS_0:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV7_DRS_0_REG2MEM_0]]) #[[ATTR8:[0-9]+]]
@@ -389,7 +393,7 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.1:
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_INC]]
 ; CHECK:       coarsened.end.check:
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP23:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_028_EPILOGUE:%.*]] = phi i64 [ [[ADD16]], [[COARSENED_END_CHECK]] ], [ [[ADD16_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; CHECK-NEXT:    [[CMP6_EPILOGUE:%.*]] = icmp ult i64 [[DOTOMP_IV_028_EPILOGUE]], 100
@@ -416,7 +420,7 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK:       omp.inner.for.inc.epilogue:
 ; CHECK-NEXT:    [[ADD16_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_028_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD16_EPILOGUE]], [[ADD]]
-; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP25:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP23:![0-9]+]]
 ; CHECK:       omp.loop.exit.loopexit:
 ; CHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; CHECK:       omp.loop.exit:
@@ -574,8 +578,8 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs.0:
 ; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ]
-; DRCHECK-NEXT:    [[CONV7_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[CONV7]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CONV7_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; DRCHECK-NEXT:    [[CMP6_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP6]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP6_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
+; DRCHECK-NEXT:    [[CONV7_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[CONV7]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CONV7_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; DRCHECK-NEXT:    br i1 [[CMP6_DRS_0_REG2MEM_0]], label [[IF_THEN_DRS_0:%.*]], label [[IF_ELSE9_DRS_0:%.*]]
 ; DRCHECK:       if.then.drs.0:
 ; DRCHECK-NEXT:    [[CALL_DRS_0:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV7_DRS_0_REG2MEM_0]]) #[[ATTR8]]
@@ -608,7 +612,7 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK:       omp.inner.for.inc.divergent.exit.drs.0.outro.1:
 ; DRCHECK-NEXT:    br label [[OMP_INNER_FOR_INC]]
 ; DRCHECK:       coarsened.end.check:
-; DRCHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP23:![0-9]+]]
+; DRCHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; DRCHECK:       omp.inner.for.body.epilogue:
 ; DRCHECK-NEXT:    [[DOTOMP_IV_028_EPILOGUE:%.*]] = phi i64 [ [[ADD16]], [[COARSENED_END_CHECK]] ], [ [[ADD16_EPILOGUE:%.*]], [[OMP_INNER_FOR_INC_EPILOGUE:%.*]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; DRCHECK-NEXT:    [[CMP6_EPILOGUE:%.*]] = icmp ult i64 [[DOTOMP_IV_028_EPILOGUE]], 100
@@ -635,7 +639,7 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK:       omp.inner.for.inc.epilogue:
 ; DRCHECK-NEXT:    [[ADD16_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_028_EPILOGUE]]
 ; DRCHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD16_EPILOGUE]], [[ADD]]
-; DRCHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP25:![0-9]+]]
+; DRCHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP23:![0-9]+]]
 ; DRCHECK:       omp.loop.exit.loopexit:
 ; DRCHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; DRCHECK:       omp.loop.exit:

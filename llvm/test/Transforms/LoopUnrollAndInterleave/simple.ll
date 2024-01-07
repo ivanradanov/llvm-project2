@@ -69,7 +69,7 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD8_COARSENED_1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
 ; CHECK:       coarsened.end.check:
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]], !llvm.loop [[LOOP20:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_017_EPILOGUE:%.*]] = phi i64 [ [[ADD8]], [[COARSENED_END_CHECK]] ], [ [[ADD8_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; CHECK-NEXT:    [[ARRAYIDX_EPILOGUE:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_EPILOGUE]]
@@ -78,7 +78,7 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    store i32 [[ADD6_EPILOGUE]], ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[ADD8_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_017_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD8_EPILOGUE]], [[ADD]]
-; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP22:![0-9]+]]
+; CHECK-NEXT:    br i1 [[CMP4_EPILOGUE]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT]], !llvm.loop [[LOOP20:![0-9]+]]
 ; CHECK:       omp.loop.exit.loopexit:
 ; CHECK-NEXT:    br label [[OMP_LOOP_EXIT]]
 ; CHECK:       omp.loop.exit:
