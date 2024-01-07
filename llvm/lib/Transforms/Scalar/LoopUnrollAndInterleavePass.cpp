@@ -1473,15 +1473,16 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
       FixUp = [](Value *V) { return V; };
     } else {
       sort(TypeWidths);
-      unsigned MinWidth = *TypeWidths.begin();
+      unsigned MaxWidth = TypeWidths.back();
 
-      IntegerType *MinTy = IntegerType::get(BEInst->getContext(), MinWidth);
+      IntegerType *MaxTy = IntegerType::get(BEInst->getContext(), MaxWidth);
       FixUp = [&](Value *Bound) -> Value * {
-        if (Bound->getType()->getIntegerBitWidth() > MinWidth) {
+        if (Bound->getType()->getIntegerBitWidth() < MaxWidth) {
           IRBuilder<> Builder(TheLoop.getLoopPreheader()->getFirstNonPHI());
           if (auto *I = dyn_cast<Instruction>(Bound))
             Builder.SetInsertPoint(I->getParent()->getTerminator());
-          return Builder.CreateTrunc(Bound, MinTy);
+          // TODO SExt or ZExt???
+          return Builder.CreateZExt(Bound, MaxTy);
         }
         return Bound;
       };
