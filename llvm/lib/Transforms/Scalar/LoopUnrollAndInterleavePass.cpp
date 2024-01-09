@@ -1665,12 +1665,19 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
         Instruction *LatchCmp = TheLoop->getLatchCmpInst();
         Instruction *ClonedCmp = LatchCmp->clone();
         ClonedCmp->insertBefore(LatchCmp);
-        bool Changed;
-        // TODO There may be trunc/ext/freeze between the cmp operand and
-        // OldStep - handle them.
-        Changed = ClonedCmp->replaceUsesOfWith(OldStep, NewStep);
-        assert(Changed);
-        Changed = CombinedLatchExiting->getTerminator()->replaceUsesOfWith(
+
+        unsigned StepInstOpr = -1;
+        if (followFTE(ClonedCmp->getOperand(0)) == OldStep)
+          StepInstOpr = 0;
+        if (followFTE(ClonedCmp->getOperand(1)) == OldStep)
+          StepInstOpr = 1;
+        assert(StepInstOpr != (unsigned)-1);
+
+        Value *FixedNewStep = advanceOneIteration(
+            TheLoop, OldStep, ClonedCmp->getOperand(StepInstOpr), ClonedCmp,
+            NewStep);
+        ClonedCmp->setOperand(StepInstOpr, FixedNewStep);
+        bool Changed = CombinedLatchExiting->getTerminator()->replaceUsesOfWith(
             LatchCmp, ClonedCmp);
         assert(Changed);
       }
