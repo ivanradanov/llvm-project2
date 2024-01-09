@@ -61,7 +61,6 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; CHECK-NEXT:    [[SEXT_MASK:%.*]] = and i64 [[SIZE]], 4294967295
 ; CHECK-NEXT:    [[CMP_NOT:%.*]] = icmp eq i64 [[SEXT_MASK]], 0
 ; CHECK-NEXT:    [[STRIDE:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8, !tbaa [[TBAA12:![0-9]+]]
-; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[STRIDE]], 2
 ; CHECK-NEXT:    br i1 [[CMP_NOT]], label [[OMP_PRECOND_END:%.*]], label [[OMP_PRECOND_THEN:%.*]]
 ; CHECK:       omp.precond.then:
 ; CHECK-NEXT:    [[DOTOMP_STRIDE_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_STRIDE]] to ptr
@@ -83,16 +82,16 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; CHECK-NEXT:    [[CMP421:%.*]] = icmp ult i64 [[TMP1]], [[ADD]]
 ; CHECK-NEXT:    br i1 [[CMP421]], label [[OMP_INNER_FOR_BODY_PREHEADER:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; CHECK:       omp.inner.for.body.preheader:
-; CHECK-NEXT:    [[TMP2:%.*]] = mul i64 [[STRIDE]], 1
-; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP2]]
-; CHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[STRIDE]]
-; CHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
-; CHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[STRIDE]]
-; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
-; CHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
-; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[STRIDE]]
-; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
+; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[STRIDE]], [[TMP1]]
+; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[STRIDE]], 2
+; CHECK-NEXT:    [[TMP2:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; CHECK-NEXT:    [[TMP3:%.*]] = add i64 [[TMP2]], [[STRIDE]]
+; CHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[TMP3]], 1
+; CHECK-NEXT:    [[TMP5:%.*]] = udiv i64 [[TMP4]], [[STRIDE]]
+; CHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], 2
+; CHECK-NEXT:    [[TMP7:%.*]] = mul nsw i64 [[TMP6]], 2
+; CHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], [[STRIDE]]
+; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP8]], [[TMP1]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
 ; CHECK:       omp.inner.for.body:
@@ -187,7 +186,6 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; DRCHECK-NEXT:    [[SEXT_MASK:%.*]] = and i64 [[SIZE]], 4294967295
 ; DRCHECK-NEXT:    [[CMP_NOT:%.*]] = icmp eq i64 [[SEXT_MASK]], 0
 ; DRCHECK-NEXT:    [[STRIDE:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8, !tbaa [[TBAA12:![0-9]+]]
-; DRCHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[STRIDE]], 2
 ; DRCHECK-NEXT:    br i1 [[CMP_NOT]], label [[OMP_PRECOND_END:%.*]], label [[OMP_PRECOND_THEN:%.*]]
 ; DRCHECK:       omp.precond.then:
 ; DRCHECK-NEXT:    [[DOTOMP_STRIDE_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[DOTOMP_STRIDE]] to ptr
@@ -209,16 +207,16 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; DRCHECK-NEXT:    [[CMP421:%.*]] = icmp ult i64 [[TMP1]], [[ADD]]
 ; DRCHECK-NEXT:    br i1 [[CMP421]], label [[OMP_INNER_FOR_BODY_PREHEADER:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; DRCHECK:       omp.inner.for.body.preheader:
-; DRCHECK-NEXT:    [[TMP2:%.*]] = mul i64 [[STRIDE]], 1
-; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP2]]
-; DRCHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; DRCHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[STRIDE]]
-; DRCHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
-; DRCHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[STRIDE]]
-; DRCHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
-; DRCHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
-; DRCHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[STRIDE]]
-; DRCHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
+; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[STRIDE]], [[TMP1]]
+; DRCHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[STRIDE]], 2
+; DRCHECK-NEXT:    [[TMP2:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; DRCHECK-NEXT:    [[TMP3:%.*]] = add i64 [[TMP2]], [[STRIDE]]
+; DRCHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[TMP3]], 1
+; DRCHECK-NEXT:    [[TMP5:%.*]] = udiv i64 [[TMP4]], [[STRIDE]]
+; DRCHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], 2
+; DRCHECK-NEXT:    [[TMP7:%.*]] = mul nsw i64 [[TMP6]], 2
+; DRCHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], [[STRIDE]]
+; DRCHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP8]], [[TMP1]]
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
 ; DRCHECK:       omp.inner.for.body:
@@ -228,15 +226,15 @@ define internal void @__omp_offloading_4e_5cb4cb97__Z6vecaddPiS_i_l14_omp_outlin
 ; DRCHECK-NEXT:    [[CONV6_COARSENED_1:%.*]] = trunc i64 [[DOTOMP_IV_022_COARSENED_1]] to i32
 ; DRCHECK-NEXT:    [[CALL:%.*]] = call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6]]) #[[ATTR6:[0-9]+]]
 ; DRCHECK-NEXT:    [[CALL_COARSENED_1:%.*]] = call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_COARSENED_1]]) #[[ATTR6]]
-; DRCHECK-NEXT:    [[TMP10:%.*]] = icmp eq i1 [[CALL_COARSENED_1]], [[CALL]]
-; DRCHECK-NEXT:    br i1 [[TMP10]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY:%.*]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0:%.*]]
+; DRCHECK-NEXT:    [[TMP9:%.*]] = icmp eq i1 [[CALL_COARSENED_1]], [[CALL]]
+; DRCHECK-NEXT:    br i1 [[TMP9]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY:%.*]], label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0:%.*]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry:
 ; DRCHECK-NEXT:    br i1 [[CALL]], label [[IF_THEN:%.*]], label [[IF_ELSE10:%.*]]
 ; DRCHECK:       if.then:
 ; DRCHECK-NEXT:    [[CALL8:%.*]] = call noundef zeroext i1 @_Z5test2i(i32 noundef [[CONV6]]) #[[ATTR6]]
 ; DRCHECK-NEXT:    [[CALL8_COARSENED_1:%.*]] = call noundef zeroext i1 @_Z5test2i(i32 noundef [[CONV6_COARSENED_1]]) #[[ATTR6]]
-; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp eq i1 [[CALL8_COARSENED_1]], [[CALL8]]
-; DRCHECK-NEXT:    br i1 [[TMP11]], label [[IF_THEN_DIVERGENT_ENTRY:%.*]], label [[IF_THEN_DIVERGENT_ENTRY_DRS_1_INTRO_0:%.*]]
+; DRCHECK-NEXT:    [[TMP10:%.*]] = icmp eq i1 [[CALL8_COARSENED_1]], [[CALL8]]
+; DRCHECK-NEXT:    br i1 [[TMP10]], label [[IF_THEN_DIVERGENT_ENTRY:%.*]], label [[IF_THEN_DIVERGENT_ENTRY_DRS_1_INTRO_0:%.*]]
 ; DRCHECK:       if.then.divergent.entry:
 ; DRCHECK-NEXT:    br i1 [[CALL8]], label [[IF_THEN9:%.*]], label [[IF_ELSE:%.*]]
 ; DRCHECK:       if.then9:

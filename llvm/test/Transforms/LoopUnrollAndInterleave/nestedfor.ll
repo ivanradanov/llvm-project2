@@ -75,17 +75,16 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK-NEXT:    br i1 [[CMP413]], label [[FOR_COND_PREHEADER_LR_PH:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; CHECK:       for.cond.preheader.lr.ph:
 ; CHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8
+; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP2]], [[TMP1]]
 ; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[TMP2]], 2
-; CHECK-NEXT:    [[TMP3:%.*]] = mul i64 [[TMP2]], 1
-; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP3]]
-; CHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; CHECK-NEXT:    [[TMP5:%.*]] = add i64 [[TMP4]], [[TMP2]]
-; CHECK-NEXT:    [[TMP6:%.*]] = sub i64 [[TMP5]], 1
-; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], [[TMP2]]
-; CHECK-NEXT:    [[TMP8:%.*]] = udiv i64 [[TMP7]], 2
-; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], 2
-; CHECK-NEXT:    [[TMP10:%.*]] = mul nsw i64 [[TMP9]], [[TMP2]]
-; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP10]], [[TMP1]]
+; CHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[TMP2]]
+; CHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
+; CHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[TMP2]]
+; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
+; CHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
+; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[TMP2]]
+; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[FOR_COND_PREHEADER_EPILOGUE:%.*]], label [[FOR_COND_PREHEADER:%.*]]
 ; CHECK:       for.cond.preheader:
@@ -188,17 +187,16 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK-NEXT:    br i1 [[CMP413]], label [[FOR_COND_PREHEADER_LR_PH:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; DRCHECK:       for.cond.preheader.lr.ph:
 ; DRCHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8
+; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP2]], [[TMP1]]
 ; DRCHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[TMP2]], 2
-; DRCHECK-NEXT:    [[TMP3:%.*]] = mul i64 [[TMP2]], 1
-; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP3]]
-; DRCHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; DRCHECK-NEXT:    [[TMP5:%.*]] = add i64 [[TMP4]], [[TMP2]]
-; DRCHECK-NEXT:    [[TMP6:%.*]] = sub i64 [[TMP5]], 1
-; DRCHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], [[TMP2]]
-; DRCHECK-NEXT:    [[TMP8:%.*]] = udiv i64 [[TMP7]], 2
-; DRCHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], 2
-; DRCHECK-NEXT:    [[TMP10:%.*]] = mul nsw i64 [[TMP9]], [[TMP2]]
-; DRCHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP10]], [[TMP1]]
+; DRCHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; DRCHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[TMP2]]
+; DRCHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
+; DRCHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[TMP2]]
+; DRCHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
+; DRCHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
+; DRCHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[TMP2]]
+; DRCHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[FOR_COND_PREHEADER_EPILOGUE:%.*]], label [[FOR_COND_PREHEADER:%.*]]
 ; DRCHECK:       for.cond.preheader:
@@ -210,8 +208,8 @@ define internal void @__omp_offloading_59_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; DRCHECK:       for.cond:
 ; DRCHECK-NEXT:    [[CALL:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6]]) #[[ATTR6:[0-9]+]]
 ; DRCHECK-NEXT:    [[CALL_COARSENED_1:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV6_COARSENED_1]]) #[[ATTR6]]
-; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp eq i1 [[CALL_COARSENED_1]], [[CALL]]
-; DRCHECK-NEXT:    br i1 [[TMP11]], label [[FOR_COND_DIVERGENT_ENTRY:%.*]], label [[FOR_COND_DIVERGENT_ENTRY_DRS_0_INTRO_0:%.*]]
+; DRCHECK-NEXT:    [[TMP10:%.*]] = icmp eq i1 [[CALL_COARSENED_1]], [[CALL]]
+; DRCHECK-NEXT:    br i1 [[TMP10]], label [[FOR_COND_DIVERGENT_ENTRY:%.*]], label [[FOR_COND_DIVERGENT_ENTRY_DRS_0_INTRO_0:%.*]]
 ; DRCHECK:       for.cond.divergent.entry:
 ; DRCHECK-NEXT:    br i1 [[CALL]], label [[FOR_BODY:%.*]], label [[OMP_INNER_FOR_INC_DIVERGENT_EXIT:%.*]]
 ; DRCHECK:       for.body:

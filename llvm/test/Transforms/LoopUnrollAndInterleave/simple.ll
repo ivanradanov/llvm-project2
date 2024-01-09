@@ -37,17 +37,16 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    br i1 [[CMP416]], label [[OMP_INNER_FOR_BODY_LR_PH:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; CHECK:       omp.inner.for.body.lr.ph:
 ; CHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8, !tbaa [[TBAA12]]
+; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP2]], [[TMP1]]
 ; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[TMP2]], 2
-; CHECK-NEXT:    [[TMP3:%.*]] = mul i64 [[TMP2]], 1
-; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP3]]
-; CHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; CHECK-NEXT:    [[TMP5:%.*]] = add i64 [[TMP4]], [[TMP2]]
-; CHECK-NEXT:    [[TMP6:%.*]] = sub i64 [[TMP5]], 1
-; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], [[TMP2]]
-; CHECK-NEXT:    [[TMP8:%.*]] = udiv i64 [[TMP7]], 2
-; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], 2
-; CHECK-NEXT:    [[TMP10:%.*]] = mul nsw i64 [[TMP9]], [[TMP2]]
-; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP10]], [[TMP1]]
+; CHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[TMP2]]
+; CHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
+; CHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[TMP2]]
+; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
+; CHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
+; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[TMP2]]
+; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
 ; CHECK:       omp.inner.for.body:
@@ -55,9 +54,9 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[DOTOMP_IV_017_COARSENED_1:%.*]] = phi i64 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD8_COARSENED_1:%.*]], [[OMP_INNER_FOR_BODY]] ]
 ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017]]
 ; CHECK-NEXT:    [[ARRAYIDX_COARSENED_1:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_COARSENED_1]]
-; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[TMP10:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[DOTCOARSENED_1:%.*]] = load i32, ptr [[ARRAYIDX_COARSENED_1]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[ADD6:%.*]] = add nsw i32 [[TMP11]], 100000
+; CHECK-NEXT:    [[ADD6:%.*]] = add nsw i32 [[TMP10]], 100000
 ; CHECK-NEXT:    [[ADD6_COARSENED_1:%.*]] = add nsw i32 [[DOTCOARSENED_1]], 100000
 ; CHECK-NEXT:    store i32 [[ADD6]], ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    store i32 [[ADD6_COARSENED_1]], ptr [[ARRAYIDX_COARSENED_1]], align 4, !tbaa [[TBAA16]]
@@ -73,8 +72,8 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK:       omp.inner.for.body.epilogue:
 ; CHECK-NEXT:    [[DOTOMP_IV_017_EPILOGUE:%.*]] = phi i64 [ [[ADD8]], [[COARSENED_END_CHECK]] ], [ [[ADD8_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; CHECK-NEXT:    [[ARRAYIDX_EPILOGUE:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_EPILOGUE]]
-; CHECK-NEXT:    [[TMP12:%.*]] = load i32, ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[ADD6_EPILOGUE:%.*]] = add nsw i32 [[TMP12]], 100000
+; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[ADD6_EPILOGUE:%.*]] = add nsw i32 [[TMP11]], 100000
 ; CHECK-NEXT:    store i32 [[ADD6_EPILOGUE]], ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[ADD8_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_017_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD8_EPILOGUE]], [[ADD]]

@@ -198,17 +198,16 @@ attributes #9 = { convergent nounwind }
 ; CHECK-NEXT:    br i1 [[CMP413]], label [[OMP_INNER_FOR_BODY_LR_PH:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; CHECK:       omp.inner.for.body.lr.ph:
 ; CHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8
+; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP2]], [[TMP1]]
 ; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[TMP2]], 2
-; CHECK-NEXT:    [[TMP3:%.*]] = mul i64 [[TMP2]], 1
-; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP3]]
-; CHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; CHECK-NEXT:    [[TMP5:%.*]] = add i64 [[TMP4]], [[TMP2]]
-; CHECK-NEXT:    [[TMP6:%.*]] = sub i64 [[TMP5]], 1
-; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], [[TMP2]]
-; CHECK-NEXT:    [[TMP8:%.*]] = udiv i64 [[TMP7]], 2
-; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], 2
-; CHECK-NEXT:    [[TMP10:%.*]] = mul nsw i64 [[TMP9]], [[TMP2]]
-; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP10]], [[TMP1]]
+; CHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[TMP2]]
+; CHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
+; CHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[TMP2]]
+; CHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
+; CHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
+; CHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[TMP2]]
+; CHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
 ; CHECK:       omp.inner.for.body:
@@ -294,17 +293,16 @@ attributes #9 = { convergent nounwind }
 ; DRCHECK-NEXT:    br i1 [[CMP413]], label [[OMP_INNER_FOR_BODY_LR_PH:%.*]], label [[OMP_LOOP_EXIT:%.*]]
 ; DRCHECK:       omp.inner.for.body.lr.ph:
 ; DRCHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr addrspace(5) [[DOTOMP_STRIDE]], align 8
+; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP2]], [[TMP1]]
 ; DRCHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i64 [[TMP2]], 2
-; DRCHECK-NEXT:    [[TMP3:%.*]] = mul i64 [[TMP2]], 1
-; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add i64 [[TMP1]], [[TMP3]]
-; DRCHECK-NEXT:    [[TMP4:%.*]] = sub i64 [[ADD]], [[TMP1]]
-; DRCHECK-NEXT:    [[TMP5:%.*]] = add i64 [[TMP4]], [[TMP2]]
-; DRCHECK-NEXT:    [[TMP6:%.*]] = sub i64 [[TMP5]], 1
-; DRCHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], [[TMP2]]
-; DRCHECK-NEXT:    [[TMP8:%.*]] = udiv i64 [[TMP7]], 2
-; DRCHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], 2
-; DRCHECK-NEXT:    [[TMP10:%.*]] = mul nsw i64 [[TMP9]], [[TMP2]]
-; DRCHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP10]], [[TMP1]]
+; DRCHECK-NEXT:    [[TMP3:%.*]] = sub i64 [[ADD]], [[TMP1]]
+; DRCHECK-NEXT:    [[TMP4:%.*]] = add i64 [[TMP3]], [[TMP2]]
+; DRCHECK-NEXT:    [[TMP5:%.*]] = sub i64 [[TMP4]], 1
+; DRCHECK-NEXT:    [[TMP6:%.*]] = udiv i64 [[TMP5]], [[TMP2]]
+; DRCHECK-NEXT:    [[TMP7:%.*]] = udiv i64 [[TMP6]], 2
+; DRCHECK-NEXT:    [[TMP8:%.*]] = mul nsw i64 [[TMP7]], 2
+; DRCHECK-NEXT:    [[TMP9:%.*]] = mul nsw i64 [[TMP8]], [[TMP2]]
+; DRCHECK-NEXT:    [[EPILOGUE_START_IV:%.*]] = add i64 [[TMP9]], [[TMP1]]
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
 ; DRCHECK:       omp.inner.for.body:
