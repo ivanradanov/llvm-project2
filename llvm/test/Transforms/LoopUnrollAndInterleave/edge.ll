@@ -119,8 +119,8 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i32 [[TMP2]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY_I:%.*]]
 ; CHECK:       omp.inner.for.body.i:
-; CHECK-NEXT:    [[DOTOMP_IV_07_I:%.*]] = phi i32 [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[ADD34_I:%.*]], [[IF_END33_I:%.*]] ]
-; CHECK-NEXT:    [[DOTOMP_IV_07_I_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[ADD34_I_COARSENED_1:%.*]], [[IF_END33_I]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_07_I:%.*]] = phi i32 [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[TMP15:%.*]], [[IF_END33_I:%.*]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_07_I_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[DOTCOARSENED_13:%.*]], [[IF_END33_I]] ]
 ; CHECK-NEXT:    br i1 [[CMP9_NOT_NOT4_I]], label [[IF_END33_I_DIVERGENT_EXIT:%.*]], label [[FOR_COND10_PREHEADER_LR_PH_I:%.*]]
 ; CHECK:       for.cond10.preheader.lr.ph.i:
 ; CHECK-NEXT:    [[ADD14_I:%.*]] = add i32 [[DOTOMP_IV_07_I]], [[CURRENT_POSITION_ADDR_SROA_0_0_EXTRACT_TRUNC]]
@@ -175,12 +175,16 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK:       if.end33.i.divergent.exit:
 ; CHECK-NEXT:    br label [[IF_END33_I]]
 ; CHECK:       if.end33.i:
-; CHECK-NEXT:    [[ADD34_I]] = add i32 [[DOTOMP_IV_07_I]], [[COARSENED_STEP]]
-; CHECK-NEXT:    [[ADD34_I_COARSENED_1]] = add i32 [[DOTOMP_IV_07_I_COARSENED_1]], [[COARSENED_STEP]]
+; CHECK-NEXT:    [[TMP15]] = add i32 [[DOTOMP_IV_07_I]], [[COARSENED_STEP]]
+; CHECK-NEXT:    [[DOTCOARSENED_13]] = add i32 [[DOTOMP_IV_07_I_COARSENED_1]], [[COARSENED_STEP]]
+; CHECK-NEXT:    [[ADD34_I:%.*]] = add i32 [[DOTOMP_IV_07_I]], [[TMP3]]
+; CHECK-NEXT:    [[ADD34_I_COARSENED_1:%.*]] = add i32 [[DOTOMP_IV_07_I_COARSENED_1]], [[TMP3]]
+; CHECK-NEXT:    [[TMP16:%.*]] = icmp ult i32 [[TMP15]], [[CONV5_I]]
+; CHECK-NEXT:    [[DOTCOARSENED_14:%.*]] = icmp ult i32 [[DOTCOARSENED_13]], [[CONV5_I]]
 ; CHECK-NEXT:    [[CMP6_I:%.*]] = icmp ult i32 [[ADD34_I]], [[CONV5_I]]
 ; CHECK-NEXT:    [[CMP6_I_COARSENED_1:%.*]] = icmp ult i32 [[ADD34_I_COARSENED_1]], [[CONV5_I]]
-; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i32 [[ADD34_I]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i32 [[ADD34_I_COARSENED_1]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i32 [[TMP15]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i32 [[DOTCOARSENED_13]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY_I]], !llvm.loop [[LOOP24:![0-9]+]]
 ; CHECK:       for.cond.i.drs.0:
 ; CHECK-NEXT:    [[INC27_I_DRS_0:%.*]] = add nuw i32 [[I_05_I_DRS_0_REG2MEM_0:%.*]], 1
@@ -204,8 +208,8 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK:       for.cond.cleanup12.i.divergent.entry.drs.0:
 ; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ], [ [[DR_COARSENED_IDENT_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[DOTOMP_IV_07_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_07_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
-; CHECK-NEXT:    [[ADD14_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[ADD14_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[ADD14_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[ADD14_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    [[CMP23_NOT_I_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP23_NOT_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP23_NOT_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[CMP23_NOT_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
+; CHECK-NEXT:    [[ADD14_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[ADD14_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[ADD14_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[ADD14_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    [[I_05_I_DRS_0_REG2MEM_0]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[INC27_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; CHECK-NEXT:    br i1 [[CMP23_NOT_I_DRS_0_REG2MEM_0]], label [[CLEANUP28_I_DRS_0:%.*]], label [[FOR_COND_I_DRS_0:%.*]]
 ; CHECK:       for.body13.i.drs.0:
@@ -214,12 +218,12 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK-NEXT:    [[ADD15_I_DRS_0:%.*]] = add i32 [[ADD14_I_DRS_0_REG2MEM_0]], [[J_03_I_DRS_0]]
 ; CHECK-NEXT:    [[IDXPROM_I_DRS_0:%.*]] = zext i32 [[ADD15_I_DRS_0]] to i64
 ; CHECK-NEXT:    [[ARRAYIDX_I_DRS_0:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_DRS_0]]
-; CHECK-NEXT:    [[TMP15:%.*]] = load i8, ptr [[ARRAYIDX_I_DRS_0]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
+; CHECK-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ARRAYIDX_I_DRS_0]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
 ; CHECK-NEXT:    [[ADD17_I_DRS_0:%.*]] = add nuw nsw i32 [[J_03_I_DRS_0]], [[INC27_I_DRS_0]]
 ; CHECK-NEXT:    [[IDXPROM18_I_DRS_0:%.*]] = zext i32 [[ADD17_I_DRS_0]] to i64
 ; CHECK-NEXT:    [[ARRAYIDX19_I_DRS_0:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_DRS_0]]
-; CHECK-NEXT:    [[TMP16:%.*]] = load i8, ptr [[ARRAYIDX19_I_DRS_0]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
-; CHECK-NEXT:    [[CMP21_NOT_I_DRS_0:%.*]] = icmp ne i8 [[TMP15]], [[TMP16]]
+; CHECK-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX19_I_DRS_0]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
+; CHECK-NEXT:    [[CMP21_NOT_I_DRS_0:%.*]] = icmp ne i8 [[TMP17]], [[TMP18]]
 ; CHECK-NEXT:    [[INC_I_DRS_0:%.*]] = zext i1 [[CMP21_NOT_I_DRS_0]] to i32
 ; CHECK-NEXT:    [[SPEC_SELECT_I_DRS_0]] = add nuw nsw i32 [[DISTANCE_02_I_DRS_0]], [[INC_I_DRS_0]]
 ; CHECK-NEXT:    [[INC22_I_DRS_0]] = add nuw nsw i32 [[J_03_I_DRS_0]], 1
@@ -241,9 +245,9 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK:       if.end33.i.divergent.exit.drs.0.outro.1:
 ; CHECK-NEXT:    br label [[IF_END33_I]]
 ; CHECK:       coarsened.end.check:
-; CHECK-NEXT:    br i1 [[CMP6_I]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT:%.*]]
+; CHECK-NEXT:    br i1 [[TMP16]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT:%.*]]
 ; CHECK:       omp.inner.for.body.i.epilogue:
-; CHECK-NEXT:    [[DOTOMP_IV_07_I_EPILOGUE:%.*]] = phi i32 [ [[ADD34_I]], [[COARSENED_END_CHECK]] ], [ [[ADD34_I_EPILOGUE:%.*]], [[IF_END33_I_EPILOGUE:%.*]] ], [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_07_I_EPILOGUE:%.*]] = phi i32 [ [[TMP15]], [[COARSENED_END_CHECK]] ], [ [[ADD34_I_EPILOGUE:%.*]], [[IF_END33_I_EPILOGUE:%.*]] ], [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ]
 ; CHECK-NEXT:    br i1 [[CMP9_NOT_NOT4_I]], label [[IF_END33_I_EPILOGUE]], label [[FOR_COND10_PREHEADER_LR_PH_I_EPILOGUE:%.*]]
 ; CHECK:       for.cond10.preheader.lr.ph.i.epilogue:
 ; CHECK-NEXT:    [[ADD14_I_EPILOGUE:%.*]] = add i32 [[DOTOMP_IV_07_I_EPILOGUE]], [[CURRENT_POSITION_ADDR_SROA_0_0_EXTRACT_TRUNC]]
@@ -259,12 +263,12 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; CHECK-NEXT:    [[ADD15_I_EPILOGUE:%.*]] = add i32 [[ADD14_I_EPILOGUE]], [[J_03_I_EPILOGUE]]
 ; CHECK-NEXT:    [[IDXPROM_I_EPILOGUE:%.*]] = zext i32 [[ADD15_I_EPILOGUE]] to i64
 ; CHECK-NEXT:    [[ARRAYIDX_I_EPILOGUE:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_EPILOGUE]]
-; CHECK-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
+; CHECK-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
 ; CHECK-NEXT:    [[ADD17_I_EPILOGUE:%.*]] = add nuw nsw i32 [[J_03_I_EPILOGUE]], [[I_05_I_EPILOGUE]]
 ; CHECK-NEXT:    [[IDXPROM18_I_EPILOGUE:%.*]] = zext i32 [[ADD17_I_EPILOGUE]] to i64
 ; CHECK-NEXT:    [[ARRAYIDX19_I_EPILOGUE:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_EPILOGUE]]
-; CHECK-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX19_I_EPILOGUE]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
-; CHECK-NEXT:    [[CMP21_NOT_I_EPILOGUE:%.*]] = icmp ne i8 [[TMP17]], [[TMP18]]
+; CHECK-NEXT:    [[TMP20:%.*]] = load i8, ptr [[ARRAYIDX19_I_EPILOGUE]], align 1, !tbaa [[TBAA21]], !noalias [[META14]]
+; CHECK-NEXT:    [[CMP21_NOT_I_EPILOGUE:%.*]] = icmp ne i8 [[TMP19]], [[TMP20]]
 ; CHECK-NEXT:    [[INC_I_EPILOGUE:%.*]] = zext i1 [[CMP21_NOT_I_EPILOGUE]] to i32
 ; CHECK-NEXT:    [[SPEC_SELECT_I_EPILOGUE]] = add nuw nsw i32 [[DISTANCE_02_I_EPILOGUE]], [[INC_I_EPILOGUE]]
 ; CHECK-NEXT:    [[INC22_I_EPILOGUE]] = add nuw nsw i32 [[J_03_I_EPILOGUE]], 1
@@ -359,8 +363,8 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i32 [[TMP2]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY_I:%.*]]
 ; DRCHECK:       omp.inner.for.body.i:
-; DRCHECK-NEXT:    [[DOTOMP_IV_07_I:%.*]] = phi i32 [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[ADD34_I:%.*]], [[IF_END33_I:%.*]] ]
-; DRCHECK-NEXT:    [[DOTOMP_IV_07_I_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[ADD34_I_COARSENED_1:%.*]], [[IF_END33_I]] ]
+; DRCHECK-NEXT:    [[DOTOMP_IV_07_I:%.*]] = phi i32 [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[TMP16:%.*]], [[IF_END33_I:%.*]] ]
+; DRCHECK-NEXT:    [[DOTOMP_IV_07_I_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ], [ [[DOTCOARSENED_13:%.*]], [[IF_END33_I]] ]
 ; DRCHECK-NEXT:    br i1 [[CMP9_NOT_NOT4_I]], label [[IF_END33_I_DIVERGENT_EXIT:%.*]], label [[FOR_COND10_PREHEADER_LR_PH_I:%.*]]
 ; DRCHECK:       for.cond10.preheader.lr.ph.i:
 ; DRCHECK-NEXT:    [[ADD14_I:%.*]] = add i32 [[DOTOMP_IV_07_I]], [[CURRENT_POSITION_ADDR_SROA_0_0_EXTRACT_TRUNC]]
@@ -436,12 +440,16 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK:       if.end33.i.divergent.exit:
 ; DRCHECK-NEXT:    br label [[IF_END33_I]]
 ; DRCHECK:       if.end33.i:
-; DRCHECK-NEXT:    [[ADD34_I]] = add i32 [[DOTOMP_IV_07_I]], [[COARSENED_STEP]]
-; DRCHECK-NEXT:    [[ADD34_I_COARSENED_1]] = add i32 [[DOTOMP_IV_07_I_COARSENED_1]], [[COARSENED_STEP]]
+; DRCHECK-NEXT:    [[TMP16]] = add i32 [[DOTOMP_IV_07_I]], [[COARSENED_STEP]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_13]] = add i32 [[DOTOMP_IV_07_I_COARSENED_1]], [[COARSENED_STEP]]
+; DRCHECK-NEXT:    [[ADD34_I:%.*]] = add i32 [[DOTOMP_IV_07_I]], [[TMP3]]
+; DRCHECK-NEXT:    [[ADD34_I_COARSENED_1:%.*]] = add i32 [[DOTOMP_IV_07_I_COARSENED_1]], [[TMP3]]
+; DRCHECK-NEXT:    [[TMP17:%.*]] = icmp ult i32 [[TMP16]], [[CONV5_I]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_14:%.*]] = icmp ult i32 [[DOTCOARSENED_13]], [[CONV5_I]]
 ; DRCHECK-NEXT:    [[CMP6_I:%.*]] = icmp ult i32 [[ADD34_I]], [[CONV5_I]]
 ; DRCHECK-NEXT:    [[CMP6_I_COARSENED_1:%.*]] = icmp ult i32 [[ADD34_I_COARSENED_1]], [[CONV5_I]]
-; DRCHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i32 [[ADD34_I]], [[EPILOGUE_START_IV]]
-; DRCHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i32 [[ADD34_I_COARSENED_1]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i32 [[TMP16]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i32 [[DOTCOARSENED_13]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY_I]], !llvm.loop [[LOOP25:![0-9]+]]
 ; DRCHECK:       for.cond.i.drs.0:
 ; DRCHECK-NEXT:    [[INC27_I_DRS_0:%.*]] = add nuw i32 [[I_05_I_DRS_0_REG2MEM_0:%.*]], 1
@@ -465,8 +473,8 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK:       for.cond.cleanup12.i.divergent.entry.drs.0:
 ; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ], [ [[DR_COARSENED_IDENT_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[DOTOMP_IV_07_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[DOTOMP_IV_07_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[DOTOMP_IV_07_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
-; DRCHECK-NEXT:    [[ADD14_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[ADD14_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[ADD14_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[ADD14_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    [[CMP23_NOT_I_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP23_NOT_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP23_NOT_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[CMP23_NOT_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
+; DRCHECK-NEXT:    [[ADD14_I_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[ADD14_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[ADD14_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[ADD14_I_DRS_0_REG2MEM_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    [[I_05_I_DRS_0_REG2MEM_0]] = phi i32 [ [[I_05_I]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I_05_I_COARSENED_1]], [[FOR_COND_CLEANUP12_I_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[INC27_I_DRS_0]], [[FOR_COND_CLEANUP12_I_DRS_0]] ]
 ; DRCHECK-NEXT:    br i1 [[CMP23_NOT_I_DRS_0_REG2MEM_0]], label [[CLEANUP28_I_DRS_0:%.*]], label [[FOR_COND_I_DRS_0:%.*]]
 ; DRCHECK:       for.body13.i.drs.0:
@@ -475,12 +483,12 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[ADD15_I_DRS_0:%.*]] = add i32 [[ADD14_I_DRS_0_REG2MEM_0]], [[J_03_I_DRS_0]]
 ; DRCHECK-NEXT:    [[IDXPROM_I_DRS_0:%.*]] = zext i32 [[ADD15_I_DRS_0]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_DRS_0:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_DRS_0]]
-; DRCHECK-NEXT:    [[TMP16:%.*]] = load i8, ptr [[ARRAYIDX_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
+; DRCHECK-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
 ; DRCHECK-NEXT:    [[ADD17_I_DRS_0:%.*]] = add nuw nsw i32 [[J_03_I_DRS_0]], [[INC27_I_DRS_0]]
 ; DRCHECK-NEXT:    [[IDXPROM18_I_DRS_0:%.*]] = zext i32 [[ADD17_I_DRS_0]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX19_I_DRS_0:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_DRS_0]]
-; DRCHECK-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ARRAYIDX19_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
-; DRCHECK-NEXT:    [[CMP21_NOT_I_DRS_0:%.*]] = icmp ne i8 [[TMP16]], [[TMP17]]
+; DRCHECK-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX19_I_DRS_0]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
+; DRCHECK-NEXT:    [[CMP21_NOT_I_DRS_0:%.*]] = icmp ne i8 [[TMP18]], [[TMP19]]
 ; DRCHECK-NEXT:    [[INC_I_DRS_0:%.*]] = zext i1 [[CMP21_NOT_I_DRS_0]] to i32
 ; DRCHECK-NEXT:    [[SPEC_SELECT_I_DRS_0]] = add nuw nsw i32 [[DISTANCE_02_I_DRS_0]], [[INC_I_DRS_0]]
 ; DRCHECK-NEXT:    [[INC22_I_DRS_0]] = add nuw nsw i32 [[J_03_I_DRS_0]], 1
@@ -502,9 +510,9 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK:       if.end33.i.divergent.exit.drs.0.outro.1:
 ; DRCHECK-NEXT:    br label [[IF_END33_I]]
 ; DRCHECK:       coarsened.end.check:
-; DRCHECK-NEXT:    br i1 [[CMP6_I]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT:%.*]]
+; DRCHECK-NEXT:    br i1 [[TMP17]], label [[OMP_INNER_FOR_BODY_I_EPILOGUE]], label [[OMP_LOOP_EXIT_I_LOOPEXIT:%.*]]
 ; DRCHECK:       omp.inner.for.body.i.epilogue:
-; DRCHECK-NEXT:    [[DOTOMP_IV_07_I_EPILOGUE:%.*]] = phi i32 [ [[ADD34_I]], [[COARSENED_END_CHECK]] ], [ [[ADD34_I_EPILOGUE:%.*]], [[IF_END33_I_EPILOGUE:%.*]] ], [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ]
+; DRCHECK-NEXT:    [[DOTOMP_IV_07_I_EPILOGUE:%.*]] = phi i32 [ [[TMP16]], [[COARSENED_END_CHECK]] ], [ [[ADD34_I_EPILOGUE:%.*]], [[IF_END33_I_EPILOGUE:%.*]] ], [ [[TMP2]], [[OMP_INNER_FOR_BODY_LR_PH_I]] ]
 ; DRCHECK-NEXT:    br i1 [[CMP9_NOT_NOT4_I]], label [[IF_END33_I_EPILOGUE]], label [[FOR_COND10_PREHEADER_LR_PH_I_EPILOGUE:%.*]]
 ; DRCHECK:       for.cond10.preheader.lr.ph.i.epilogue:
 ; DRCHECK-NEXT:    [[ADD14_I_EPILOGUE:%.*]] = add i32 [[DOTOMP_IV_07_I_EPILOGUE]], [[CURRENT_POSITION_ADDR_SROA_0_0_EXTRACT_TRUNC]]
@@ -520,12 +528,12 @@ define internal void @__omp_offloading_58_208beb0__Z2gaPKcS0_Pcjiiii_l18_debug__
 ; DRCHECK-NEXT:    [[ADD15_I_EPILOGUE:%.*]] = add i32 [[ADD14_I_EPILOGUE]], [[J_03_I_EPILOGUE]]
 ; DRCHECK-NEXT:    [[IDXPROM_I_EPILOGUE:%.*]] = zext i32 [[ADD15_I_EPILOGUE]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX_I_EPILOGUE:%.*]] = getelementptr inbounds i8, ptr [[TARGET]], i64 [[IDXPROM_I_EPILOGUE]]
-; DRCHECK-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
+; DRCHECK-NEXT:    [[TMP20:%.*]] = load i8, ptr [[ARRAYIDX_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
 ; DRCHECK-NEXT:    [[ADD17_I_EPILOGUE:%.*]] = add nuw nsw i32 [[J_03_I_EPILOGUE]], [[I_05_I_EPILOGUE]]
 ; DRCHECK-NEXT:    [[IDXPROM18_I_EPILOGUE:%.*]] = zext i32 [[ADD17_I_EPILOGUE]] to i64
 ; DRCHECK-NEXT:    [[ARRAYIDX19_I_EPILOGUE:%.*]] = getelementptr inbounds i8, ptr [[QUERY]], i64 [[IDXPROM18_I_EPILOGUE]]
-; DRCHECK-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX19_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
-; DRCHECK-NEXT:    [[CMP21_NOT_I_EPILOGUE:%.*]] = icmp ne i8 [[TMP18]], [[TMP19]]
+; DRCHECK-NEXT:    [[TMP21:%.*]] = load i8, ptr [[ARRAYIDX19_I_EPILOGUE]], align 1, !tbaa [[TBAA23]], !noalias [[META14]]
+; DRCHECK-NEXT:    [[CMP21_NOT_I_EPILOGUE:%.*]] = icmp ne i8 [[TMP20]], [[TMP21]]
 ; DRCHECK-NEXT:    [[INC_I_EPILOGUE:%.*]] = zext i1 [[CMP21_NOT_I_EPILOGUE]] to i32
 ; DRCHECK-NEXT:    [[SPEC_SELECT_I_EPILOGUE]] = add nuw nsw i32 [[DISTANCE_02_I_EPILOGUE]], [[INC_I_EPILOGUE]]
 ; DRCHECK-NEXT:    [[INC22_I_EPILOGUE]] = add nuw nsw i32 [[J_03_I_EPILOGUE]], 1

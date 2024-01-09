@@ -50,8 +50,8 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[IS_EPILOGUE_START:%.*]] = icmp eq i64 [[TMP1]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START]], label [[OMP_INNER_FOR_BODY_EPILOGUE:%.*]], label [[OMP_INNER_FOR_BODY:%.*]]
 ; CHECK:       omp.inner.for.body:
-; CHECK-NEXT:    [[DOTOMP_IV_017:%.*]] = phi i64 [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD8:%.*]], [[OMP_INNER_FOR_BODY]] ]
-; CHECK-NEXT:    [[DOTOMP_IV_017_COARSENED_1:%.*]] = phi i64 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[ADD8_COARSENED_1:%.*]], [[OMP_INNER_FOR_BODY]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_017:%.*]] = phi i64 [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[TMP11:%.*]], [[OMP_INNER_FOR_BODY]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_017_COARSENED_1:%.*]] = phi i64 [ [[INITIAL_IV_COARSENED_1]], [[OMP_INNER_FOR_BODY_LR_PH]] ], [ [[DOTCOARSENED_12:%.*]], [[OMP_INNER_FOR_BODY]] ]
 ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017]]
 ; CHECK-NEXT:    [[ARRAYIDX_COARSENED_1:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_COARSENED_1]]
 ; CHECK-NEXT:    [[TMP10:%.*]] = load i32, ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA16]]
@@ -60,20 +60,24 @@ define internal void @ws_for(ptr noalias nocapture noundef readonly %.global_tid
 ; CHECK-NEXT:    [[ADD6_COARSENED_1:%.*]] = add nsw i32 [[DOTCOARSENED_1]], 100000
 ; CHECK-NEXT:    store i32 [[ADD6]], ptr [[ARRAYIDX]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    store i32 [[ADD6_COARSENED_1]], ptr [[ARRAYIDX_COARSENED_1]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[ADD8]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_017]]
-; CHECK-NEXT:    [[ADD8_COARSENED_1]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_017_COARSENED_1]]
+; CHECK-NEXT:    [[TMP11]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_017]]
+; CHECK-NEXT:    [[DOTCOARSENED_12]] = add i64 [[COARSENED_STEP]], [[DOTOMP_IV_017_COARSENED_1]]
+; CHECK-NEXT:    [[ADD8:%.*]] = add i64 [[TMP2]], [[DOTOMP_IV_017]]
+; CHECK-NEXT:    [[ADD8_COARSENED_1:%.*]] = add i64 [[TMP2]], [[DOTOMP_IV_017_COARSENED_1]]
+; CHECK-NEXT:    [[TMP12:%.*]] = icmp ult i64 [[TMP11]], [[ADD]]
+; CHECK-NEXT:    [[DOTCOARSENED_13:%.*]] = icmp ult i64 [[DOTCOARSENED_12]], [[ADD]]
 ; CHECK-NEXT:    [[CMP4:%.*]] = icmp ult i64 [[ADD8]], [[ADD]]
 ; CHECK-NEXT:    [[CMP4_COARSENED_1:%.*]] = icmp ult i64 [[ADD8_COARSENED_1]], [[ADD]]
-; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[ADD8]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[ADD8_COARSENED_1]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START1:%.*]] = icmp eq i64 [[TMP11]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START1_COARSENED_1:%.*]] = icmp eq i64 [[DOTCOARSENED_12]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START1]], label [[COARSENED_END_CHECK:%.*]], label [[OMP_INNER_FOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
 ; CHECK:       coarsened.end.check:
-; CHECK-NEXT:    br i1 [[CMP4]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
+; CHECK-NEXT:    br i1 [[TMP12]], label [[OMP_INNER_FOR_BODY_EPILOGUE]], label [[OMP_LOOP_EXIT_LOOPEXIT:%.*]]
 ; CHECK:       omp.inner.for.body.epilogue:
-; CHECK-NEXT:    [[DOTOMP_IV_017_EPILOGUE:%.*]] = phi i64 [ [[ADD8]], [[COARSENED_END_CHECK]] ], [ [[ADD8_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
+; CHECK-NEXT:    [[DOTOMP_IV_017_EPILOGUE:%.*]] = phi i64 [ [[TMP11]], [[COARSENED_END_CHECK]] ], [ [[ADD8_EPILOGUE:%.*]], [[OMP_INNER_FOR_BODY_EPILOGUE]] ], [ [[TMP1]], [[OMP_INNER_FOR_BODY_LR_PH]] ]
 ; CHECK-NEXT:    [[ARRAYIDX_EPILOGUE:%.*]] = getelementptr inbounds i32, ptr [[A]], i64 [[DOTOMP_IV_017_EPILOGUE]]
-; CHECK-NEXT:    [[TMP11:%.*]] = load i32, ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
-; CHECK-NEXT:    [[ADD6_EPILOGUE:%.*]] = add nsw i32 [[TMP11]], 100000
+; CHECK-NEXT:    [[TMP13:%.*]] = load i32, ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
+; CHECK-NEXT:    [[ADD6_EPILOGUE:%.*]] = add nsw i32 [[TMP13]], 100000
 ; CHECK-NEXT:    store i32 [[ADD6_EPILOGUE]], ptr [[ARRAYIDX_EPILOGUE]], align 4, !tbaa [[TBAA16]]
 ; CHECK-NEXT:    [[ADD8_EPILOGUE]] = add i64 [[TMP2]], [[DOTOMP_IV_017_EPILOGUE]]
 ; CHECK-NEXT:    [[CMP4_EPILOGUE:%.*]] = icmp ult i64 [[ADD8_EPILOGUE]], [[ADD]]

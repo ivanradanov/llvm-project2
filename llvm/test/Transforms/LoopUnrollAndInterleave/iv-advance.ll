@@ -53,7 +53,7 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; CHECK-NEXT:    [[I36_ADVANCED3:%.*]] = add nsw i32 [[I15]], [[I37_ADVANCED1]]
 ; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1_ADVANCED:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED3]], i32 [[I3]])
 ; CHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add nsw i32 [[I15]], [[I14]]
-; CHECK-NEXT:    [[INITIAL_IV_COARSENED_24:%.*]] = add nsw i32 [[I15]], [[I14]]
+; CHECK-NEXT:    [[INITIAL_IV_COARSENED_24:%.*]] = add nsw i32 [[I15]], [[INITIAL_IV_COARSENED_1]]
 ; CHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i32 [[I15]], 3
 ; CHECK-NEXT:    [[TMP0:%.*]] = sub i32 [[I]], [[I14]]
 ; CHECK-NEXT:    [[TMP1:%.*]] = add i32 [[TMP0]], [[I15]]
@@ -69,9 +69,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; CHECK-NEXT:    [[I22:%.*]] = phi i32 [ [[I19]], [[BB17]] ], [ [[I37_ADVANCED_ADVANCED:%.*]], [[BB34:%.*]] ]
 ; CHECK-NEXT:    [[I22_COARSENED_1:%.*]] = phi i32 [ [[I37_ADVANCED1]], [[BB17]] ], [ [[I37_ADVANCED_ADVANCED_COARSENED_1:%.*]], [[BB34]] ]
 ; CHECK-NEXT:    [[I22_COARSENED_2:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1_ADVANCED]], [[BB17]] ], [ [[I37_ADVANCED_ADVANCED_COARSENED_2:%.*]], [[BB34]] ]
-; CHECK-NEXT:    [[I23:%.*]] = phi i32 [ [[I14]], [[BB17]] ], [ [[I35:%.*]], [[BB34]] ]
-; CHECK-NEXT:    [[I23_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[BB17]] ], [ [[I35_COARSENED_1:%.*]], [[BB34]] ]
-; CHECK-NEXT:    [[I23_COARSENED_2:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_24]], [[BB17]] ], [ [[I35_COARSENED_2:%.*]], [[BB34]] ]
+; CHECK-NEXT:    [[I23:%.*]] = phi i32 [ [[I14]], [[BB17]] ], [ [[TMP7:%.*]], [[BB34]] ]
+; CHECK-NEXT:    [[I23_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[BB17]] ], [ [[DOTCOARSENED_1:%.*]], [[BB34]] ]
+; CHECK-NEXT:    [[I23_COARSENED_2:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_24]], [[BB17]] ], [ [[DOTCOARSENED_2:%.*]], [[BB34]] ]
 ; CHECK-NEXT:    [[I24:%.*]] = add nsw i32 [[I20]], [[I23]]
 ; CHECK-NEXT:    [[I24_COARSENED_1:%.*]] = add nsw i32 [[I20]], [[I23_COARSENED_1]]
 ; CHECK-NEXT:    [[I24_COARSENED_2:%.*]] = add nsw i32 [[I20]], [[I23_COARSENED_2]]
@@ -82,15 +82,21 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; CHECK:       bb34:
 ; CHECK-NEXT:    fence syncscope("workgroup") seq_cst
 ; CHECK-NEXT:    tail call void @llvm.amdgcn.s.barrier() #[[ATTR7:[0-9]+]]
-; CHECK-NEXT:    [[I35]] = add nsw i32 [[COARSENED_STEP]], [[I23]]
-; CHECK-NEXT:    [[I35_COARSENED_1]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_1]]
-; CHECK-NEXT:    [[I35_COARSENED_2]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_2]]
+; CHECK-NEXT:    [[TMP7]] = add nsw i32 [[COARSENED_STEP]], [[I23]]
+; CHECK-NEXT:    [[DOTCOARSENED_1]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_1]]
+; CHECK-NEXT:    [[DOTCOARSENED_2]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_2]]
+; CHECK-NEXT:    [[I35:%.*]] = add nsw i32 [[I15]], [[I23]]
+; CHECK-NEXT:    [[I35_COARSENED_1:%.*]] = add nsw i32 [[I15]], [[I23_COARSENED_1]]
+; CHECK-NEXT:    [[I35_COARSENED_2:%.*]] = add nsw i32 [[I15]], [[I23_COARSENED_2]]
 ; CHECK-NEXT:    [[I36:%.*]] = add nsw i32 [[I15]], [[I22]]
 ; CHECK-NEXT:    [[I36_COARSENED_1:%.*]] = add nsw i32 [[I15]], [[I22_COARSENED_1]]
 ; CHECK-NEXT:    [[I36_COARSENED_2:%.*]] = add nsw i32 [[I15]], [[I22_COARSENED_2]]
 ; CHECK-NEXT:    [[INITIAL_IV_COARSENED_2:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36]], i32 [[I3]])
 ; CHECK-NEXT:    [[INITIAL_IV_COARSENED_2_COARSENED_1:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36_COARSENED_1]], i32 [[I3]])
 ; CHECK-NEXT:    [[INITIAL_IV_COARSENED_2_COARSENED_2:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36_COARSENED_2]], i32 [[I3]])
+; CHECK-NEXT:    [[TMP8:%.*]] = icmp slt i32 [[TMP7]], [[I]]
+; CHECK-NEXT:    [[DOTCOARSENED_16:%.*]] = icmp slt i32 [[DOTCOARSENED_1]], [[I]]
+; CHECK-NEXT:    [[DOTCOARSENED_27:%.*]] = icmp slt i32 [[DOTCOARSENED_2]], [[I]]
 ; CHECK-NEXT:    [[I38:%.*]] = icmp slt i32 [[I35]], [[I]]
 ; CHECK-NEXT:    [[I38_COARSENED_1:%.*]] = icmp slt i32 [[I35_COARSENED_1]], [[I]]
 ; CHECK-NEXT:    [[I38_COARSENED_2:%.*]] = icmp slt i32 [[I35_COARSENED_2]], [[I]]
@@ -106,9 +112,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; CHECK-NEXT:    [[I37_ADVANCED_ADVANCED]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED_ADVANCED]], i32 [[I3]])
 ; CHECK-NEXT:    [[I37_ADVANCED_ADVANCED_COARSENED_1]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED_ADVANCED_COARSENED_1]], i32 [[I3]])
 ; CHECK-NEXT:    [[I37_ADVANCED_ADVANCED_COARSENED_2]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED_ADVANCED_COARSENED_2]], i32 [[I3]])
-; CHECK-NEXT:    [[IS_EPILOGUE_START5:%.*]] = icmp eq i32 [[I35]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_1:%.*]] = icmp eq i32 [[I35_COARSENED_1]], [[EPILOGUE_START_IV]]
-; CHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_2:%.*]] = icmp eq i32 [[I35_COARSENED_2]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START5:%.*]] = icmp eq i32 [[TMP7]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_1:%.*]] = icmp eq i32 [[DOTCOARSENED_1]], [[EPILOGUE_START_IV]]
+; CHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_2:%.*]] = icmp eq i32 [[DOTCOARSENED_2]], [[EPILOGUE_START_IV]]
 ; CHECK-NEXT:    br i1 [[IS_EPILOGUE_START5]], label [[COARSENED_END_CHECK:%.*]], label [[BB21]], !llvm.loop [[LOOP21:![0-9]+]]
 ; CHECK:       bb21.divergent.entry.drs.0.intro.0:
 ; CHECK-NEXT:    br label [[BB21_DIVERGENT_ENTRY_DRS_0:%.*]]
@@ -118,9 +124,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; CHECK-NEXT:    br label [[BB21_DIVERGENT_ENTRY_DRS_0]]
 ; CHECK:       bb21.divergent.entry.drs.0:
 ; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ], [ 2, [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2:%.*]] ]
-; CHECK-NEXT:    [[I25_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[I25]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I25_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I25_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
 ; CHECK-NEXT:    [[I24_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[I24]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I24_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I24_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
 ; CHECK-NEXT:    [[I22_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[I22]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I22_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I22_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
+; CHECK-NEXT:    [[I25_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[I25]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I25_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I25_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
 ; CHECK-NEXT:    br i1 [[I25_DRS_0_REG2MEM_0]], label [[BB34_DIVERGENT_EXIT_DRS_0:%.*]], label [[BB26_DRS_0:%.*]]
 ; CHECK:       bb26.drs.0:
 ; CHECK-NEXT:    br label [[BB27_DRS_0:%.*]]
@@ -146,10 +152,10 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; CHECK:       bb34.divergent.exit.drs.0.outro.2:
 ; CHECK-NEXT:    br label [[BB34]]
 ; CHECK:       coarsened.end.check:
-; CHECK-NEXT:    br i1 [[I38]], label [[BB21_EPILOGUE]], label [[BB39:%.*]]
+; CHECK-NEXT:    br i1 [[TMP8]], label [[BB21_EPILOGUE]], label [[BB39:%.*]]
 ; CHECK:       bb21.epilogue:
 ; CHECK-NEXT:    [[I22_EPILOGUE:%.*]] = phi i32 [ [[I37_ADVANCED_ADVANCED]], [[COARSENED_END_CHECK]] ], [ [[I37_EPILOGUE:%.*]], [[BB34_EPILOGUE:%.*]] ], [ [[I19]], [[BB17]] ]
-; CHECK-NEXT:    [[I23_EPILOGUE:%.*]] = phi i32 [ [[I35]], [[COARSENED_END_CHECK]] ], [ [[I35_EPILOGUE:%.*]], [[BB34_EPILOGUE]] ], [ [[I14]], [[BB17]] ]
+; CHECK-NEXT:    [[I23_EPILOGUE:%.*]] = phi i32 [ [[TMP7]], [[COARSENED_END_CHECK]] ], [ [[I35_EPILOGUE:%.*]], [[BB34_EPILOGUE]] ], [ [[I14]], [[BB17]] ]
 ; CHECK-NEXT:    [[I24_EPILOGUE:%.*]] = add nsw i32 [[I20]], [[I23_EPILOGUE]]
 ; CHECK-NEXT:    [[I25_EPILOGUE:%.*]] = icmp sgt i32 [[I24_EPILOGUE]], [[I22_EPILOGUE]]
 ; CHECK-NEXT:    br i1 [[I25_EPILOGUE]], label [[BB34_EPILOGUE]], label [[BB26_EPILOGUE:%.*]]
@@ -207,7 +213,7 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; DRCHECK-NEXT:    [[I36_ADVANCED3:%.*]] = add nsw i32 [[I15]], [[I37_ADVANCED1]]
 ; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1_ADVANCED:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED3]], i32 [[I3]])
 ; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_1:%.*]] = add nsw i32 [[I15]], [[I14]]
-; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_24:%.*]] = add nsw i32 [[I15]], [[I14]]
+; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_24:%.*]] = add nsw i32 [[I15]], [[INITIAL_IV_COARSENED_1]]
 ; DRCHECK-NEXT:    [[COARSENED_STEP:%.*]] = mul i32 [[I15]], 3
 ; DRCHECK-NEXT:    [[TMP0:%.*]] = sub i32 [[I]], [[I14]]
 ; DRCHECK-NEXT:    [[TMP1:%.*]] = add i32 [[TMP0]], [[I15]]
@@ -223,9 +229,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; DRCHECK-NEXT:    [[I22:%.*]] = phi i32 [ [[I19]], [[BB17]] ], [ [[I37_ADVANCED_ADVANCED:%.*]], [[BB34:%.*]] ]
 ; DRCHECK-NEXT:    [[I22_COARSENED_1:%.*]] = phi i32 [ [[I37_ADVANCED1]], [[BB17]] ], [ [[I37_ADVANCED_ADVANCED_COARSENED_1:%.*]], [[BB34]] ]
 ; DRCHECK-NEXT:    [[I22_COARSENED_2:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1_ADVANCED]], [[BB17]] ], [ [[I37_ADVANCED_ADVANCED_COARSENED_2:%.*]], [[BB34]] ]
-; DRCHECK-NEXT:    [[I23:%.*]] = phi i32 [ [[I14]], [[BB17]] ], [ [[I35:%.*]], [[BB34]] ]
-; DRCHECK-NEXT:    [[I23_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[BB17]] ], [ [[I35_COARSENED_1:%.*]], [[BB34]] ]
-; DRCHECK-NEXT:    [[I23_COARSENED_2:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_24]], [[BB17]] ], [ [[I35_COARSENED_2:%.*]], [[BB34]] ]
+; DRCHECK-NEXT:    [[I23:%.*]] = phi i32 [ [[I14]], [[BB17]] ], [ [[TMP10:%.*]], [[BB34]] ]
+; DRCHECK-NEXT:    [[I23_COARSENED_1:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_1]], [[BB17]] ], [ [[DOTCOARSENED_1:%.*]], [[BB34]] ]
+; DRCHECK-NEXT:    [[I23_COARSENED_2:%.*]] = phi i32 [ [[INITIAL_IV_COARSENED_24]], [[BB17]] ], [ [[DOTCOARSENED_2:%.*]], [[BB34]] ]
 ; DRCHECK-NEXT:    [[I24:%.*]] = add nsw i32 [[I20]], [[I23]]
 ; DRCHECK-NEXT:    [[I24_COARSENED_1:%.*]] = add nsw i32 [[I20]], [[I23_COARSENED_1]]
 ; DRCHECK-NEXT:    [[I24_COARSENED_2:%.*]] = add nsw i32 [[I20]], [[I23_COARSENED_2]]
@@ -267,15 +273,21 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; DRCHECK:       bb34:
 ; DRCHECK-NEXT:    fence syncscope("workgroup") seq_cst
 ; DRCHECK-NEXT:    tail call void @llvm.amdgcn.s.barrier() #[[ATTR7:[0-9]+]]
-; DRCHECK-NEXT:    [[I35]] = add nsw i32 [[COARSENED_STEP]], [[I23]]
-; DRCHECK-NEXT:    [[I35_COARSENED_1]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_1]]
-; DRCHECK-NEXT:    [[I35_COARSENED_2]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_2]]
+; DRCHECK-NEXT:    [[TMP10]] = add nsw i32 [[COARSENED_STEP]], [[I23]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_1]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_1]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_2]] = add nsw i32 [[COARSENED_STEP]], [[I23_COARSENED_2]]
+; DRCHECK-NEXT:    [[I35:%.*]] = add nsw i32 [[I15]], [[I23]]
+; DRCHECK-NEXT:    [[I35_COARSENED_1:%.*]] = add nsw i32 [[I15]], [[I23_COARSENED_1]]
+; DRCHECK-NEXT:    [[I35_COARSENED_2:%.*]] = add nsw i32 [[I15]], [[I23_COARSENED_2]]
 ; DRCHECK-NEXT:    [[I36:%.*]] = add nsw i32 [[I15]], [[I22]]
 ; DRCHECK-NEXT:    [[I36_COARSENED_1:%.*]] = add nsw i32 [[I15]], [[I22_COARSENED_1]]
 ; DRCHECK-NEXT:    [[I36_COARSENED_2:%.*]] = add nsw i32 [[I15]], [[I22_COARSENED_2]]
 ; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_2:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36]], i32 [[I3]])
 ; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_2_COARSENED_1:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36_COARSENED_1]], i32 [[I3]])
 ; DRCHECK-NEXT:    [[INITIAL_IV_COARSENED_2_COARSENED_2:%.*]] = tail call i32 @llvm.smin.i32(i32 [[I36_COARSENED_2]], i32 [[I3]])
+; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp slt i32 [[TMP10]], [[I]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_16:%.*]] = icmp slt i32 [[DOTCOARSENED_1]], [[I]]
+; DRCHECK-NEXT:    [[DOTCOARSENED_27:%.*]] = icmp slt i32 [[DOTCOARSENED_2]], [[I]]
 ; DRCHECK-NEXT:    [[I38:%.*]] = icmp slt i32 [[I35]], [[I]]
 ; DRCHECK-NEXT:    [[I38_COARSENED_1:%.*]] = icmp slt i32 [[I35_COARSENED_1]], [[I]]
 ; DRCHECK-NEXT:    [[I38_COARSENED_2:%.*]] = icmp slt i32 [[I35_COARSENED_2]], [[I]]
@@ -291,9 +303,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; DRCHECK-NEXT:    [[I37_ADVANCED_ADVANCED]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED_ADVANCED]], i32 [[I3]])
 ; DRCHECK-NEXT:    [[I37_ADVANCED_ADVANCED_COARSENED_1]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED_ADVANCED_COARSENED_1]], i32 [[I3]])
 ; DRCHECK-NEXT:    [[I37_ADVANCED_ADVANCED_COARSENED_2]] = tail call i32 @llvm.smin.i32(i32 [[I36_ADVANCED_ADVANCED_COARSENED_2]], i32 [[I3]])
-; DRCHECK-NEXT:    [[IS_EPILOGUE_START5:%.*]] = icmp eq i32 [[I35]], [[EPILOGUE_START_IV]]
-; DRCHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_1:%.*]] = icmp eq i32 [[I35_COARSENED_1]], [[EPILOGUE_START_IV]]
-; DRCHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_2:%.*]] = icmp eq i32 [[I35_COARSENED_2]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START5:%.*]] = icmp eq i32 [[TMP10]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_1:%.*]] = icmp eq i32 [[DOTCOARSENED_1]], [[EPILOGUE_START_IV]]
+; DRCHECK-NEXT:    [[IS_EPILOGUE_START5_COARSENED_2:%.*]] = icmp eq i32 [[DOTCOARSENED_2]], [[EPILOGUE_START_IV]]
 ; DRCHECK-NEXT:    br i1 [[IS_EPILOGUE_START5]], label [[COARSENED_END_CHECK:%.*]], label [[BB21]], !llvm.loop [[LOOP31:![0-9]+]]
 ; DRCHECK:       bb21.divergent.entry.drs.0.intro.0:
 ; DRCHECK-NEXT:    br label [[BB21_DIVERGENT_ENTRY_DRS_0:%.*]]
@@ -303,9 +315,9 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; DRCHECK-NEXT:    br label [[BB21_DIVERGENT_ENTRY_DRS_0]]
 ; DRCHECK:       bb21.divergent.entry.drs.0:
 ; DRCHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ], [ 2, [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2:%.*]] ]
-; DRCHECK-NEXT:    [[I25_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[I25]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I25_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I25_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
 ; DRCHECK-NEXT:    [[I24_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[I24]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I24_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I24_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
 ; DRCHECK-NEXT:    [[I22_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[I22]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I22_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I22_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
+; DRCHECK-NEXT:    [[I25_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[I25]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[I25_COARSENED_1]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ], [ [[I25_COARSENED_2]], [[BB21_DIVERGENT_ENTRY_DRS_0_INTRO_2]] ]
 ; DRCHECK-NEXT:    br i1 [[I25_DRS_0_REG2MEM_0]], label [[BB34_DIVERGENT_EXIT_DRS_0:%.*]], label [[BB26_DRS_0:%.*]]
 ; DRCHECK:       bb26.drs.0:
 ; DRCHECK-NEXT:    br label [[BB27_DRS_0:%.*]]
@@ -331,10 +343,10 @@ define weak_odr protected amdgpu_kernel void @__omp_offloading_58_21f7bf8__Z6con
 ; DRCHECK:       bb34.divergent.exit.drs.0.outro.2:
 ; DRCHECK-NEXT:    br label [[BB34]]
 ; DRCHECK:       coarsened.end.check:
-; DRCHECK-NEXT:    br i1 [[I38]], label [[BB21_EPILOGUE]], label [[BB39:%.*]]
+; DRCHECK-NEXT:    br i1 [[TMP11]], label [[BB21_EPILOGUE]], label [[BB39:%.*]]
 ; DRCHECK:       bb21.epilogue:
 ; DRCHECK-NEXT:    [[I22_EPILOGUE:%.*]] = phi i32 [ [[I37_ADVANCED_ADVANCED]], [[COARSENED_END_CHECK]] ], [ [[I37_EPILOGUE:%.*]], [[BB34_EPILOGUE:%.*]] ], [ [[I19]], [[BB17]] ]
-; DRCHECK-NEXT:    [[I23_EPILOGUE:%.*]] = phi i32 [ [[I35]], [[COARSENED_END_CHECK]] ], [ [[I35_EPILOGUE:%.*]], [[BB34_EPILOGUE]] ], [ [[I14]], [[BB17]] ]
+; DRCHECK-NEXT:    [[I23_EPILOGUE:%.*]] = phi i32 [ [[TMP10]], [[COARSENED_END_CHECK]] ], [ [[I35_EPILOGUE:%.*]], [[BB34_EPILOGUE]] ], [ [[I14]], [[BB17]] ]
 ; DRCHECK-NEXT:    [[I24_EPILOGUE:%.*]] = add nsw i32 [[I20]], [[I23_EPILOGUE]]
 ; DRCHECK-NEXT:    [[I25_EPILOGUE:%.*]] = icmp sgt i32 [[I24_EPILOGUE]], [[I22_EPILOGUE]]
 ; DRCHECK-NEXT:    br i1 [[I25_EPILOGUE]], label [[BB34_EPILOGUE]], label [[BB26_EPILOGUE:%.*]]
