@@ -46,6 +46,8 @@
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/InitializePasses.h"
@@ -1028,6 +1030,27 @@ bool CallInterleave::tryToInterleave(
   return true;
 }
 
+static bool shouldClone(Instruction *I) {
+  if (I->isTerminator())
+    // Do not clone terminators - we use the control flow of the
+    // existing iteration (if the branch is divergent we will insert
+    // an entry to a divergent region here later)
+    return false;
+
+  if (auto *CI = dyn_cast<CallInst>(I))
+    switch (CI->getIntrinsicID()) {
+    case Intrinsic::amdgcn_s_barrier:
+    case Intrinsic::nvvm_barrier0:
+      return false;
+    default:;
+    }
+
+  if (isa<FenceInst>(I))
+    return false;
+
+  return true;
+}
+
 LoopUnrollResult BBInterleave::tryToUnrollBBs(
     Loop *L, LoopInfo *LI, BasicBlock *DominatingBlockIn,
     BasicBlock *PostDominatingBlockIn, const ArrayRef<BasicBlock *> &BBArr,
@@ -1071,6 +1094,8 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
     // would help with this decision We could either also set the DR after the
     // end of the CR for cases where the DR is especially infrequent. Alos,
     // maybe it should depend on whether we use dynamic convergence
+    // TODO if we do not use dynamic convergence, then we should put the DR
+    // inline with its original position and not after the loop
     Function::iterator InsertBefore = std::next(DR.To->getIterator());
     std::string Suffix = ".drs." + std::to_string(It++);
     for (BasicBlock *BB : BBsToCoarsen) {
@@ -1110,15 +1135,10 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
           continue;
       }
 
-      bool IsTerminator = I->isTerminator();
-      for (unsigned It = 1; It < Factor; It++) {
-        if (IsTerminator) {
-          // Do not clone terminators - we use the control flow of the
-          // existing iteration (if the branch is divergent we will insert
-          // an entry to a divergent region here later)
-          continue;
-        }
+      if (!shouldClone(I))
+        continue;
 
+      for (unsigned It = 1; It < Factor; It++) {
         Instruction *Cloned = I->clone();
         Cloned->insertAfter(LastI);
         if (!Cloned->getType()->isVoidTy())
