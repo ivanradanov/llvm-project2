@@ -1521,7 +1521,8 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
 
 static Value *advanceOneIteration(Loop *TheLoop, Instruction *IV,
                                   Value *ToRecomputeVal,
-                                  Instruction *InsertBefore) {
+                                  Instruction *InsertBefore,
+                                  Value *IVReplacement = nullptr) {
   if (!ToRecomputeVal)
     return nullptr;
 
@@ -1532,15 +1533,19 @@ static Value *advanceOneIteration(Loop *TheLoop, Instruction *IV,
   if (ToRecompute->mayHaveSideEffects())
     return nullptr;
 
-  if (TheLoop->isLoopInvariant(ToRecompute) || IV == ToRecompute)
+  if (TheLoop->isLoopInvariant(ToRecompute))
     return ToRecompute;
+
+  if (IV == ToRecompute)
+    return IVReplacement;
 
   Instruction *Recomputed = ToRecompute->clone();
   Recomputed->insertBefore(InsertBefore);
   Recomputed->setName(ToRecompute->getName() + ".advanced");
   for (unsigned It = 0; It < Recomputed->getNumOperands(); It++) {
     Value *Opr = Recomputed->getOperand(It);
-    Value *NewOpr = advanceOneIteration(TheLoop, IV, Opr, Recomputed);
+    Value *NewOpr =
+        advanceOneIteration(TheLoop, IV, Opr, Recomputed, IVReplacement);
     if (!NewOpr)
       return nullptr;
     Recomputed->setOperand(It, NewOpr);
@@ -1709,8 +1714,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       Instruction *PreInc = &PN;
       Value *PostInc = BEValue;
       for (unsigned It = 1; It < Factor; It++) {
-        Value *NewPostInc = advanceOneIteration(
-            TheLoop, PreInc, PostInc, CombinedLatchExiting->getTerminator());
+        Value *NewPostInc =
+            advanceOneIteration(TheLoop, PreInc, PostInc,
+                                CombinedLatchExiting->getTerminator(), PostInc);
         PreInc = dyn_cast<Instruction>(PostInc);
         PostInc = NewPostInc;
       }
@@ -1725,22 +1731,17 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       // Generate the initial IV values
       Instruction *PreInc = &PN;
       Value *PostInc = BEValue;
+      Value *IVReplacement = PN.getIncomingValueForBlock(Preheader);
       for (unsigned It = 1; It < Factor; It++) {
-        Value *NewPostInc = advanceOneIteration(TheLoop, PreInc, PostInc,
-                                                Preheader->getTerminator());
-        PreInc = dyn_cast<Instruction>(PostInc);
-        PostInc = NewPostInc;
+        Value *NewPostInc =
+            advanceOneIteration(TheLoop, PreInc, PostInc,
+                                Preheader->getTerminator(), IVReplacement);
+        IVReplacement = NewPostInc;
 
         PostInc->setName("initial.iv.coarsened." + std::to_string(It));
-        (*VMaps[It])[InitialIVVal] = PostInc;
-        (*ReverseVMaps[It])[PostInc] = InitialIVVal;
+        (*VMaps[It])[InitialIVVal] = NewPostInc;
+        (*ReverseVMaps[It])[NewPostInc] = InitialIVVal;
       }
-      PN.replaceUsesWithIf(PN.getIncomingValueForBlock(Preheader),
-                           [&](Use &U) -> bool {
-                             if (auto *I = dyn_cast<Instruction>(U.getUser()))
-                               return I->getParent() == Preheader;
-                             return false;
-                           });
     }
   }
 
