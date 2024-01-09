@@ -1519,6 +1519,36 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
   return false;
 }
 
+static Value *advanceOneIteration(Loop *TheLoop, Instruction *IV,
+                                  Value *ToRecomputeVal,
+                                  Instruction *InsertBefore) {
+  if (!ToRecomputeVal)
+    return nullptr;
+
+  Instruction *ToRecompute = dyn_cast<Instruction>(ToRecomputeVal);
+  if (!ToRecompute)
+    return ToRecomputeVal;
+
+  if (ToRecompute->mayHaveSideEffects())
+    return nullptr;
+
+  if (TheLoop->isLoopInvariant(ToRecompute) || IV == ToRecompute)
+    return ToRecompute;
+
+  Instruction *Recomputed = ToRecompute->clone();
+  Recomputed->insertBefore(InsertBefore);
+  Recomputed->setName(ToRecompute->getName() + ".advanced");
+  for (unsigned It = 0; It < Recomputed->getNumOperands(); It++) {
+    Value *Opr = Recomputed->getOperand(It);
+    Value *NewOpr = advanceOneIteration(TheLoop, IV, Opr, Recomputed);
+    if (!NewOpr)
+      return nullptr;
+    Recomputed->setOperand(It, NewOpr);
+  }
+
+  return Recomputed;
+}
+
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     Loop *L, DominatorTree &DT, LoopInfo &LI, ScalarEvolution &SE,
     PostDominatorTree &PDT) {
@@ -1577,7 +1607,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     LLVM_DEBUG(DBGS_FAIL << "Unusable FinalIVValue define in the loop\n");
     return LoopUnrollResult::Unmodified;
   }
-  Value *InitialIVVal = &LoopBounds.getInitialIVValue();
 
   // Clone the loop once more to use as an epilogue, the original one will be
   // coarsened in-place
@@ -1586,15 +1615,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   Loop *EpilogueLoop = cloneLoopWithPreheader(
       ExitBlock, &F->getEntryBlock(), TheLoop, EpilogueVMap, ".epilogue", &LI,
       &DT, EpilogueLoopBlocks);
-  auto IsInEpilogue = [&](Use &U) -> bool {
-    if (Instruction *I = dyn_cast<Instruction>(U.getUser())) {
-      if (std::find(EpilogueLoopBlocks.begin(), EpilogueLoopBlocks.end(),
-                    I->getParent()) != EpilogueLoopBlocks.end())
-        return true;
-      return false;
-    }
-    llvm_unreachable("Uses of lb should only be instructions");
-  };
 
   // VMaps for the separate interleaved iterations
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
@@ -1608,43 +1628,120 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
 
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
-  // The new Step is UnrollFactor * OriginalStep
-  Value *IVStepVal = &LoopBounds.getStepValue();
-  if (Instruction *IVStepInst = dyn_cast_or_null<Instruction>(IVStepVal)) {
-    Value *NewStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), Factor),
-        "coarsened.step");
-    cast<Instruction>(NewStep)->moveAfter(IVStepInst);
-    IVStepInst->replaceUsesWithIf(
-        NewStep, [NewStep, IsInEpilogue](Use &U) -> bool {
-          return U.getUser() != NewStep && !IsInEpilogue(U);
-        });
-  } else {
-    // If the step is a constant
-    auto *IVStepConst = dyn_cast<ConstantInt>(IVStepVal);
-    assert(IVStepConst);
-    Value *NewStep = ConstantInt::getIntegerValue(
-        IntegerType::getInt32Ty(IVStepVal->getContext()),
-        Factor * IVStepConst->getValue());
-    Instruction *StepInst = &LoopBounds.getStepInst();
-    for (unsigned It = 0; It < StepInst->getNumOperands(); It++)
-      if (StepInst->getOperand(It) == IVStepVal)
-        StepInst->setOperand(It, NewStep);
-  }
+  for (auto &PN : TheLoop->getHeader()->phis()) {
+    Value *BEValue = PN.getIncomingValueForBlock(CombinedLatchExiting);
+    Value *InitialIVVal = PN.getIncomingValueForBlock(Preheader);
 
-  // Set up new initial IV values, for now we do initial + stride, initial + 2 *
-  // stride, ..., initial + (UnrollFactor - 1) * stride
-  (*VMaps[0])[InitialIVVal] = InitialIVVal;
-  (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
-  for (unsigned I = 1; I < Factor; I++) {
-    Value *CoarsenedInitialIV;
-    Value *MultipliedStep = PreheaderBuilder.CreateMul(
-        IVStepVal, ConstantInt::get(IVStepVal->getType(), I));
-    CoarsenedInitialIV =
-        PreheaderBuilder.CreateAdd(InitialIVVal, MultipliedStep,
-                                   "initial.iv.coarsened." + std::to_string(I));
-    (*VMaps[I])[InitialIVVal] = CoarsenedInitialIV;
-    (*ReverseVMaps[I])[CoarsenedInitialIV] = InitialIVVal;
+    (*VMaps[0])[InitialIVVal] = InitialIVVal;
+    (*ReverseVMaps[0])[InitialIVVal] = InitialIVVal;
+
+    if (TheLoop->isLoopInvariant(BEValue)) {
+      // This means the IV has a special value for just the first iteration.
+      // This means that we should leave the original IV as is, and replace the
+      // uses of the coarsened IVs with BEValue
+      llvm_unreachable("Unhandled IV BEValue loop invariant case");
+    }
+
+    auto *BEValInst = dyn_cast<Instruction>(BEValue);
+
+    assert(BEValInst && "Non-loop-invariant value must be an instruction.");
+
+    bool IncHandled = false;
+    bool InitHandled = false;
+    if (auto *BO = dyn_cast<BinaryOperator>(BEValInst)) {
+      Value *LHS = BO->getOperand(0);
+      Value *RHS = BO->getOperand(1);
+
+      Value *Increment = nullptr;
+      unsigned IVOpr = -1;
+      unsigned IncrementOpr = -1;
+      if (RHS == &PN) {
+        IncrementOpr = 0;
+        IVOpr = 1;
+        Increment = LHS;
+      } else if (LHS == &PN) {
+        IncrementOpr = 1;
+        IVOpr = 0;
+        Increment = RHS;
+      }
+
+      if (Increment && TheLoop->isLoopInvariant(Increment)) {
+        // Set up new initial IV values, for now we do initial + stride, initial
+        // + 2 * stride, ..., initial + (UnrollFactor - 1) * stride
+        Instruction *CoarsenedInitialIV = nullptr;
+        Value *LastCoarsenedInitialIV = InitialIVVal;
+        for (unsigned It = 1; It < Factor; It++) {
+          CoarsenedInitialIV = BO->clone();
+          CoarsenedInitialIV->insertBefore(Preheader->getTerminator());
+          CoarsenedInitialIV->setOperand(IVOpr, LastCoarsenedInitialIV);
+          CoarsenedInitialIV->setName("initial.iv.coarsened." +
+                                      std::to_string(It));
+          (*VMaps[It])[InitialIVVal] = CoarsenedInitialIV;
+          (*ReverseVMaps[It])[CoarsenedInitialIV] = InitialIVVal;
+          InitHandled = true;
+        }
+
+        Value *NewIncrement = nullptr;
+        switch (BO->getOpcode()) {
+        case Instruction::Add:
+        case Instruction::Sub:
+          if (auto *IncrementInst = dyn_cast<Instruction>(Increment)) {
+            NewIncrement = PreheaderBuilder.CreateMul(
+                Increment, ConstantInt::get(Increment->getType(), Factor));
+            NewIncrement->setName("coarsened_step");
+          } else if (auto *IncrementConst = dyn_cast<ConstantInt>(Increment)) {
+            NewIncrement = ConstantInt::get(
+                Increment->getType(), IncrementConst->getValue() * Factor);
+          }
+          break;
+        default:;
+        }
+
+        if (NewIncrement) {
+          BO->setOperand(IncrementOpr, NewIncrement);
+          IncHandled = true;
+        }
+      }
+    }
+
+    if (!IncHandled) {
+      // Generic case (the incrementation still has to be pure).
+      Instruction *PreInc = &PN;
+      Value *PostInc = BEValue;
+      for (unsigned It = 1; It < Factor; It++) {
+        Value *NewPostInc = advanceOneIteration(
+            TheLoop, PreInc, PostInc, CombinedLatchExiting->getTerminator());
+        PreInc = dyn_cast<Instruction>(PostInc);
+        PostInc = NewPostInc;
+      }
+      if (PostInc) {
+        PN.setIncomingValueForBlock(CombinedLatchExiting, PostInc);
+      } else {
+        llvm_unreachable("Unhandled IV case");
+      }
+    }
+
+    if (!InitHandled) {
+      // Generate the initial IV values
+      Instruction *PreInc = &PN;
+      Value *PostInc = BEValue;
+      for (unsigned It = 1; It < Factor; It++) {
+        Value *NewPostInc = advanceOneIteration(TheLoop, PreInc, PostInc,
+                                                Preheader->getTerminator());
+        PreInc = dyn_cast<Instruction>(PostInc);
+        PostInc = NewPostInc;
+
+        PostInc->setName("initial.iv.coarsened." + std::to_string(It));
+        (*VMaps[It])[InitialIVVal] = PostInc;
+        (*ReverseVMaps[It])[PostInc] = InitialIVVal;
+      }
+      PN.replaceUsesWithIf(PN.getIncomingValueForBlock(Preheader),
+                           [&](Use &U) -> bool {
+                             if (auto *I = dyn_cast<Instruction>(U.getUser()))
+                               return I->getParent() == Preheader;
+                             return false;
+                           });
+    }
   }
 
   BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
