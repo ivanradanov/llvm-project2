@@ -250,6 +250,8 @@ private:
     Value &getStepValue() { return *StepValue; }
     Instruction *StepInst;
     Instruction &getStepInst() { return *StepInst; }
+    PHINode *IV;
+    PHINode &getIV() { return *IV; }
   } LoopBounds;
 
   bool populateLoopBounds(Loop &TheLoop, ScalarEvolution &SE);
@@ -1398,6 +1400,7 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
     LoopBounds.InitialIVValue = &LB->getInitialIVValue();
     LoopBounds.StepValue = LB->getStepValue();
     LoopBounds.StepInst = &LB->getStepInst();
+    LoopBounds.IV = TheLoop.getInductionVariable(SE);
     return true;
   }
 
@@ -1512,6 +1515,7 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
     LoopBounds.StepValue = FixUp(StepVal);
     LoopBounds.FinalIVValue = FixUp(FinalIVValue);
     LoopBounds.InitialIVValue = FixUp(StartValueV);
+    LoopBounds.IV = &PN;
 
     return true;
   }
@@ -1633,6 +1637,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
 
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
+  Instruction *NewStepInst = nullptr;
   for (auto &PN : TheLoop->getHeader()->phis()) {
     Value *BEValue = PN.getIncomingValueForBlock(CombinedLatchExiting);
     Value *InitialIVVal = PN.getIncomingValueForBlock(Preheader);
@@ -1650,6 +1655,26 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     auto *BEValInst = dyn_cast<Instruction>(BEValue);
 
     assert(BEValInst && "Non-loop-invariant value must be an instruction.");
+
+    auto FixLatch = [&](Instruction *NewStep, Instruction *OldStep) {
+      // If this is the IV for the loop bounds, we need to replace the
+      // latch comparison and condition.
+      if (&PN == &LoopBounds.getIV()) {
+        assert(LoopBounds.StepInst == OldStep);
+        NewStepInst = NewStep;
+        Instruction *LatchCmp = TheLoop->getLatchCmpInst();
+        Instruction *ClonedCmp = LatchCmp->clone();
+        ClonedCmp->insertBefore(LatchCmp);
+        bool Changed;
+        // TODO There may be trunc/ext/freeze between the cmp operand and
+        // OldStep - handle them.
+        Changed = ClonedCmp->replaceUsesOfWith(OldStep, NewStep);
+        assert(Changed);
+        Changed = CombinedLatchExiting->getTerminator()->replaceUsesOfWith(
+            LatchCmp, ClonedCmp);
+        assert(Changed);
+      }
+    };
 
     bool IncHandled = false;
     bool InitHandled = false;
@@ -1681,6 +1706,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
           CoarsenedInitialIV->setOperand(IVOpr, LastCoarsenedInitialIV);
           CoarsenedInitialIV->setName("initial.iv.coarsened." +
                                       std::to_string(It));
+          LastCoarsenedInitialIV = CoarsenedInitialIV;
           (*VMaps[It])[InitialIVVal] = CoarsenedInitialIV;
           (*ReverseVMaps[It])[CoarsenedInitialIV] = InitialIVVal;
           InitHandled = true;
@@ -1703,7 +1729,11 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
         }
 
         if (NewIncrement) {
-          BO->setOperand(IncrementOpr, NewIncrement);
+          Instruction *ClonedStepInst = BO->clone();
+          ClonedStepInst->insertBefore(BO);
+          ClonedStepInst->setOperand(IncrementOpr, NewIncrement);
+          PN.setIncomingValueForBlock(CombinedLatchExiting, ClonedStepInst);
+          FixLatch(ClonedStepInst, BO);
           IncHandled = true;
         }
       }
@@ -1722,6 +1752,13 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       }
       if (PostInc) {
         PN.setIncomingValueForBlock(CombinedLatchExiting, PostInc);
+        if (&PN == &LoopBounds.getIV()) {
+          // Need to track down the cmp/inc inst
+          Instruction *BEValInst = dyn_cast<Instruction>(BEValue);
+          assert(BEValInst &&
+                 "Loop bound IV back edge must be an instruction.");
+          FixLatch(cast<Instruction>(PostInc), BEValInst);
+        }
       } else {
         llvm_unreachable("Unhandled IV case");
       }
@@ -1744,6 +1781,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       }
     }
   }
+  assert(NewStepInst);
 
   BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
   EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
@@ -1818,9 +1856,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
         dyn_cast<BranchInst>(CombinedLatchExiting->getTerminator());
     assert(BackEdge && BackEdge->isConditional());
     IRBuilder<> LatchBuilder(BackEdge);
-    Value *IsAtEpilogueStart = LatchBuilder.CreateCmp(
-        CmpInst::Predicate::ICMP_EQ, &LoopBounds.getStepInst(), EpilogueStart,
-        "is.epilogue.start");
+    Value *IsAtEpilogueStart =
+        LatchBuilder.CreateCmp(CmpInst::Predicate::ICMP_EQ, NewStepInst,
+                               EpilogueStart, "is.epilogue.start");
     BasicBlock *EndCheckBB = EpilogueFrom = BasicBlock::Create(
         Ctx, "coarsened.end.check", F, EpilogueLoop->getHeader());
     Loop *ParentLoop = TheLoop->getParentLoop();

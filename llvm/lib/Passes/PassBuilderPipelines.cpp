@@ -69,6 +69,7 @@
 #include "llvm/Transforms/IPO/SyntheticCountsPropagation.h"
 #include "llvm/Transforms/IPO/WholeProgramDevirt.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/InstCombine/InstCombiner.h"
 #include "llvm/Transforms/Instrumentation/CGProfile.h"
 #include "llvm/Transforms/Instrumentation/ControlHeightReduction.h"
 #include "llvm/Transforms/Instrumentation/InstrOrderFile.h"
@@ -1933,6 +1934,7 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   MPM.addPass(UnrollAndInterleavePass());
   MPM.addPass(createModuleToFunctionPassAdaptor(SimplifyCFGPass()));
   MPM.addPass(createModuleToFunctionPassAdaptor(EarlyCSEPass()));
+  MPM.addPass(createModuleToFunctionPassAdaptor(InstCombinePass()));
   MPM.addPass(OpenMPOptPass(ThinOrFullLTOPhase::FullLTOPostLink));
 
   // Lower type metadata and the type.test intrinsic. This pass supports
