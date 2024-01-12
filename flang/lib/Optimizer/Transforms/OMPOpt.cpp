@@ -34,6 +34,7 @@
 #include "flang/Optimizer/Dialect/FIROps.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
 #include "flang/Optimizer/Transforms/Passes.h"
+#include "flang/Optimizer/HLFIR/Passes.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
@@ -52,6 +53,10 @@
 #include <mlir/Support/LLVM.h>
 #include <optional>
 
+namespace hlfir {
+#define GEN_PASS_DEF_HLFIROMPOPT
+#include "flang/Optimizer/HLFIR/Passes.h.inc"
+}
 namespace fir {
 #define GEN_PASS_DEF_FIROMPOPT
 #define GEN_PASS_DEF_LLVMOMPOPT
@@ -849,6 +854,11 @@ static void dumpMemoryEffects(Operation *op) {
   }
 }
 
+class HLFIROMPOptPass : public ::hlfir::impl::HLFIROMPOptBase<HLFIROMPOptPass> {
+public:
+  void runOnOperation() override;
+};
+
 class FIROMPOptPass : public ::fir::impl::FIROMPOptBase<FIROMPOptPass> {
 public:
   void runOnOperation() override;
@@ -858,6 +868,17 @@ class LLVMOMPOptPass : public ::fir::impl::LLVMOMPOptBase<LLVMOMPOptPass> {
 public:
   void runOnOperation() override;
 };
+
+void HLFIROMPOptPass::runOnOperation() {
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-hlfir ===\n");
+
+  Operation *op = getOperation();
+
+  LLVM_DEBUG({
+    dbgs() << "Dumping memory effects\n";
+    op->walk([](omp::CoexecuteOp coexecute) { dumpMemoryEffects(coexecute); });
+  });
+}
 
 void FIROMPOptPass::runOnOperation() {
   LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-fir ===\n");
@@ -943,10 +964,14 @@ void LLVMOMPOptPass::runOnOperation() {
 }
 
 /// OpenMP optimizations
-std::unique_ptr<Pass> fir::createLLVMOMPOptPass() {
-  return std::make_unique<LLVMOMPOptPass>();
+std::unique_ptr<Pass> hlfir::createHLFIROMPOptPass() {
+  return std::make_unique<HLFIROMPOptPass>();
 }
 /// OpenMP optimizations
 std::unique_ptr<Pass> fir::createFIROMPOptPass() {
   return std::make_unique<FIROMPOptPass>();
+}
+/// OpenMP optimizations
+std::unique_ptr<Pass> fir::createLLVMOMPOptPass() {
+  return std::make_unique<LLVMOMPOptPass>();
 }

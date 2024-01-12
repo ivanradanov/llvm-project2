@@ -56,4 +56,9 @@ def InlineElementals : Pass<"inline-elementals", "::mlir::func::FuncOp"> {
   let constructor = "hlfir::createInlineElementalsPass()";
 }
 
+def HLFIROMPOpt : Pass<"hlfir-omp-opt"> {
+  let summary = "OpenMP optimizations on HLFIR level";
+  let constructor = "hlfir::createHLFIROMPOptPass()";
+}
+
 #endif //FORTRAN_DIALECT_HLFIR_PASSES
