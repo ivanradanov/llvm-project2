@@ -1526,30 +1526,31 @@ bool LoopUnrollAndInterleave::populateLoopBounds(Loop &TheLoop,
 static Value *advanceOneIteration(Loop *TheLoop, Instruction *IV,
                                   Value *ToRecomputeVal,
                                   Instruction *InsertBefore,
-                                  Value *IVReplacement = nullptr) {
+                                  Value *IVReplacement,
+                                  SmallVectorImpl<Instruction *> &Inserted) {
   if (!ToRecomputeVal)
     return nullptr;
 
   Instruction *ToRecompute = dyn_cast<Instruction>(ToRecomputeVal);
   if (!ToRecompute)
     return ToRecomputeVal;
-
   if (ToRecompute->mayHaveSideEffects())
     return nullptr;
-
   if (TheLoop->isLoopInvariant(ToRecompute))
     return ToRecompute;
-
   if (IV == ToRecompute)
     return IVReplacement;
+  if (isa<PHINode>(ToRecompute))
+    return nullptr;
 
   Instruction *Recomputed = ToRecompute->clone();
   Recomputed->insertBefore(InsertBefore);
   Recomputed->setName(ToRecompute->getName() + ".advanced");
+  Inserted.push_back(Recomputed);
   for (unsigned It = 0; It < Recomputed->getNumOperands(); It++) {
     Value *Opr = Recomputed->getOperand(It);
-    Value *NewOpr =
-        advanceOneIteration(TheLoop, IV, Opr, Recomputed, IVReplacement);
+    Value *NewOpr = advanceOneIteration(TheLoop, IV, Opr, Recomputed,
+                                        IVReplacement, Inserted);
     if (!NewOpr)
       return nullptr;
     Recomputed->setOperand(It, NewOpr);
@@ -1617,14 +1618,6 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     return LoopUnrollResult::Unmodified;
   }
 
-  // Clone the loop once more to use as an epilogue, the original one will be
-  // coarsened in-place
-  ValueToValueMapTy EpilogueVMap;
-  SmallVector<BasicBlock *> EpilogueLoopBlocks;
-  Loop *EpilogueLoop = cloneLoopWithPreheader(
-      ExitBlock, &F->getEntryBlock(), TheLoop, EpilogueVMap, ".epilogue", &LI,
-      &DT, EpilogueLoopBlocks);
-
   // VMaps for the separate interleaved iterations
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> VMaps;
   SmallVector<std::unique_ptr<ValueToValueMapTy>, 4> ReverseVMaps;
@@ -1637,6 +1630,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
 
   IRBuilder<> PreheaderBuilder(Preheader->getTerminator());
 
+  bool Succeeded = true;
+  SmallVector<std::function<void()>, 4> ScheduledChanges;
+  SmallVector<Instruction *> Inserted;
   Instruction *NewStepInst = nullptr;
   for (auto &PN : TheLoop->getHeader()->phis()) {
     Value *BEValue = PN.getIncomingValueForBlock(CombinedLatchExiting);
@@ -1649,7 +1645,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       // This means the IV has a special value for just the first iteration.
       // This means that we should leave the original IV as is, and replace the
       // uses of the coarsened IVs with BEValue
-      llvm_unreachable("Unhandled IV BEValue loop invariant case");
+      Succeeded = false;
+      LLVM_DEBUG(DBGS_FAIL << "Unhandled IV BEValue loop invariant case\n");
+      break;
     }
 
     auto *BEValInst = dyn_cast<Instruction>(BEValue);
@@ -1664,22 +1662,29 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
         NewStepInst = NewStep;
         Instruction *LatchCmp = TheLoop->getLatchCmpInst();
         Instruction *ClonedCmp = LatchCmp->clone();
-        ClonedCmp->insertBefore(LatchCmp);
+        ClonedCmp->insertBefore(TheLoop->getLoopLatch()->getTerminator());
+        Inserted.push_back(ClonedCmp);
 
         unsigned StepInstOpr = -1;
         if (followFTE(ClonedCmp->getOperand(0)) == OldStep)
           StepInstOpr = 0;
         if (followFTE(ClonedCmp->getOperand(1)) == OldStep)
           StepInstOpr = 1;
-        assert(StepInstOpr != (unsigned)-1);
+
+        if (StepInstOpr == (unsigned)-1) {
+          Succeeded = false;
+          return;
+        }
 
         Value *FixedNewStep = advanceOneIteration(
             TheLoop, OldStep, ClonedCmp->getOperand(StepInstOpr), ClonedCmp,
-            NewStep);
+            NewStep, Inserted);
         ClonedCmp->setOperand(StepInstOpr, FixedNewStep);
-        bool Changed = CombinedLatchExiting->getTerminator()->replaceUsesOfWith(
-            LatchCmp, ClonedCmp);
-        assert(Changed);
+        auto *Br = CombinedLatchExiting->getTerminator();
+        ScheduledChanges.push_back([Br, LatchCmp, ClonedCmp]() {
+          bool Changed = Br->replaceUsesOfWith(LatchCmp, ClonedCmp);
+          assert(Changed);
+        });
       }
     };
 
@@ -1713,6 +1718,7 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
           CoarsenedInitialIV->setOperand(IVOpr, LastCoarsenedInitialIV);
           CoarsenedInitialIV->setName("initial.iv.coarsened." +
                                       std::to_string(It));
+          Inserted.push_back(CoarsenedInitialIV);
           LastCoarsenedInitialIV = CoarsenedInitialIV;
           (*VMaps[It])[InitialIVVal] = CoarsenedInitialIV;
           (*ReverseVMaps[It])[CoarsenedInitialIV] = InitialIVVal;
@@ -1739,7 +1745,10 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
           Instruction *ClonedStepInst = BO->clone();
           ClonedStepInst->insertBefore(BO);
           ClonedStepInst->setOperand(IncrementOpr, NewIncrement);
-          PN.setIncomingValueForBlock(CombinedLatchExiting, ClonedStepInst);
+          Inserted.push_back(ClonedStepInst);
+          ScheduledChanges.push_back([&PN, ClonedStepInst, this]() {
+            PN.setIncomingValueForBlock(CombinedLatchExiting, ClonedStepInst);
+          });
           FixLatch(ClonedStepInst, BO);
           IncHandled = true;
         }
@@ -1751,23 +1760,27 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       Instruction *PreInc = &PN;
       Value *PostInc = BEValue;
       for (unsigned It = 1; It < Factor; It++) {
-        Value *NewPostInc =
-            advanceOneIteration(TheLoop, PreInc, PostInc,
-                                CombinedLatchExiting->getTerminator(), PostInc);
+        Value *NewPostInc = advanceOneIteration(
+            TheLoop, PreInc, PostInc, CombinedLatchExiting->getTerminator(),
+            PostInc, Inserted);
+        if (!NewPostInc) {
+          Succeeded = false;
+          LLVM_DEBUG(DBGS_FAIL << "Unhandled IV case.\n");
+          break;
+        }
         PreInc = dyn_cast<Instruction>(PostInc);
         PostInc = NewPostInc;
       }
-      if (PostInc) {
+      if (!Succeeded)
+        break;
+      ScheduledChanges.push_back([&PN, PostInc, this]() {
         PN.setIncomingValueForBlock(CombinedLatchExiting, PostInc);
-        if (&PN == &LoopBounds.getIV()) {
-          // Need to track down the cmp/inc inst
-          Instruction *BEValInst = dyn_cast<Instruction>(BEValue);
-          assert(BEValInst &&
-                 "Loop bound IV back edge must be an instruction.");
-          FixLatch(cast<Instruction>(PostInc), BEValInst);
-        }
-      } else {
-        llvm_unreachable("Unhandled IV case");
+      });
+      if (&PN == &LoopBounds.getIV()) {
+        // Need to track down the cmp/inc inst
+        Instruction *BEValInst = dyn_cast<Instruction>(BEValue);
+        assert(BEValInst && "Loop bound IV back edge must be an instruction.");
+        FixLatch(cast<Instruction>(PostInc), BEValInst);
       }
     }
 
@@ -1777,18 +1790,39 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
       Value *PostInc = BEValue;
       Value *IVReplacement = PN.getIncomingValueForBlock(Preheader);
       for (unsigned It = 1; It < Factor; It++) {
-        Value *NewPostInc =
-            advanceOneIteration(TheLoop, PreInc, PostInc,
-                                Preheader->getTerminator(), IVReplacement);
+        Value *NewPostInc = advanceOneIteration(TheLoop, PreInc, PostInc,
+                                                Preheader->getTerminator(),
+                                                IVReplacement, Inserted);
+        if (!NewPostInc) {
+          Succeeded = false;
+          LLVM_DEBUG(DBGS_FAIL << "Could not generate initial IV values.\n");
+          break;
+        }
         IVReplacement = NewPostInc;
 
         PostInc->setName("initial.iv.coarsened." + std::to_string(It));
         (*VMaps[It])[InitialIVVal] = NewPostInc;
         (*ReverseVMaps[It])[NewPostInc] = InitialIVVal;
       }
+      if (!Succeeded)
+        break;
     }
   }
-  assert(NewStepInst);
+  if (!NewStepInst || !Succeeded) {
+    for (auto *I : Inserted) {
+      I->replaceAllUsesWith(UndefValue::get(I->getType()));
+      I->eraseFromParent();
+    }
+    return LoopUnrollResult::Unmodified;
+  }
+
+  // Clone the loop to use as an epilogue, the original one will be coarsened
+  // in-place
+  ValueToValueMapTy EpilogueVMap;
+  SmallVector<BasicBlock *> EpilogueLoopBlocks;
+  Loop *EpilogueLoop = cloneLoopWithPreheader(
+      ExitBlock, &F->getEntryBlock(), TheLoop, EpilogueVMap, ".epilogue", &LI,
+      &DT, EpilogueLoopBlocks);
 
   BasicBlock *EpiloguePH = cast<BasicBlock>(EpilogueVMap[Preheader]);
   EpilogueLoopBlocks.erase(std::find(EpilogueLoopBlocks.begin(),
@@ -1801,6 +1835,19 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   if (LI.getLoopFor(EpiloguePH))
     LI.removeBlock(EpiloguePH);
   EpiloguePH->eraseFromParent();
+
+  for (auto *I : Inserted) {
+    auto *Mapped = cast_or_null<Instruction>(EpilogueVMap[I]);
+    EpilogueVMap.erase(I);
+    if (Mapped) {
+      Mapped->replaceAllUsesWith(UndefValue::get(Mapped->getType()));
+      Mapped->eraseFromParent();
+    }
+  }
+
+  // Execute the IV changes in the original loop
+  for (auto &F : ScheduledChanges)
+    F();
 
   // Plumbing around the coarsened and epilogue loops
 
