@@ -33,8 +33,8 @@
 #include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/Dialect/FIROps.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
-#include "flang/Optimizer/Transforms/Passes.h"
 #include "flang/Optimizer/HLFIR/Passes.h"
+#include "flang/Optimizer/Transforms/Passes.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
@@ -56,7 +56,7 @@
 namespace hlfir {
 #define GEN_PASS_DEF_HLFIROMPOPT
 #include "flang/Optimizer/HLFIR/Passes.h.inc"
-}
+} // namespace hlfir
 namespace fir {
 #define GEN_PASS_DEF_FIROMPOPT
 #define GEN_PASS_DEF_LLVMOMPOPT
@@ -187,14 +187,17 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
     LLVM_DEBUG(dbgs() << TAG << "target region has no data maps\n");
     return mlir::failure();
   }
-  unsigned coexecuteNum = 0;
-  targetOp->walk([&](omp::CoexecuteOp) { coexecuteNum++; });
-  if (coexecuteNum < 2) {
-    LLVM_DEBUG(
-        dbgs() << TAG
-               << "target region has fewer than two nested coexecutes\n");
-    return mlir::failure();
-  }
+
+  // This is from before we started running this on the llvm level
+  //
+  // unsigned coexecuteNum = 0;
+  // targetOp->walk([&](omp::CoexecuteOp) { coexecuteNum++; });
+  // if (coexecuteNum < 2) {
+  //   LLVM_DEBUG(
+  //       dbgs() << TAG
+  //              << "target region has fewer than two nested coexecutes\n");
+  //   return mlir::failure();
+  // }
 
   rewriter.setInsertionPoint(targetOp);
   auto dataOp = rewriter.create<omp::DataOp>(
@@ -204,8 +207,10 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
   rewriter.createBlock(&dataOp.getRegion(), dataOp.getRegion().begin(), {}, {});
   auto newTargetOp = rewriter.create<omp::TargetOp>(
       loc, targetOp.getIfExpr(), targetOp.getDevice(),
-      targetOp.getThreadLimit(), targetOp.getNowaitAttr(),
-      /*mapOperands=*/targetOp.getMapOperands());
+      targetOp.getThreadLimit(), targetOp.getTripCount(),
+      targetOp.getNowaitAttr(), targetOp.getMapOperands(),
+      targetOp.getNumTeamsLower(), targetOp.getNumTeamsUpper(),
+      targetOp.getTeamsThreadLimit(), targetOp.getNumThreads());
   rewriter.create<omp::TerminatorOp>(loc);
 
   rewriter.inlineRegionBefore(targetOp.getRegion(), newTargetOp.getRegion(),
@@ -313,7 +318,8 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
         genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
         nullptr, nullptr, false, nullptr)};
     auto mapInfo = rewriter.create<omp::MapInfoOp>(
-        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr, bounds,
+        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr,
+        /*members*/ ValueRange(), bounds,
         rewriter.getIntegerAttr(
             rewriter.getIntegerType(64, false),
             static_cast<
@@ -376,7 +382,10 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     rewriter.setInsertionPoint(targetOp);
     auto preTargetOp = rewriter.create<omp::TargetOp>(
         loc, targetOp.getIfExpr(), targetOp.getDevice(),
-        targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+        targetOp.getThreadLimit(), targetOp.getTripCount(),
+        targetOp.getNowait(), mapOperands, targetOp.getNumTeamsLower(),
+        targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
+        targetOp.getNumThreads());
     auto *preTargetBlock = rewriter.createBlock(
         &preTargetOp.getRegion(), preTargetOp.getRegion().begin(), {}, {});
     IRMapping preMapping;
@@ -398,7 +407,10 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     rewriter.setInsertionPoint(targetOp);
     auto postTargetOp = rewriter.create<omp::TargetOp>(
         loc, targetOp.getIfExpr(), targetOp.getDevice(),
-        targetOp.getThreadLimit(), targetOp.getNowait(), mapOperands);
+        targetOp.getThreadLimit(), targetOp.getTripCount(),
+        targetOp.getNowait(), mapOperands, targetOp.getNumTeamsLower(),
+        targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
+        targetOp.getNumThreads());
     auto *postTargetBlock = rewriter.createBlock(
         &postTargetOp.getRegion(), postTargetOp.getRegion().begin(), {}, {});
     IRMapping postMapping;
@@ -783,7 +795,8 @@ struct HoistAllocs : public OpRewritePattern<AllocOpTy> {
         genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
         nullptr, nullptr, false, nullptr)};
     auto mapInfo = rewriter.create<omp::MapInfoOp>(
-        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr, bounds,
+        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr,
+        /*members*/ ValueRange(), bounds,
         rewriter.getIntegerAttr(
             rewriter.getIntegerType(64, false),
             static_cast<
