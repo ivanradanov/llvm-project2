@@ -111,6 +111,20 @@ static mlir::LLVM::LLVMFuncOp getOmpTargetFree(ModuleOp module) {
           /*isVarArg=*/false));
 }
 
+static bool isRuntimeCall(Operation *op) {
+  if (auto callOp = dyn_cast<fir::CallOp>(op)) {
+    auto callee = callOp.getCallee();
+    if (!callee)
+      return false;
+    auto *func = op->getParentOfType<ModuleOp>().lookupSymbol(*callee);
+    // TODO need to insert a check here whether it is a call we can actually
+    // parallelize currently
+    if (func->getAttr(fir::FIROpsDialect::getFirRuntimeAttrName()))
+      return true;
+  }
+  return false;
+}
+
 /// This is the single source of truth about whether we should parallelize an
 /// operation nested in an omp.execute region.
 static bool shouldParallelize(Operation *op) {
@@ -127,30 +141,30 @@ static bool shouldParallelize(Operation *op) {
       return false;
     return *unordered;
   }
-  if (auto callOp = dyn_cast<fir::CallOp>(op)) {
-    auto callee = callOp.getCallee();
-    if (!callee)
-      return false;
-    auto *func = op->getParentOfType<ModuleOp>().lookupSymbol(*callee);
-    // TODO need to insert a check here whether it is a call we can actually
-    // parallelize currently
-    if (func->getAttr(fir::FIROpsDialect::getFirRuntimeAttrName()))
-      return true;
-    return false;
+  if (isRuntimeCall(op)) {
+    return true;
   }
   // We cannot parallise anything else
   return false;
 }
 
+// TODO we dont need to isolate random operations before a runtime call. We
+// still need to isolate things before parallel regions because we cannot be
+// sure whether they are sinkable into the parallel region, whereas the reloads
+// from temporaries are always sinkable.
 static std::optional<std::tuple<Operation *, bool, bool>>
 getNestedOpToIsolate(omp::TargetOp targetOp) {
   auto *targetBlock = &targetOp.getRegion().front();
   for (auto &op : *targetBlock) {
-    if (isa<omp::TeamsOp, omp::ParallelOp>(&op)) {
-      bool first = &op == &*targetBlock->begin();
-      bool last = op.getNextNode() == targetBlock->getTerminator();
-      if (first && last)
-        return std::nullopt;
+    bool first = &op == &*targetBlock->begin();
+    bool last = op.getNextNode() == targetBlock->getTerminator();
+    if (first && last)
+      return std::nullopt;
+
+    if (isa<omp::TeamsOp, omp::ParallelOp>(&op))
+      return {{&op, first, last}};
+
+    if (isRuntimeCall(&op)) {
       return {{&op, first, last}};
     }
   }
@@ -264,6 +278,17 @@ static void minimizeArgs(omp::TargetOp targetOp) {
   }
 }
 
+struct TempOmpVar {
+  omp::MapInfoOp from, to;
+};
+
+Type getPtrTypeForOmp(Type ty) {
+  if (isa<fir::ReferenceType>(ty))
+    return LLVM::LLVMPointerType::get(ty.getContext());
+  else
+    return fir::LLVMPointerType::get(ty);
+}
+
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
 /// TODO lifetime analysis to lower amount of memory required for temporaries
@@ -288,37 +313,33 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
                     << targetOp << "\n");
 
   auto loc = targetOp->getLoc();
-  mlir::LLVM::LLVMFuncOp ompTargetAllocFunc =
-      getOmpTargetAlloc(targetOp->getParentOfType<ModuleOp>());
-  mlir::LLVM::LLVMFuncOp ompTargetFreeFunc =
-      getOmpTargetFree(targetOp->getParentOfType<ModuleOp>());
-
-  auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
-  auto allocTemp = [&](Type ty) {
-    // TODO This should be a omp_target_alloc or something equivalent which we
-    // currently do not have an easy way to generate so I am ignoring this
-    // problem for now
-    Value size =
-        computeElementDistance(loc, ty, rewriter.getI64Type(), rewriter);
-    Value device = targetOp.getDevice();
-    if (!device) {
-      // TODO is this the correct way to get the default device?
-      device = genI32Constant(loc, rewriter, 0);
+  auto llvmPtrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
+  auto allocTemp = [&](Type ty) -> TempOmpVar {
+    Value alloc;
+    if (isa<fir::ReferenceType>(ty)) {
+      auto one =
+          rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(), 1);
+      alloc = rewriter.create<LLVM::AllocaOp>(loc, llvmPtrTy, llvmPtrTy, one);
+    } else {
+      alloc = rewriter.create<fir::AllocaOp>(loc, ty);
     }
-    auto alloc =
-        rewriter
-            .create<mlir::LLVM::CallOp>(loc, ompTargetAllocFunc,
-                                        SmallVector<Value>({size, device}))
-            ->getResult(0);
-    auto ompHostAlloca = rewriter.create<LLVM::AllocaOp>(
-        loc, ptrTy, ptrTy, genI64Constant(loc, rewriter, 1));
-    rewriter.create<LLVM::StoreOp>(loc, alloc, ompHostAlloca);
     SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
         loc, rewriter.getType<mlir::omp::DataBoundsType>(),
         genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
         nullptr, nullptr, false, nullptr)};
-    auto mapInfo = rewriter.create<omp::MapInfoOp>(
-        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr,
+    auto mapInfoFrom = rewriter.create<omp::MapInfoOp>(
+        loc, alloc.getType(), alloc, ty, /*var_ptr_ptr=*/nullptr,
+        /*members*/ ValueRange(), bounds,
+        rewriter.getIntegerAttr(
+            rewriter.getIntegerType(64, false),
+            static_cast<
+                std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
+                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM)),
+        rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
+            mlir::omp::VariableCaptureKind::ByCopy),
+        rewriter.getStringAttr("coexecute_from"));
+    auto mapInfoTo = rewriter.create<omp::MapInfoOp>(
+        loc, alloc.getType(), alloc, ty, /*var_ptr_ptr=*/nullptr,
         /*members*/ ValueRange(), bounds,
         rewriter.getIntegerAttr(
             rewriter.getIntegerType(64, false),
@@ -327,14 +348,10 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
                 llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO)),
         rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
             mlir::omp::VariableCaptureKind::ByCopy),
-        rewriter.getStringAttr("coexecute_tmp"));
-
+        rewriter.getStringAttr("coexecute_to"));
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointAfter(targetOp);
-    rewriter.create<mlir::LLVM::CallOp>(loc, ompTargetFreeFunc,
-                                        SmallVector<Value>({alloc, device}));
-
-    return mapInfo;
+    return {mapInfoFrom, mapInfoTo};
   };
 
   auto usedOutsideSplit = [&](Value v, Operation *splitBefore) {
@@ -355,14 +372,17 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     auto *targetBlock = &targetOp.getRegion().front();
     rewriter.setInsertionPoint(targetOp);
     SmallVector<std::tuple<Value, unsigned>> allocs;
-    SmallVector<LLVM::LoadOp> toClone;
-    auto mapOperands = SmallVector<Value>(targetOp.getMapOperands());
+    SmallVector<fir::LoadOp> toClone;
+    auto preMapOperands = SmallVector<Value>(targetOp.getMapOperands());
+    auto postMapOperands = SmallVector<Value>(targetOp.getMapOperands());
     for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
          it++) {
+      // TODO this can be made more generic, e.g. fir.declare is also used on te
+      // args
       // Skip if it is already a load from a mapped argument to the target
       // region
-      if (auto loadOp = dyn_cast<LLVM::LoadOp>(it))
-        if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getAddr()))
+      if (auto loadOp = dyn_cast<fir::LoadOp>(it))
+        if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getMemref()))
           if (blockArg.getOwner() == targetBlock) {
             toClone.push_back(loadOp);
             continue;
@@ -370,8 +390,9 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
       for (auto res : it->getResults()) {
         if (usedOutsideSplit(res, splitBefore)) {
           auto alloc = allocTemp(res.getType());
-          allocs.push_back({res, mapOperands.size()});
-          mapOperands.push_back(alloc);
+          allocs.push_back({res, preMapOperands.size()});
+          preMapOperands.push_back(alloc.from);
+          postMapOperands.push_back(alloc.to);
         }
       }
     }
@@ -383,7 +404,7 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     auto preTargetOp = rewriter.create<omp::TargetOp>(
         loc, targetOp.getIfExpr(), targetOp.getDevice(),
         targetOp.getThreadLimit(), targetOp.getTripCount(),
-        targetOp.getNowait(), mapOperands, targetOp.getNumTeamsLower(),
+        targetOp.getNowait(), preMapOperands, targetOp.getNumTeamsLower(),
         targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
         targetOp.getNumThreads());
     auto *preTargetBlock = rewriter.createBlock(
@@ -399,8 +420,22 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
       rewriter.clone(*it, preMapping);
     for (auto tup : allocs) {
       auto original = std::get<0>(tup);
-      auto newArg = preTargetBlock->addArgument(ptrTy, original.getLoc());
-      rewriter.create<LLVM::StoreOp>(loc, preMapping.lookup(original), newArg);
+      Value toStore = preMapping.lookup(original);
+      auto newArg = preTargetBlock->addArgument(
+          getPtrTypeForOmp(original.getType()), original.getLoc());
+      if (isa<fir::ReferenceType>(original.getType())) {
+        // TODO maybe we should use fir convertop here, but a LLVM::LLVMPointer
+        // is currently not considered convertible, and there is no allocaop for
+        // fir::LLVMPointer, we can change `isPointerCompatible` to change the
+        // ConvertOp behaviour
+        toStore = rewriter
+                      .create<UnrealizedConversionCastOp>(loc, llvmPtrTy,
+                                                          ValueRange(toStore))
+                      .getResult(0);
+        rewriter.create<LLVM::StoreOp>(loc, toStore, newArg);
+      } else {
+        rewriter.create<fir::StoreOp>(loc, toStore, newArg);
+      }
     }
     rewriter.create<omp::TerminatorOp>(loc);
 
@@ -408,7 +443,7 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     auto postTargetOp = rewriter.create<omp::TargetOp>(
         loc, targetOp.getIfExpr(), targetOp.getDevice(),
         targetOp.getThreadLimit(), targetOp.getTripCount(),
-        targetOp.getNowait(), mapOperands, targetOp.getNumTeamsLower(),
+        targetOp.getNowait(), postMapOperands, targetOp.getNumTeamsLower(),
         targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
         targetOp.getNumThreads());
     auto *postTargetBlock = rewriter.createBlock(
@@ -424,9 +459,19 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
       rewriter.clone(*loadOp, postMapping);
     for (auto tup : allocs) {
       auto original = std::get<0>(tup);
-      auto newArg = postTargetBlock->addArgument(ptrTy, original.getLoc());
-      postMapping.map(original, rewriter.create<LLVM::LoadOp>(
-                                    loc, original.getType(), newArg));
+      Value newArg = postTargetBlock->addArgument(
+          getPtrTypeForOmp(original.getType()), original.getLoc());
+      Value restored;
+      if (isa<fir::ReferenceType>(original.getType())) {
+        restored = rewriter.create<LLVM::LoadOp>(loc, llvmPtrTy, newArg);
+        restored = rewriter
+                       .create<UnrealizedConversionCastOp>(
+                           loc, original.getType(), ValueRange(restored))
+                       .getResult(0);
+      } else {
+        restored = rewriter.create<fir::LoadOp>(loc, newArg);
+      }
+      postMapping.map(original, restored);
     }
     for (auto it = splitBefore->getIterator(); it != targetBlock->end(); it++)
       rewriter.clone(*it, postMapping);
@@ -445,8 +490,8 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     return cast<omp::TargetOp>(newSplitBefore->getParentOp());
   }
   if (splitBefore) {
-    auto *newSplitBefore = splitBeforeOp(toIsolate);
-    return cast<omp::TargetOp>(newSplitBefore->getParentOp());
+    splitBeforeOp(toIsolate);
+    return nullptr;
   }
   if (splitAfter) {
     auto *newSplitBefore = splitBeforeOp(toIsolate->getNextNode());
@@ -922,6 +967,7 @@ void FIROMPOptPass::runOnOperation() {
       signalPassFailure();
     }
   }
+  LLVM_DEBUG(dbgs() << TAG << "After coexecute fission:\n" << *op << "\n");
   // We need to convert the unordered do loops to omp.distribute while we still
   // have that representation (later in the pipeline they will be converted to
   // cf and will be unrecoverable)
@@ -933,47 +979,30 @@ void FIROMPOptPass::runOnOperation() {
       signalPassFailure();
     }
   }
-}
-
-void LLVMOMPOptPass::runOnOperation() {
-  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-llvm ===\n");
-
-  Operation *op = getOperation();
-  MLIRContext &context = getContext();
-  GreedyRewriteConfig config;
-  // prevent the pattern driver form merging blocks
-  config.enableRegionSimplification = false;
-
-  // We need to split the coexecute when we have the parallel regions
-  // represented as unordered do loops
-  {
-    RewritePatternSet patterns(&context);
-    patterns.insert<HoistAllocs<LLVM::CallOp>, HoistAllocs<LLVM::AllocaOp>>(
-        &context);
-    if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
-      emitError(op->getLoc(), "error in OpenMP optimizations\n");
-      signalPassFailure();
-    }
-  }
-  LLVM_DEBUG(dbgs() << TAG << "After hoisting allocations:\n" << *op << "\n");
+  LLVM_DEBUG(dbgs() << TAG << "After coexecute lower:\n" << *op << "\n");
   // We must split out the target data before we fission the target regions in
   // order to preserve the memory movement semantics
-  {
-    SmallVector<omp::TargetOp> targetOps;
-    op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
-    IRRewriter rewriter(&context);
-    for (auto targetOp : targetOps)
-      (void)splitTargetData(targetOp, rewriter);
-  }
-  // Target fission is best done when we have the llvm representation as all the
-  // types are allocatable now and we can allocate temporaries for kernel
-  // crossings
+  //
+  // TODO Let us ignore trying to preserve any semantics for now and assume we
+  // can break the state of the program after the coexecute...
+  // {
+  //   SmallVector<omp::TargetOp> targetOps;
+  //   op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
+  //   IRRewriter rewriter(&context);
+  //   for (auto targetOp : targetOps)
+  //     (void)splitTargetData(targetOp, rewriter);
+  // }
+
   SmallVector<omp::TargetOp> targetOps;
   op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
   IRRewriter rewriter(&context);
   for (auto targetOp : targetOps)
     while (targetOp)
       targetOp = fissionTarget(targetOp, rewriter);
+}
+
+void LLVMOMPOptPass::runOnOperation() {
+  LLVM_DEBUG(dbgs() << "=== Begin " DEBUG_TYPE "-llvm ===\n");
 }
 
 /// OpenMP optimizations
