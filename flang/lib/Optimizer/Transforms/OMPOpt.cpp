@@ -316,39 +316,39 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto llvmPtrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
   auto allocTemp = [&](Type ty) -> TempOmpVar {
     Value alloc;
+    Type allocType;
     if (isa<fir::ReferenceType>(ty)) {
       auto one =
           rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(), 1);
-      alloc = rewriter.create<LLVM::AllocaOp>(loc, llvmPtrTy, llvmPtrTy, one);
+      allocType = llvmPtrTy;
+      alloc = rewriter.create<LLVM::AllocaOp>(loc, llvmPtrTy, allocType, one);
     } else {
-      alloc = rewriter.create<fir::AllocaOp>(loc, ty);
+      allocType = ty;
+      alloc = rewriter.create<fir::AllocaOp>(loc, allocType);
     }
     SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
         loc, rewriter.getType<mlir::omp::DataBoundsType>(),
         genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
         nullptr, nullptr, false, nullptr)};
-    auto mapInfoFrom = rewriter.create<omp::MapInfoOp>(
-        loc, alloc.getType(), alloc, ty, /*var_ptr_ptr=*/nullptr,
-        /*members*/ ValueRange(), bounds,
-        rewriter.getIntegerAttr(
-            rewriter.getIntegerType(64, false),
-            static_cast<
-                std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
-                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM)),
-        rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
-            mlir::omp::VariableCaptureKind::ByCopy),
-        rewriter.getStringAttr("coexecute_from"));
-    auto mapInfoTo = rewriter.create<omp::MapInfoOp>(
-        loc, alloc.getType(), alloc, ty, /*var_ptr_ptr=*/nullptr,
-        /*members*/ ValueRange(), bounds,
-        rewriter.getIntegerAttr(
-            rewriter.getIntegerType(64, false),
-            static_cast<
-                std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
-                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO)),
-        rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
-            mlir::omp::VariableCaptureKind::ByCopy),
-        rewriter.getStringAttr("coexecute_to"));
+    auto getMapInfo = [&](auto mappingFlags, const char *name) {
+      return rewriter.create<omp::MapInfoOp>(
+          loc, alloc.getType(), alloc, allocType, /*var_ptr_ptr=*/nullptr,
+          /*members*/ ValueRange(), bounds,
+          rewriter.getIntegerAttr(
+              rewriter.getIntegerType(64, false),
+              static_cast<
+                  std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
+                  mappingFlags)),
+          rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
+              mlir::omp::VariableCaptureKind::ByCopy),
+          rewriter.getStringAttr(name));
+    };
+    auto mapInfoFrom =
+        getMapInfo(llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_FROM,
+                   "__flang_coexecute_from");
+    auto mapInfoTo =
+        getMapInfo(llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO,
+                   "__flang_coexecute_to");
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointAfter(targetOp);
     return {mapInfoFrom, mapInfoTo};
