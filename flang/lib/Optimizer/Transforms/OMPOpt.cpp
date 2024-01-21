@@ -530,6 +530,10 @@ struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
 
     auto loopOp = getPerfectlyNested<fir::DoLoopOp>(coexecuteOp);
     if (loopOp && shouldParallelize(loopOp)) {
+      rewriter.setInsertionPoint(coexecuteOp);
+      auto distributeOp = rewriter.create<omp::DistributeOp>(teamsLoc);
+      rewriter.createBlock(&distributeOp.getRegion(),
+                           distributeOp.getRegion().begin(), {}, {});
       auto parallelOp = rewriter.create<omp::ParallelOp>(
           teamsLoc, teamsOp.getIfExpr(), /*num_threads_var=*/nullptr,
           teamsOp.getAllocateVars(), teamsOp.getAllocatorsVars(),
@@ -552,7 +556,7 @@ struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
       // Currently the number of args in the wsloop block matches the number of
       // args in the do loop, so we do not need to remap any arguments or add
       // new ones, but we may need to when we involve reductions
-      rewriter.replaceOp(teamsOp, parallelOp);
+      rewriter.replaceOp(coexecuteOp, parallelOp);
       return success();
     }
 
