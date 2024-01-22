@@ -163,10 +163,6 @@ getNestedOpToIsolate(omp::TargetOp targetOp) {
 
     if (isa<omp::TeamsOp, omp::ParallelOp>(&op))
       return {{&op, first, last}};
-
-    if (isRuntimeCall(&op)) {
-      return {{&op, first, last}};
-    }
   }
   return std::nullopt;
 }
@@ -310,6 +306,65 @@ static bool isRecomputableAfterFission(Operation *op, Operation *splitBefore) {
   return false;
 }
 
+void moveToHost(omp::TargetOp targetOp, RewriterBase &rewriter) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
+  Block *targetBlock = &targetOp.getRegion().front();
+  assert(targetBlock == &targetOp.getRegion().back());
+  IRMapping mapping;
+  for (auto map :
+       zip_equal(targetOp.getMapOperands(), targetBlock->getArguments())) {
+    Value mapInfo = std::get<0>(map);
+    BlockArgument arg = std::get<1>(map);
+    Operation *op = mapInfo.getDefiningOp();
+    assert(op);
+    auto mapInfoOp = cast<omp::MapInfoOp>(op);
+    mapping.map(arg, mapInfoOp.getVarPtr());
+  }
+
+  rewriter.setInsertionPoint(targetOp);
+  // rewriter.inlineBlockBefore(&targetOp.getRegion().front(), targetOp, args);
+
+  for (auto it = targetBlock->begin(), end = std::prev(targetBlock->end());
+       it != end; ++it) {
+    auto allocOp = dyn_cast<fir::AllocMemOp>(&*it);
+    auto freeOp = dyn_cast<fir::FreeMemOp>(&*it);
+    Value device;
+    if (allocOp || freeOp) {
+      device = targetOp.getDevice();
+      if (!device) {
+        // TODO is this the correct way to get the default device?
+        device = genI32Constant(it->getLoc(), rewriter, 0);
+      }
+    }
+    if (allocOp) {
+      auto tmpAllocOp = rewriter.create<fir::OmpTargetAllocMemOp>(
+          allocOp.getLoc(), allocOp.getType(), device, allocOp.getInTypeAttr(),
+          allocOp.getUniqNameAttr(), allocOp.getBindcNameAttr(),
+          allocOp.getTypeparams(), allocOp.getShape());
+      auto newAllocOp = cast<fir::OmpTargetAllocMemOp>(
+          rewriter.clone(*tmpAllocOp.getOperation(), mapping));
+      mapping.map(allocOp.getResult(), newAllocOp.getResult());
+      rewriter.eraseOp(tmpAllocOp);
+    } else if (freeOp) {
+      auto tmpFreeOp = rewriter.create<fir::OmpTargetFreeMemOp>(
+          freeOp.getLoc(), device, freeOp.getHeapref());
+      rewriter.clone(*tmpFreeOp.getOperation(), mapping);
+      rewriter.eraseOp(tmpFreeOp);
+    } else {
+      rewriter.clone(*it, mapping);
+    }
+  }
+
+  rewriter.eraseOp(targetOp);
+}
+
+struct SplitResult {
+  omp::TargetOp preTargetOp;
+  omp::TargetOp isolatedTargetOp;
+  omp::TargetOp postTargetOp;
+};
+
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
 ///
 /// TODO lifetime analysis to lower amount of memory required for temporaries
@@ -319,11 +374,12 @@ static bool isRecomputableAfterFission(Operation *op, Operation *splitBefore) {
 /// avoid having to split them off in a separate omp.target
 /// TODO when we generate loads for the temporaries these should be in the
 /// parallel region
-omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
+void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto tuple = getNestedOpToIsolate(targetOp);
   if (!tuple) {
     LLVM_DEBUG(dbgs() << TAG << "No op to isolate\n");
-    return nullptr;
+    moveToHost(targetOp, rewriter);
+    return;
   }
 
   Operation *toIsolate = std::get<0>(*tuple);
@@ -388,7 +444,7 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     return false;
   };
 
-  auto splitBeforeOp = [&](Operation *splitBefore) {
+  auto isolateOp = [&](Operation *splitBefore) -> SplitResult {
     auto targetOp = cast<omp::TargetOp>(splitBefore->getParentOp());
     auto *targetBlock = &targetOp.getRegion().front();
     rewriter.setInsertionPoint(targetOp);
@@ -496,69 +552,105 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     }
     rewriter.create<omp::TerminatorOp>(loc);
 
+    auto reloadCache = [&](IRMapping &mapping, Block *newTargetBlock) {
+      for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
+        auto originalArg = targetBlock->getArgument(i);
+        auto newArg = newTargetBlock->addArgument(originalArg.getType(),
+                                                  originalArg.getLoc());
+        mapping.map(originalArg, newArg);
+      }
+
+      // See above
+      assert(toClone.empty());
+      // for (auto loadOp : toClone)
+      //   rewriter.clone(*loadOp, postMapping);
+
+      for (auto tup : allocs) {
+        auto original = std::get<0>(tup);
+        Value newArg = newTargetBlock->addArgument(
+            getPtrTypeForOmp(original.getType()), original.getLoc());
+        Value restored;
+        if (isPtr(original.getType())) {
+          restored = rewriter.create<LLVM::LoadOp>(loc, llvmPtrTy, newArg);
+          if (!isa<LLVM::LLVMPointerType>(original.getType()))
+            restored = rewriter
+                           .create<UnrealizedConversionCastOp>(
+                               loc, original.getType(), ValueRange(restored))
+                           .getResult(0);
+        } else {
+          restored = rewriter.create<fir::LoadOp>(loc, newArg);
+        }
+        mapping.map(original, restored);
+      }
+      for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
+           it++)
+        if (toRecompute.contains(&*it))
+          rewriter.clone(*it, mapping);
+    };
+
     rewriter.setInsertionPoint(targetOp);
-    auto postTargetOp = rewriter.create<omp::TargetOp>(
+    auto isolatedTargetOp = rewriter.create<omp::TargetOp>(
         loc, targetOp.getIfExpr(), targetOp.getDevice(),
         targetOp.getThreadLimit(), targetOp.getTripCount(),
         targetOp.getNowait(), postMapOperands, targetOp.getNumTeamsLower(),
         targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
         targetOp.getNumThreads());
-    auto *postTargetBlock = rewriter.createBlock(
-        &postTargetOp.getRegion(), postTargetOp.getRegion().begin(), {}, {});
-    IRMapping postMapping;
-    for (unsigned i = 0; i < targetBlock->getNumArguments(); i++) {
-      auto originalArg = targetBlock->getArgument(i);
-      auto newArg = postTargetBlock->addArgument(originalArg.getType(),
-                                                 originalArg.getLoc());
-      postMapping.map(originalArg, newArg);
-    }
-    // See above
-    assert(toClone.empty());
-    // for (auto loadOp : toClone)
-    //   rewriter.clone(*loadOp, postMapping);
-    for (auto tup : allocs) {
-      auto original = std::get<0>(tup);
-      Value newArg = postTargetBlock->addArgument(
-          getPtrTypeForOmp(original.getType()), original.getLoc());
-      Value restored;
-      if (isPtr(original.getType())) {
-        restored = rewriter.create<LLVM::LoadOp>(loc, llvmPtrTy, newArg);
-        if (!isa<LLVM::LLVMPointerType>(original.getType()))
-          restored = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             loc, original.getType(), ValueRange(restored))
-                         .getResult(0);
-      } else {
-        restored = rewriter.create<fir::LoadOp>(loc, newArg);
-      }
-      postMapping.map(original, restored);
-    }
-    for (auto it = targetBlock->begin(); it != splitBefore->getIterator(); it++)
-      if (toRecompute.contains(&*it))
+    auto *isolatedTargetBlock =
+        rewriter.createBlock(&isolatedTargetOp.getRegion(),
+                             isolatedTargetOp.getRegion().begin(), {}, {});
+    IRMapping isolatedMapping;
+    reloadCache(isolatedMapping, isolatedTargetBlock);
+
+    rewriter.clone(*splitBefore, isolatedMapping);
+    rewriter.create<omp::TerminatorOp>(loc);
+
+    omp::TargetOp postTargetOp = nullptr;
+    if (splitAfter) {
+      rewriter.setInsertionPoint(targetOp);
+      postTargetOp = rewriter.create<omp::TargetOp>(
+          loc, targetOp.getIfExpr(), targetOp.getDevice(),
+          targetOp.getThreadLimit(), targetOp.getTripCount(),
+          targetOp.getNowait(), postMapOperands, targetOp.getNumTeamsLower(),
+          targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
+          targetOp.getNumThreads());
+      auto *postTargetBlock = rewriter.createBlock(
+          &postTargetOp.getRegion(), postTargetOp.getRegion().begin(), {}, {});
+      IRMapping postMapping;
+      reloadCache(postMapping, postTargetBlock);
+
+      assert(splitBefore->getNumResults() == 0 ||
+             llvm::all_of(splitBefore->getResults(),
+                          [](Value result) { return result.use_empty(); }));
+
+      for (auto it = std::next(splitBefore->getIterator());
+           it != targetBlock->end(); it++)
         rewriter.clone(*it, postMapping);
-    for (auto it = splitBefore->getIterator(); it != targetBlock->end(); it++)
-      rewriter.clone(*it, postMapping);
+    }
 
     rewriter.eraseOp(targetOp);
 
-    minimizeArgs(preTargetOp);
-    minimizeArgs(postTargetOp);
+    // minimizeArgs(preTargetOp);
+    // minimizeArgs(postTargetOp);
 
-    return postMapping.lookup(splitBefore);
+    return {preTargetOp, isolatedTargetOp, postTargetOp};
   };
 
   if (splitBefore && splitAfter) {
-    auto *newSplitBefore = splitBeforeOp(toIsolate);
-    newSplitBefore = splitBeforeOp(newSplitBefore->getNextNode());
-    return cast<omp::TargetOp>(newSplitBefore->getParentOp());
+    auto res = isolateOp(toIsolate);
+    moveToHost(res.preTargetOp, rewriter);
+    fissionTarget(res.postTargetOp, rewriter);
+    return;
   }
   if (splitBefore) {
-    splitBeforeOp(toIsolate);
-    return nullptr;
+    auto res = isolateOp(toIsolate);
+    moveToHost(res.preTargetOp, rewriter);
+    return;
   }
   if (splitAfter) {
-    auto *newSplitBefore = splitBeforeOp(toIsolate->getNextNode());
-    return cast<omp::TargetOp>(newSplitBefore->getParentOp());
+    assert(false && "TODO");
+    auto res = isolateOp(toIsolate->getNextNode());
+    fissionTarget(res.postTargetOp, rewriter);
+    return;
   }
   llvm_unreachable("we should not have had an op to isolate");
 }
@@ -1064,9 +1156,9 @@ void FIROMPOptPass::runOnOperation() {
   SmallVector<omp::TargetOp> targetOps;
   op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
   IRRewriter rewriter(&context);
-  for (auto targetOp : targetOps)
-    while (targetOp)
-      targetOp = fissionTarget(targetOp, rewriter);
+  for (omp::TargetOp targetOp : targetOps) {
+    fissionTarget(targetOp, rewriter);
+  }
 }
 
 void LLVMOMPOptPass::runOnOperation() {
