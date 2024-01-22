@@ -1248,6 +1248,112 @@ struct AllocMemOpConversion : public FIROpConversion<fir::AllocMemOp> {
 };
 } // namespace
 
+/// Return the LLVMFuncOp corresponding to omp_target_alloc
+///
+/// void* omp_target_alloc(size_t size, int device_num);
+///
+/// TODO is the abi correct for all targets?
+static mlir::LLVM::LLVMFuncOp getOmpTargetAlloc(mlir::Operation *op) {
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  if (mlir::LLVM::LLVMFuncOp mallocFunc =
+          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_alloc"))
+    return mallocFunc;
+  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+  auto i64Ty = mlir::IntegerType::get(module->getContext(), 64);
+  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
+  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
+      moduleBuilder.getUnknownLoc(), "omp_target_alloc",
+      mlir::LLVM::LLVMFunctionType::get(
+          mlir::LLVM::LLVMPointerType::get(module->getContext()),
+          {i64Ty, i32Ty},
+          /*isVarArg=*/false));
+}
+
+namespace {
+struct OmpTargetAllocMemOpConversion
+    : public FIROpConversion<fir::OmpTargetAllocMemOp> {
+  using FIROpConversion::FIROpConversion;
+
+  mlir::LogicalResult
+  matchAndRewrite(fir::OmpTargetAllocMemOp heap, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Type heapTy = heap.getType();
+    mlir::LLVM::LLVMFuncOp mallocFunc = getOmpTargetAlloc(heap);
+    mlir::Location loc = heap.getLoc();
+    auto ity = lowerTy().indexType();
+    mlir::Type dataTy = fir::unwrapRefType(heapTy);
+    mlir::Type llvmObjectTy = convertObjectType(dataTy);
+    if (fir::isRecordWithTypeParameters(fir::unwrapSequenceType(dataTy)))
+      TODO(loc, "fir.allocmem codegen of derived type with length parameters");
+    mlir::Value size = genTypeSizeInBytes(loc, ity, rewriter, llvmObjectTy);
+    if (auto scaleSize = genAllocationScaleSize(heap, ity, rewriter))
+      size = rewriter.create<mlir::LLVM::MulOp>(loc, ity, size, scaleSize);
+    for (mlir::Value opnd : adaptor.getOperands())
+      size = rewriter.create<mlir::LLVM::MulOp>(
+          loc, ity, size, integerCast(loc, rewriter, ity, opnd));
+    heap->setAttr("callee", mlir::SymbolRefAttr::get(mallocFunc));
+    // TODO need to convert the device argument to the appropriate int type
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallOp>(
+        heap, ::getLlvmPtrType(heap.getContext()),
+        mlir::SmallVector<mlir::Value, 2>({size, heap.getDevice()}),
+        heap->getAttrs());
+    return mlir::success();
+  }
+
+  /// Compute the allocation size in bytes of the element type of
+  /// \p llTy pointer type. The result is returned as a value of \p idxTy
+  /// integer type.
+  mlir::Value genTypeSizeInBytes(mlir::Location loc, mlir::Type idxTy,
+                                 mlir::ConversionPatternRewriter &rewriter,
+                                 mlir::Type llTy) const {
+    return computeElementDistance(loc, llTy, idxTy, rewriter);
+  }
+};
+} // namespace
+
+/// Return the LLVMFuncOp corresponding to omp_target_free
+///
+/// void omp_target_free(void *device_ptr, int device_num);
+///
+/// TODO is the abi correct for all targets?
+static mlir::LLVM::LLVMFuncOp getOmpTargetFree(mlir::Operation *op) {
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  if (mlir::LLVM::LLVMFuncOp freeFunc =
+          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_free"))
+    return freeFunc;
+  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
+  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
+      moduleBuilder.getUnknownLoc(), "omp_target_free",
+      mlir::LLVM::LLVMFunctionType::get(
+          mlir::LLVM::LLVMVoidType::get(module->getContext()),
+          {getLlvmPtrType(module->getContext()), i32Ty},
+          /*isVarArg=*/false));
+}
+
+namespace {
+/// Lower a `fir.freemem` instruction into `llvm.call @free`
+struct OmpTargetFreeMemOpConversion
+    : public FIROpConversion<fir::OmpTargetFreeMemOp> {
+  using FIROpConversion::FIROpConversion;
+
+  mlir::LogicalResult
+  matchAndRewrite(fir::OmpTargetFreeMemOp freemem, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::LLVM::LLVMFuncOp freeFunc = getOmpTargetFree(freemem);
+    mlir::Location loc = freemem.getLoc();
+    freemem->setAttr("callee", mlir::SymbolRefAttr::get(freeFunc));
+    // TODO need to convert the device argument to the appropriate int type
+    rewriter.create<mlir::LLVM::CallOp>(
+        loc, mlir::TypeRange{},
+        mlir::ValueRange{adaptor.getHeapref(), freemem.getDevice()},
+        freemem->getAttrs());
+    rewriter.eraseOp(freemem);
+    return mlir::success();
+  }
+};
+} // namespace
+
 /// Return the LLVMFuncOp corresponding to the standard free call.
 static mlir::LLVM::LLVMFuncOp
 getFree(fir::FreeMemOp op, mlir::ConversionPatternRewriter &rewriter) {
@@ -3851,28 +3957,29 @@ public:
     mlir::RewritePatternSet pattern(context);
     pattern.insert<
         AbsentOpConversion, AddcOpConversion, AddrOfOpConversion,
-        AllocaOpConversion, AllocMemOpConversion, BoxAddrOpConversion,
-        BoxCharLenOpConversion, BoxDimsOpConversion, BoxEleSizeOpConversion,
-        BoxIsAllocOpConversion, BoxIsArrayOpConversion, BoxIsPtrOpConversion,
-        BoxOffsetOpConversion, BoxProcHostOpConversion, BoxRankOpConversion,
-        BoxTypeCodeOpConversion, BoxTypeDescOpConversion, CallOpConversion,
-        CmpcOpConversion, ConstcOpConversion, ConvertOpConversion,
-        CoordinateOpConversion, DTEntryOpConversion, DivcOpConversion,
-        EmboxOpConversion, EmboxCharOpConversion, EmboxProcOpConversion,
-        ExtractValueOpConversion, FieldIndexOpConversion, FirEndOpConversion,
-        FreeMemOpConversion, GlobalLenOpConversion, GlobalOpConversion,
-        HasValueOpConversion, InsertOnRangeOpConversion,
-        InsertValueOpConversion, IsPresentOpConversion,
-        LenParamIndexOpConversion, LoadOpConversion, MulcOpConversion,
-        NegcOpConversion, NoReassocOpConversion, SelectCaseOpConversion,
-        SelectOpConversion, SelectRankOpConversion, SelectTypeOpConversion,
-        ShapeOpConversion, ShapeShiftOpConversion, ShiftOpConversion,
-        SliceOpConversion, StoreOpConversion, StringLitOpConversion,
-        SubcOpConversion, TypeDescOpConversion, TypeInfoOpConversion,
-        UnboxCharOpConversion, UnboxProcOpConversion, UndefOpConversion,
-        UnreachableOpConversion, UnrealizedConversionCastOpConversion,
-        XArrayCoorOpConversion, XEmboxOpConversion, XReboxOpConversion,
-        ZeroOpConversion>(typeConverter, options);
+        AllocaOpConversion, AllocMemOpConversion, OmpTargetAllocMemOpConversion,
+        BoxAddrOpConversion, BoxCharLenOpConversion, BoxDimsOpConversion,
+        BoxEleSizeOpConversion, BoxIsAllocOpConversion, BoxIsArrayOpConversion,
+        BoxIsPtrOpConversion, BoxOffsetOpConversion, BoxProcHostOpConversion,
+        BoxRankOpConversion, BoxTypeCodeOpConversion, BoxTypeDescOpConversion,
+        CallOpConversion, CmpcOpConversion, ConstcOpConversion,
+        ConvertOpConversion, CoordinateOpConversion, DTEntryOpConversion,
+        DivcOpConversion, EmboxOpConversion, EmboxCharOpConversion,
+        EmboxProcOpConversion, ExtractValueOpConversion, FieldIndexOpConversion,
+        FirEndOpConversion, OmpTargetFreeMemOpConversion, FreeMemOpConversion,
+        GlobalLenOpConversion, GlobalOpConversion, HasValueOpConversion,
+        InsertOnRangeOpConversion, InsertValueOpConversion,
+        IsPresentOpConversion, LenParamIndexOpConversion, LoadOpConversion,
+        MulcOpConversion, NegcOpConversion, NoReassocOpConversion,
+        SelectCaseOpConversion, SelectOpConversion, SelectRankOpConversion,
+        SelectTypeOpConversion, ShapeOpConversion, ShapeShiftOpConversion,
+        ShiftOpConversion, SliceOpConversion, StoreOpConversion,
+        StringLitOpConversion, SubcOpConversion, TypeDescOpConversion,
+        TypeInfoOpConversion, UnboxCharOpConversion, UnboxProcOpConversion,
+        UndefOpConversion, UnreachableOpConversion,
+        UnrealizedConversionCastOpConversion, XArrayCoorOpConversion,
+        XEmboxOpConversion, XReboxOpConversion, ZeroOpConversion>(typeConverter,
+                                                                  options);
     mlir::populateFuncToLLVMConversionPatterns(typeConverter, pattern);
     mlir::populateOpenMPToLLVMConversionPatterns(typeConverter, pattern);
     mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, pattern);
