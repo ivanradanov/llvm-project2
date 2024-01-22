@@ -184,6 +184,36 @@ def fir_AllocaOp : fir_Op<"alloca", [AttrSizedOperandSegments,
   }];
 }
 
+def fir_OmpTargetAllocMemOp : fir_Op<"omp_target_allocmem",
+    [MemoryEffects<[MemAlloc<DefaultResource>]>, AttrSizedOperandSegments]> {
+  let summary = "allocate storage on an openmp device for an object of a given type";
+
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (ins
+    Arg<AnyIntegerType>:$device,
+    TypeAttr:$in_type,
+    OptionalAttr<StrAttr>:$uniq_name,
+    OptionalAttr<StrAttr>:$bindc_name,
+    Variadic<AnyIntegerType>:$typeparams,
+    Variadic<AnyIntegerType>:$shape
+  );
+  let results = (outs fir_HeapType);
+
+  let extraClassDeclaration = [{
+    mlir::Type getAllocatedType();
+    bool hasLenParams() { return !getTypeparams().empty(); }
+    bool hasShapeOperands() { return !getShape().empty(); }
+    unsigned numLenParams() { return getTypeparams().size(); }
+    operand_range getLenParams() { return getTypeparams(); }
+    unsigned numShapeOperands() { return getShape().size(); }
+    operand_range getShapeOperands() { return getShape(); }
+    static mlir::Type getRefTy(mlir::Type ty);
+  }];
+}
+
 def fir_AllocMemOp : fir_Op<"allocmem",
     [MemoryEffects<[MemAlloc<DefaultResource>]>, AttrSizedOperandSegments]> {
   let summary = "allocate storage on the heap for an object of a given type";
@@ -236,6 +266,29 @@ def fir_AllocMemOp : fir_Op<"allocmem",
     operand_range getShapeOperands() { return getShape(); }
     static mlir::Type getRefTy(mlir::Type ty);
   }];
+}
+
+def fir_OmpTargetFreeMemOp : fir_Op<"omp_target_freemem", [MemoryEffects<[MemFree]>]> {
+  let summary = "free a heap object";
+
+  let description = [{
+    Deallocates a heap memory reference that was allocated by an `allocmem`.
+    The memory object that is deallocated is placed in an undefined state
+    after `fir.freemem`.  Optimizations may treat the loading of an object
+    in the undefined state as undefined behavior.  This includes aliasing
+    references, such as the result of an `fir.embox`.
+
+    ```
+      %21 = fir.allocmem !fir.type<ZT(p:i32){field:i32}>
+      ...
+      fir.freemem %21 : !fir.heap<!fir.type<ZT>>
+    ```
+  }];
+
+  let arguments = (ins
+  Arg<AnyIntegerType, "", [MemFree]>:$device,
+  Arg<fir_HeapType, "", [MemFree]>:$heapref
+  );
 }
 
 def fir_FreeMemOp : fir_Op<"freemem", [MemoryEffects<[MemFree]>]> {
