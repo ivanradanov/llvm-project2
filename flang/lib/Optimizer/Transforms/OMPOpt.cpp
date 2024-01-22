@@ -282,11 +282,32 @@ struct TempOmpVar {
   omp::MapInfoOp from, to;
 };
 
-Type getPtrTypeForOmp(Type ty) {
-  if (isa<fir::ReferenceType>(ty))
+static bool isPtr(Type ty) {
+  return isa<fir::ReferenceType>(ty) || isa<LLVM::LLVMPointerType>(ty);
+}
+
+static Type getPtrTypeForOmp(Type ty) {
+  if (isPtr(ty))
     return LLVM::LLVMPointerType::get(ty.getContext());
   else
     return fir::LLVMPointerType::get(ty);
+}
+
+static bool isRecomputableAfterFission(Operation *op, Operation *splitBefore) {
+  // TODO do we need hlfir.declare?
+  if (isa<fir::DeclareOp>(op))
+    return true;
+
+  llvm::SmallVector<MemoryEffects::EffectInstance> effects;
+  MemoryEffectOpInterface interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!interface) {
+    return false;
+  }
+  interface.getEffects(effects);
+  if (effects.empty())
+    return true;
+
+  return false;
 }
 
 /// Isolates the first target{parallel|teams{}} nest in its own omp.target op
@@ -317,7 +338,7 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
   auto allocTemp = [&](Type ty) -> TempOmpVar {
     Value alloc;
     Type allocType;
-    if (isa<fir::ReferenceType>(ty)) {
+    if (isPtr(ty)) {
       auto one =
           rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(), 1);
       allocType = llvmPtrTy;
@@ -375,25 +396,60 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     SmallVector<fir::LoadOp> toClone;
     auto preMapOperands = SmallVector<Value>(targetOp.getMapOperands());
     auto postMapOperands = SmallVector<Value>(targetOp.getMapOperands());
+    SmallVector<Value> requiredVals;
+    SmallPtrSet<Operation *, 8> nonRecomputable;
     for (auto it = targetBlock->begin(); it != splitBefore->getIterator();
          it++) {
       // TODO this can be made more generic, e.g. fir.declare is also used on te
       // args
       // Skip if it is already a load from a mapped argument to the target
       // region
-      if (auto loadOp = dyn_cast<fir::LoadOp>(it))
-        if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getMemref()))
-          if (blockArg.getOwner() == targetBlock) {
-            toClone.push_back(loadOp);
-            continue;
-          }
-      for (auto res : it->getResults()) {
-        if (usedOutsideSplit(res, splitBefore)) {
-          auto alloc = allocTemp(res.getType());
-          allocs.push_back({res, preMapOperands.size()});
-          preMapOperands.push_back(alloc.from);
-          postMapOperands.push_back(alloc.to);
-        }
+      //
+      // Disabled for now because I am not sure whether we may not have memory
+      // that aliases memory that is written to in a parallel region. We would
+      // like to read and stash that in a new temporary in that case.
+      //
+      // if (auto loadOp = dyn_cast<fir::LoadOp>(it))
+      //   if (auto blockArg = dyn_cast<BlockArgument>(loadOp.getMemref()))
+      //     if (blockArg.getOwner() == targetBlock) {
+      //       toClone.push_back(loadOp);
+      //       continue;
+      //     }
+      for (auto res : it->getResults())
+        if (usedOutsideSplit(res, splitBefore))
+          requiredVals.push_back(res);
+      if (!isRecomputableAfterFission(&*it, splitBefore))
+        nonRecomputable.insert(&*it);
+    }
+
+    SmallPtrSet<Operation *, 8> toCache;
+    SmallPtrSet<Operation *, 8> toRecompute;
+    std::function<void(Value)> collectNonRecomputableDeps = [&](Value v) {
+      Operation *op = v.getDefiningOp();
+
+      if (!op) {
+        assert(v.cast<BlockArgument>().getOwner()->getParentOp() == targetOp);
+        return;
+      }
+
+      if (nonRecomputable.contains(op)) {
+        toCache.insert(op);
+        return;
+      }
+
+      toRecompute.insert(op);
+      for (auto opr : op->getOperands())
+        collectNonRecomputableDeps(opr);
+    };
+    for (auto requiredVal : requiredVals)
+      collectNonRecomputableDeps(requiredVal);
+
+    for (Operation *op : toCache) {
+      for (auto res : op->getResults()) {
+        auto alloc = allocTemp(res.getType());
+        allocs.push_back({res, preMapOperands.size()});
+        preMapOperands.push_back(alloc.from);
+        postMapOperands.push_back(alloc.to);
       }
     }
 
@@ -423,15 +479,16 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
       Value toStore = preMapping.lookup(original);
       auto newArg = preTargetBlock->addArgument(
           getPtrTypeForOmp(original.getType()), original.getLoc());
-      if (isa<fir::ReferenceType>(original.getType())) {
+      if (isPtr(original.getType())) {
         // TODO maybe we should use fir convertop here, but a LLVM::LLVMPointer
         // is currently not considered convertible, and there is no allocaop for
         // fir::LLVMPointer, we can change `isPointerCompatible` to change the
         // ConvertOp behaviour
-        toStore = rewriter
-                      .create<UnrealizedConversionCastOp>(loc, llvmPtrTy,
-                                                          ValueRange(toStore))
-                      .getResult(0);
+        if (!isa<LLVM::LLVMPointerType>(toStore.getType()))
+          toStore = rewriter
+                        .create<UnrealizedConversionCastOp>(loc, llvmPtrTy,
+                                                            ValueRange(toStore))
+                        .getResult(0);
         rewriter.create<LLVM::StoreOp>(loc, toStore, newArg);
       } else {
         rewriter.create<fir::StoreOp>(loc, toStore, newArg);
@@ -455,24 +512,30 @@ omp::TargetOp fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
                                                  originalArg.getLoc());
       postMapping.map(originalArg, newArg);
     }
-    for (auto loadOp : toClone)
-      rewriter.clone(*loadOp, postMapping);
+    // See above
+    assert(toClone.empty());
+    // for (auto loadOp : toClone)
+    //   rewriter.clone(*loadOp, postMapping);
     for (auto tup : allocs) {
       auto original = std::get<0>(tup);
       Value newArg = postTargetBlock->addArgument(
           getPtrTypeForOmp(original.getType()), original.getLoc());
       Value restored;
-      if (isa<fir::ReferenceType>(original.getType())) {
+      if (isPtr(original.getType())) {
         restored = rewriter.create<LLVM::LoadOp>(loc, llvmPtrTy, newArg);
-        restored = rewriter
-                       .create<UnrealizedConversionCastOp>(
-                           loc, original.getType(), ValueRange(restored))
-                       .getResult(0);
+        if (!isa<LLVM::LLVMPointerType>(original.getType()))
+          restored = rewriter
+                         .create<UnrealizedConversionCastOp>(
+                             loc, original.getType(), ValueRange(restored))
+                         .getResult(0);
       } else {
         restored = rewriter.create<fir::LoadOp>(loc, newArg);
       }
       postMapping.map(original, restored);
     }
+    for (auto it = targetBlock->begin(); it != splitBefore->getIterator(); it++)
+      if (toRecompute.contains(&*it))
+        rewriter.clone(*it, postMapping);
     for (auto it = splitBefore->getIterator(); it != targetBlock->end(); it++)
       rewriter.clone(*it, postMapping);
 
@@ -539,6 +602,7 @@ struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
           teamsOp.getAllocateVars(), teamsOp.getAllocatorsVars(),
           /*reduction_vars=*/ValueRange(), /*reductions=*/nullptr,
           /*proc_bind_val=*/nullptr);
+      rewriter.create<omp::TerminatorOp>(coexecuteLoc);
       rewriter.createBlock(&parallelOp.getRegion(),
                            parallelOp.getRegion().begin(), {}, {});
       auto wsLoop = rewriter.create<omp::WsLoopOp>(
