@@ -829,6 +829,9 @@ struct TeamsCoexecuteToSingle : public OpRewritePattern<omp::TeamsOp> {
     rewriter.inlineBlockBefore(coexecuteBlock, teamsOp);
     rewriter.eraseOp(teamsOp);
 
+    // TODO we should assign the location of the coexecute op to be the location
+    // of the statement it is for so that we get a meaningful message here. Also
+    // the message is wrong.
     coexecuteOp.emitWarning("unable to parallelize coexecute");
 
     return success();
