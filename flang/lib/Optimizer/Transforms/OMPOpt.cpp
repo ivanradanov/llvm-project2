@@ -48,6 +48,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/IRMapping.h>
+#include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <mlir/Support/LLVM.h>
@@ -240,6 +241,8 @@ struct TempOmpVar {
   omp::MapInfoOp from, to;
 };
 
+static Type getOmpDeviceType(MLIRContext *c) { return IntegerType::get(c, 32); }
+
 static bool isPtr(Type ty) {
   return isa<fir::ReferenceType>(ty) || isa<LLVM::LLVMPointerType>(ty);
 }
@@ -291,8 +294,12 @@ void moveToHost(omp::TargetOp targetOp, RewriterBase &rewriter) {
        it != end; ++it) {
     auto allocOp = dyn_cast<fir::AllocMemOp>(&*it);
     auto freeOp = dyn_cast<fir::FreeMemOp>(&*it);
+    fir::CallOp runtimeCall = nullptr;
+    if (isRuntimeCall(&*it))
+      runtimeCall = cast<fir::CallOp>(&*it);
+
     Value device;
-    if (allocOp || freeOp) {
+    if (allocOp || freeOp || runtimeCall) {
       device = targetOp.getDevice();
       if (!device) {
         // TODO is this the correct way to get the default device?
@@ -313,6 +320,37 @@ void moveToHost(omp::TargetOp targetOp, RewriterBase &rewriter) {
           freeOp.getLoc(), device, freeOp.getHeapref());
       rewriter.clone(*tmpFreeOp.getOperation(), mapping);
       rewriter.eraseOp(tmpFreeOp);
+    } else if (runtimeCall) {
+      auto module = runtimeCall->getParentOfType<ModuleOp>();
+      auto callee =
+          cast<func::FuncOp>(module.lookupSymbol(runtimeCall.getCalleeAttr()));
+      std::string newCalleeName = (callee.getName() + "_omp").str();
+      mlir::OpBuilder moduleBuilder(module.getBodyRegion());
+      func::FuncOp newCallee =
+          cast_or_null<func::FuncOp>(module.lookupSymbol(newCalleeName));
+      if (!newCallee) {
+        SmallVector<Type> argTypes(callee.getFunctionType().getInputs());
+        argTypes.push_back(getOmpDeviceType(rewriter.getContext()));
+        newCallee = moduleBuilder.create<func::FuncOp>(
+            callee->getLoc(), newCalleeName,
+            FunctionType::get(rewriter.getContext(), argTypes,
+                              callee.getFunctionType().getResults()));
+        if (callee.getArgAttrs())
+          newCallee.setArgAttrsAttr(*callee.getArgAttrs());
+        if (callee.getResAttrs())
+          newCallee.setResAttrsAttr(*callee.getResAttrs());
+        newCallee.setSymVisibility(callee.getSymVisibility());
+        newCallee->setDiscardableAttrs(callee->getDiscardableAttrDictionary());
+      }
+      SmallVector<Value> operands = runtimeCall.getOperands();
+      operands.push_back(device);
+      auto tmpCall = rewriter.create<fir::CallOp>(
+          runtimeCall.getLoc(), runtimeCall.getResultTypes(),
+          SymbolRefAttr::get(newCallee), operands,
+          runtimeCall.getFastmathAttr());
+      Operation *newCall = rewriter.clone(*tmpCall, mapping);
+      mapping.map(&*it, newCall);
+      rewriter.eraseOp(tmpCall);
     } else {
       rewriter.clone(*it, mapping);
     }
