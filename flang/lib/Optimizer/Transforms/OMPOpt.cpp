@@ -73,44 +73,6 @@ static inline mlir::Type getLlvmPtrType(mlir::MLIRContext *context) {
   return mlir::LLVM::LLVMPointerType::get(context);
 }
 
-/// Return the LLVMFuncOp corresponding to omp_target_alloc
-///
-/// void* omp_target_alloc(size_t size, int device_num);
-///
-/// TODO is the abi correct for all targets?
-static mlir::LLVM::LLVMFuncOp getOmpTargetAlloc(ModuleOp module) {
-  if (mlir::LLVM::LLVMFuncOp mallocFunc =
-          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_alloc"))
-    return mallocFunc;
-  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
-  auto i64Ty = mlir::IntegerType::get(module->getContext(), 64);
-  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
-  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
-      moduleBuilder.getUnknownLoc(), "omp_target_alloc",
-      mlir::LLVM::LLVMFunctionType::get(
-          LLVM::LLVMPointerType::get(module->getContext()), {i64Ty, i32Ty},
-          /*isVarArg=*/false));
-}
-
-/// Return the LLVMFuncOp corresponding to omp_target_free
-///
-/// void omp_target_free(void *device_ptr, int device_num);
-///
-/// TODO is the abi correct for all targets?
-static mlir::LLVM::LLVMFuncOp getOmpTargetFree(ModuleOp module) {
-  if (mlir::LLVM::LLVMFuncOp freeFunc =
-          module.lookupSymbol<mlir::LLVM::LLVMFuncOp>("omp_target_free"))
-    return freeFunc;
-  mlir::OpBuilder moduleBuilder(module.getBodyRegion());
-  auto i32Ty = mlir::IntegerType::get(module->getContext(), 32);
-  return moduleBuilder.create<mlir::LLVM::LLVMFuncOp>(
-      moduleBuilder.getUnknownLoc(), "omp_target_free",
-      mlir::LLVM::LLVMFunctionType::get(
-          LLVM::LLVMVoidType::get(module->getContext()),
-          {getLlvmPtrType(module->getContext()), i32Ty},
-          /*isVarArg=*/false));
-}
-
 static bool isRuntimeCall(Operation *op) {
   if (auto callOp = dyn_cast<fir::CallOp>(op)) {
     auto callee = callOp.getCallee();
