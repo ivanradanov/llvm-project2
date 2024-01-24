@@ -5977,8 +5977,13 @@ OpenMPIRBuilder::InsertPointTy OpenMPIRBuilder::createTargetData(
     return InsertPointTy();
 
   // Disable TargetData CodeGen on Device pass.
-  if (Config.IsTargetDevice.value_or(false))
+  if (Config.IsTargetDevice.value_or(false)) {
+    // However, we still need to gen the body if we have a BodyGenCB as there
+    // may be nested target ops.
+    if (BodyGenCB)
+      Builder.restoreIP(BodyGenCB(Builder.saveIP(), BodyGenTy::NoPriv));
     return Builder.saveIP();
+  }
 
   Builder.restoreIP(CodeGenIP);
   bool IsStandAlone = !BodyGenCB;
