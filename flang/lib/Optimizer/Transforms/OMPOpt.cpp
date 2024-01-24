@@ -175,15 +175,13 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
 
   // Generate maps that do not move any memory which will be used for the inner,
   // and the device pointers that we will use.
-  // TODO We gather all of the device pointers for now, we should minimize them
-  // later.
   // TODO Not sure - do we need one more level of indirection for the
   // use_device_ptr?
   rewriter.setInsertionPoint(targetOp);
   SmallVector<Value> noneMapInfos;
   SmallVector<Value> useDevicePtr;
   for (auto mapInfo : mapInfos) {
-    useDevicePtr.push_back(mapInfo.getVarPtr());
+    // useDevicePtr.push_back(mapInfo.getVarPtr());
     assert(!mapInfo.getVarPtrPtr() && "TODO");
     auto noneMapInfo = cast<omp::MapInfoOp>(rewriter.clone(*mapInfo));
     noneMapInfo.setMapTypeAttr(rewriter.getIntegerAttr(
@@ -198,7 +196,7 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
   rewriter.setInsertionPoint(targetOp);
   auto dataOp = rewriter.create<omp::DataOp>(
       loc, targetOp.getIfExpr(), targetOp.getDevice(), useDevicePtr,
-      /*use_device_addr=*/mlir::ValueRange(), noneMapInfos);
+      /*use_device_addr=*/mlir::ValueRange(), targetOp.getMapOperands());
   Block *dataOpBlock = rewriter.createBlock(&dataOp.getRegion(),
                                             dataOp.getRegion().begin(), {}, {});
   for (auto ptr : useDevicePtr)
@@ -206,7 +204,7 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
   auto newTargetOp = rewriter.create<omp::TargetOp>(
       loc, targetOp.getIfExpr(), targetOp.getDevice(),
       targetOp.getThreadLimit(), targetOp.getTripCount(),
-      targetOp.getNowaitAttr(), targetOp.getMapOperands(),
+      targetOp.getNowaitAttr(), noneMapInfos,
       targetOp.getNumTeamsLower(), targetOp.getNumTeamsUpper(),
       targetOp.getTeamsThreadLimit(), targetOp.getNumThreads());
   rewriter.create<omp::TerminatorOp>(loc);
