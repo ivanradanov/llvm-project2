@@ -36,14 +36,14 @@ function coexecute_a(x, y, z, n) result(sum_less)
 
   ostart = omp_get_wtime()
   !$omp target
-  !omp teams
-  !omp coexecute
+  !$omp teams
+  !$omp coexecute
       y(1:n/2,1:n) = 0.1
       y = sqrt(y * x) * x * y
       !z = matmul(x, y - 0.000002)
       z = y
-  !omp end coexecute
-  !omp end teams
+  !$omp end coexecute
+  !$omp end teams
   !$omp end target
   oend = omp_get_wtime()
   print *, 'Time: ', oend-ostart, 'seconds.'
