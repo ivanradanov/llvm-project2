@@ -144,6 +144,11 @@ mlir::LLVM::ConstantOp genI64Constant(mlir::Location loc,
   return rewriter.create<mlir::LLVM::ConstantOp>(loc, i64Ty, attr);
 }
 
+struct SplitTargetResult {
+  omp::TargetOp targetOp;
+  omp::DataOp dataOp;
+};
+
 /// If multiple coexecutes are nested in a target regions, we will need to split
 /// the target region, but we want to preserve the data semantics of the
 /// original data region - we split the target region into a target_data{target}
@@ -153,31 +158,51 @@ mlir::LLVM::ConstantOp genI64Constant(mlir::Location loc,
 /// or always free map types (or something similar, I forgot how they are
 /// called); I think these just need to be removed from the inner data region
 /// map
-mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
-                                    RewriterBase &rewriter) {
+std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
+                                                 RewriterBase &rewriter) {
+
+  // We should be doing these checks at the callsite
+
   auto loc = targetOp->getLoc();
   if (targetOp.getMapOperands().empty()) {
     LLVM_DEBUG(dbgs() << TAG << "target region has no data maps\n");
-    return mlir::failure();
+    return std::nullopt;
   }
 
-  // This is from before we started running this on the llvm level
-  //
-  // unsigned coexecuteNum = 0;
-  // targetOp->walk([&](omp::CoexecuteOp) { coexecuteNum++; });
-  // if (coexecuteNum < 2) {
-  //   LLVM_DEBUG(
-  //       dbgs() << TAG
-  //              << "target region has fewer than two nested coexecutes\n");
-  //   return mlir::failure();
-  // }
+  SmallVector<omp::MapInfoOp> mapInfos;
+  for (auto opr : targetOp.getMapOperands())
+    mapInfos.push_back(cast<omp::MapInfoOp>(opr.getDefiningOp()));
 
+  // Generate maps that do not move any memory which will be used for the inner,
+  // and the device pointers that we will use.
+  // TODO We gather all of the device pointers for now, we should minimize them
+  // later.
+  // TODO Not sure - do we need one more level of indirection for the
+  // use_device_ptr?
+  rewriter.setInsertionPoint(targetOp);
+  SmallVector<Value> noneMapInfos;
+  SmallVector<Value> useDevicePtr;
+  for (auto mapInfo : mapInfos) {
+    useDevicePtr.push_back(mapInfo.getVarPtr());
+    assert(!mapInfo.getVarPtrPtr() && "TODO");
+    auto noneMapInfo = cast<omp::MapInfoOp>(rewriter.clone(*mapInfo));
+    noneMapInfo.setMapTypeAttr(rewriter.getIntegerAttr(
+        rewriter.getIntegerType(64, false),
+        static_cast<
+            std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
+            llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_NONE)));
+    noneMapInfos.push_back(noneMapInfo.getResult());
+  }
+
+  // TODO I still dont understand the use_device_addr thing...
   rewriter.setInsertionPoint(targetOp);
   auto dataOp = rewriter.create<omp::DataOp>(
-      loc, targetOp.getIfExpr(), targetOp.getDevice(),
-      /*use_device_ptr=*/mlir::ValueRange(),
-      /*use_device_addr=*/mlir::ValueRange(), targetOp.getMapOperands());
-  rewriter.createBlock(&dataOp.getRegion(), dataOp.getRegion().begin(), {}, {});
+      loc, targetOp.getIfExpr(), targetOp.getDevice(), useDevicePtr,
+      /*use_device_addr=*/mlir::ValueRange(), noneMapInfos);
+  Block *dataOpBlock = rewriter.createBlock(&dataOp.getRegion(),
+                                            dataOp.getRegion().begin(), {}, {});
+  for (auto ptr : useDevicePtr)
+    dataOpBlock->addArgument(ptr.getType(), ptr.getLoc());
   auto newTargetOp = rewriter.create<omp::TargetOp>(
       loc, targetOp.getIfExpr(), targetOp.getDevice(),
       targetOp.getThreadLimit(), targetOp.getTripCount(),
@@ -191,7 +216,7 @@ mlir::LogicalResult splitTargetData(omp::TargetOp targetOp,
 
   rewriter.replaceOp(targetOp, newTargetOp);
 
-  return mlir::success();
+  return SplitTargetResult{newTargetOp, dataOp};
 }
 
 /// Borrowed from CodeGen.cpp
@@ -1115,6 +1140,10 @@ void FIROMPOptPass::runOnOperation() {
   // block and that they are perfectly nested in a teams region so as not to
   // duplicate that check (that check should probably be in a LLVM_DEBUG?)
 
+  // TODO We should grab all TargetOps that we need to handle and run our
+  // patterns and transformations on them and not recollect anything between
+  // transformations
+
   MLIRContext &context = getContext();
   GreedyRewriteConfig config;
   // prevent the pattern driver form merging blocks
@@ -1143,24 +1172,18 @@ void FIROMPOptPass::runOnOperation() {
     }
   }
   LLVM_DEBUG(dbgs() << TAG << "After coexecute lower:\n" << *op << "\n");
+
   // We must split out the target data before we fission the target regions in
   // order to preserve the memory movement semantics
-  //
-  // TODO Let us ignore trying to preserve any semantics for now and assume we
-  // can break the state of the program after the coexecute...
-  // {
-  //   SmallVector<omp::TargetOp> targetOps;
-  //   op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
-  //   IRRewriter rewriter(&context);
-  //   for (auto targetOp : targetOps)
-  //     (void)splitTargetData(targetOp, rewriter);
-  // }
-
-  SmallVector<omp::TargetOp> targetOps;
-  op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
-  IRRewriter rewriter(&context);
-  for (omp::TargetOp targetOp : targetOps) {
-    fissionTarget(targetOp, rewriter);
+  {
+    SmallVector<omp::TargetOp> targetOps;
+    op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
+    IRRewriter rewriter(&context);
+    for (auto targetOp : targetOps) {
+      auto res = splitTargetData(targetOp, rewriter);
+      if (res)
+        fissionTarget(res->targetOp, rewriter);
+    }
   }
 }
 
