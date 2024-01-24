@@ -32,26 +32,30 @@ RT_API_ATTRS static void Assign(Descriptor &to, const Descriptor &from,
     terminator.Crash("Assign: toElements != fromElements");
 
   void *host_to_ptr = to.raw().base_addr;
+  void *device_to_ptr = nullptr;
   void *host_from_ptr = from.raw().base_addr;
+  void *device_from_ptr = nullptr;
   size_t length = toElements * toElementBytes;
 
   printf("assign length: %zu\n", length);
 
-  if (!omp_target_is_present(host_to_ptr, omp_device))
-    terminator.Crash("Assign: !omp_target_is_present(host_to_ptr, omp_device)");
-  if (!omp_target_is_present(host_from_ptr, omp_device))
-    terminator.Crash(
-        "Assign: !omp_target_is_present(host_from_ptr, omp_device)");
-
-  printf("host_to_ptr: %p\n", host_to_ptr);
-#pragma omp target data use_device_ptr(host_to_ptr, host_from_ptr) device(omp_device)
-  {
-    printf("device_to_ptr: %p\n", host_to_ptr);
-    // TODO do we need to handle overlapping memory? does this function do that?
-    omp_target_memcpy(host_to_ptr, host_from_ptr, length, /*dst_offset*/ 0,
-        /*src_offset*/ 0, /*dst*/ omp_device, /*src*/ omp_device);
+  if (!omp_target_is_present(host_to_ptr, omp_device)) {
+    device_to_ptr = host_to_ptr;
+    host_to_ptr = nullptr;
+  }
+  if (!omp_target_is_present(host_from_ptr, omp_device)) {
+    device_from_ptr = host_from_ptr;
+    host_from_ptr = nullptr;
   }
 
+#pragma omp target data use_device_ptr(host_to_ptr, host_from_ptr) device(omp_device)
+  {
+    void *to_ptr = host_to_ptr ? host_to_ptr : device_to_ptr;
+    void *from_ptr = host_from_ptr ? host_from_ptr : device_from_ptr;
+    // TODO do we need to handle overlapping memory? does this function do that?
+    omp_target_memcpy(to_ptr, from_ptr, length, /*dst_offset*/ 0,
+        /*src_offset*/ 0, /*dst*/ omp_device, /*src*/ omp_device);
+  }
   return;
 }
 
