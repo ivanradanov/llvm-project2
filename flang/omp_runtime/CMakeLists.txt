@@ -81,15 +81,13 @@ append(${NO_LTO_FLAGS} CMAKE_CXX_FLAGS)
 add_definitions(-U_GLIBCXX_ASSERTIONS)
 add_definitions(-U_LIBCPP_ENABLE_ASSERTIONS)
 
+# TODO define this more robustly
+add_definitions(-fopenmp)
+add_definitions(--offload-arch=native)
+
 set(sources
   assign.cpp
 )
-
-# List of files that are buildable for all devices.
-set(supported_files
-  assign
-  )
-
 
 add_flang_library(FortranOmpRuntime
   ${sources}
