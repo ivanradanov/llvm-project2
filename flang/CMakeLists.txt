@@ -434,6 +434,7 @@ if (FLANG_BUILD_TOOLS)
   add_subdirectory(tools)
 endif()
 add_subdirectory(runtime)
+add_subdirectory(omp_runtime)
 
 if (LLVM_INCLUDE_EXAMPLES)
   add_subdirectory(examples)
