@@ -48,6 +48,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/IRMapping.h>
+#include <mlir/IR/Location.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
@@ -568,9 +569,22 @@ void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     // Split into two blocks with additional mapppings for the values to be
     // passed in memory across the regions
 
+    FileLineColLoc preLoc, isolatedLoc, postLoc;
+    if (auto flc = loc.dyn_cast<FileLineColLoc>()) {
+      int offset = 0;
+      int increment = 1;
+      preLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset, flc.getColumn());
+      offset += increment;
+      isolatedLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset, flc.getColumn());
+      offset += increment;
+      postLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset, flc.getColumn());
+    } else {
+      llvm_unreachable("target op must have file line col loc");
+    }
+
     rewriter.setInsertionPoint(targetOp);
     auto preTargetOp = rewriter.create<omp::TargetOp>(
-        loc, targetOp.getIfExpr(), targetOp.getDevice(),
+        preLoc, targetOp.getIfExpr(), targetOp.getDevice(),
         targetOp.getThreadLimit(), targetOp.getTripCount(),
         targetOp.getNowait(), preMapOperands, targetOp.getNumTeamsLower(),
         targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
@@ -646,7 +660,7 @@ void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
 
     rewriter.setInsertionPoint(targetOp);
     auto isolatedTargetOp = rewriter.create<omp::TargetOp>(
-        loc, targetOp.getIfExpr(), targetOp.getDevice(),
+        isolatedLoc, targetOp.getIfExpr(), targetOp.getDevice(),
         targetOp.getThreadLimit(), targetOp.getTripCount(),
         targetOp.getNowait(), postMapOperands, targetOp.getNumTeamsLower(),
         targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
@@ -664,7 +678,7 @@ void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     if (splitAfter) {
       rewriter.setInsertionPoint(targetOp);
       postTargetOp = rewriter.create<omp::TargetOp>(
-          loc, targetOp.getIfExpr(), targetOp.getDevice(),
+          postLoc, targetOp.getIfExpr(), targetOp.getDevice(),
           targetOp.getThreadLimit(), targetOp.getTripCount(),
           targetOp.getNowait(), postMapOperands, targetOp.getNumTeamsLower(),
           targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
@@ -1211,6 +1225,18 @@ void FIROMPOptPass::runOnOperation() {
     op->walk([&](omp::TargetOp targetOp) { targetOps.push_back(targetOp); });
     IRRewriter rewriter(&context);
     for (auto targetOp : targetOps) {
+
+      auto loc = targetOp.getLoc();
+
+      if (auto flc = loc.dyn_cast<FileLineColLoc>()) {
+        int offset = 1'000'000'000;
+        int multiplier = 100;
+        auto newLoc = FileLineColLoc::get(flc.getFilename(), multiplier * flc.getLine() + offset, flc.getColumn() + offset);
+        targetOp->setLoc(newLoc);
+      } else {
+        llvm_unreachable("target op must have file line col loc");
+      }
+
       auto res = splitTargetData(targetOp, rewriter);
       if (res)
         fissionTarget(res->targetOp, rewriter);
