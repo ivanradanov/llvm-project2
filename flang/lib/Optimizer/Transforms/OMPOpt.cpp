@@ -173,30 +173,64 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
   for (auto opr : targetOp.getMapOperands())
     mapInfos.push_back(cast<omp::MapInfoOp>(opr.getDefiningOp()));
 
+  LLVM_DEBUG(dbgs() << "Generating target data wrap\n";);
+
   // Generate maps that do not move any memory which will be used for the inner,
   // and the device pointers that we will use.
   // TODO Not sure - do we need one more level of indirection for the
   // use_device_ptr?
   rewriter.setInsertionPoint(targetOp);
-  SmallVector<Value> noneMapInfos;
+  SmallVector<Value> innerMapInfos;
+  SmallVector<Value> outerMapInfos;
+  // SmallVector<Value> toMapInfos;
+  // SmallVector<Value> fromMapInfos;
   SmallVector<Value> useDevicePtr;
   for (auto mapInfo : mapInfos) {
     // useDevicePtr.push_back(mapInfo.getVarPtr());
     assert(!mapInfo.getVarPtrPtr() && "TODO");
-    auto noneMapInfo = cast<omp::MapInfoOp>(rewriter.clone(*mapInfo));
-    noneMapInfo.setMapTypeAttr(rewriter.getIntegerAttr(
+    // TODO are these ever not present?
+    auto originalMapType =
+        (llvm::omp::OpenMPOffloadMappingFlags)*mapInfo.getMapType();
+    auto originalCaptureType = *mapInfo.getMapCaptureType();
+    LLVM_DEBUG(dbgs() << mapInfo << " with map type "
+                      << (uint64_t)originalMapType << " and capture type "
+                      << originalCaptureType << "\n");
+
+    llvm::omp::OpenMPOffloadMappingFlags newMapType;
+    mlir::omp::VariableCaptureKind newCaptureType;
+    if (originalCaptureType == mlir::omp::VariableCaptureKind::ByCopy) {
+      newMapType = originalMapType;
+      newCaptureType = originalCaptureType;
+    } else if (originalCaptureType == mlir::omp::VariableCaptureKind::ByRef) {
+      newMapType = llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_NONE;
+      newCaptureType = originalCaptureType;
+      outerMapInfos.push_back(mapInfo);
+    } else {
+      llvm_unreachable("Unhandled case");
+    }
+
+    LLVM_DEBUG(dbgs() << "New: map type " << (uint64_t)newMapType
+                      << " and capture type " << newCaptureType << "\n");
+
+    auto innerMapInfo = cast<omp::MapInfoOp>(rewriter.clone(*mapInfo));
+    innerMapInfo.setMapTypeAttr(rewriter.getIntegerAttr(
         rewriter.getIntegerType(64, false),
         static_cast<
             std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
-            llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_NONE)));
-    noneMapInfos.push_back(noneMapInfo.getResult());
+            newMapType)));
+    innerMapInfo.setMapCaptureType(newCaptureType);
+
+    innerMapInfos.push_back(innerMapInfo.getResult());
   }
 
-  // TODO I still dont understand the use_device_addr thing...
   rewriter.setInsertionPoint(targetOp);
+  // auto dataEnterOp = rewriter.create<omp::EnterDataOp>(loc,
+  // targetOp.getIfExpr(), targetOp.getDevice(), targetOp.getNowaitAttr(),
+  // targetOp.getMapOperands());
+  // TODO I still dont understand the use_device_addr thing...
   auto dataOp = rewriter.create<omp::DataOp>(
       loc, targetOp.getIfExpr(), targetOp.getDevice(), useDevicePtr,
-      /*use_device_addr=*/mlir::ValueRange(), targetOp.getMapOperands());
+      /*use_device_addr=*/mlir::ValueRange(), outerMapInfos);
   Block *dataOpBlock = rewriter.createBlock(&dataOp.getRegion(),
                                             dataOp.getRegion().begin(), {}, {});
   for (auto ptr : useDevicePtr)
@@ -204,17 +238,20 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
   auto newTargetOp = rewriter.create<omp::TargetOp>(
       loc, targetOp.getIfExpr(), targetOp.getDevice(),
       targetOp.getThreadLimit(), targetOp.getTripCount(),
-      targetOp.getNowaitAttr(), noneMapInfos,
-      targetOp.getNumTeamsLower(), targetOp.getNumTeamsUpper(),
-      targetOp.getTeamsThreadLimit(), targetOp.getNumThreads());
+      targetOp.getNowaitAttr(), innerMapInfos, targetOp.getNumTeamsLower(),
+      targetOp.getNumTeamsUpper(), targetOp.getTeamsThreadLimit(),
+      targetOp.getNumThreads());
   rewriter.create<omp::TerminatorOp>(loc);
+  // auto dataExitOp = rewriter.create<omp::ExitDataOp>(loc,
+  // targetOp.getIfExpr(), targetOp.getDevice(), targetOp.getNowaitAttr(),
+  // targetOp.getMapOperands());
 
   rewriter.inlineRegionBefore(targetOp.getRegion(), newTargetOp.getRegion(),
                               newTargetOp.getRegion().begin());
 
   rewriter.replaceOp(targetOp, newTargetOp);
 
-  return SplitTargetResult{newTargetOp, dataOp};
+  return SplitTargetResult{newTargetOp, nullptr};
 }
 
 /// Borrowed from CodeGen.cpp
@@ -426,21 +463,17 @@ void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
       allocType = ty;
       alloc = rewriter.create<fir::AllocaOp>(loc, allocType);
     }
-    SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
-        loc, rewriter.getType<mlir::omp::DataBoundsType>(),
-        genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
-        nullptr, nullptr, false, nullptr)};
     auto getMapInfo = [&](auto mappingFlags, const char *name) {
       return rewriter.create<omp::MapInfoOp>(
           loc, alloc.getType(), alloc, allocType, /*var_ptr_ptr=*/nullptr,
-          /*members*/ ValueRange(), bounds,
+          /*members=*/ValueRange(), /*bounds=*/ValueRange(),
           rewriter.getIntegerAttr(
               rewriter.getIntegerType(64, false),
               static_cast<
                   std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
                   mappingFlags)),
           rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
-              mlir::omp::VariableCaptureKind::ByCopy),
+              mlir::omp::VariableCaptureKind::ByRef),
           rewriter.getStringAttr(name));
     };
     auto mapInfoFrom =
