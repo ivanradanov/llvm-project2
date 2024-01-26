@@ -1,3 +1,4 @@
+#include "./utils.h"
 #include "../runtime/freestanding-tools.h"
 #include "../runtime/terminator.h"
 #include "../runtime/type-info.h"
@@ -19,8 +20,10 @@ enum AssignFlags {
   DeallocateLHS = 1 << 6
 };
 
+namespace omp {
+
 RT_API_ATTRS static void Assign(Descriptor &to, const Descriptor &from,
-    Terminator &terminator, int flags, int32_t omp_device) {
+    Terminator &terminator, int flags, OMPDeviceTy omp_device) {
   std::size_t toElementBytes{to.ElementBytes()};
   std::size_t fromElementBytes{from.ElementBytes()};
   std::size_t toElements{to.Elements()};
@@ -31,31 +34,12 @@ RT_API_ATTRS static void Assign(Descriptor &to, const Descriptor &from,
   if (toElements != fromElements)
     terminator.Crash("Assign: toElements != fromElements");
 
-  void *host_to_ptr = to.raw().base_addr;
-  void *device_to_ptr = nullptr;
-  void *host_from_ptr = from.raw().base_addr;
-  void *device_from_ptr = nullptr;
+  void *to_ptr = getDevicePtr(to.raw().base_addr, omp_device);
+  void *from_ptr = getDevicePtr(from.raw().base_addr, omp_device);
   size_t length = toElements * toElementBytes;
 
-  printf("assign length: %zu\n", length);
-
-  if (!omp_target_is_present(host_to_ptr, omp_device)) {
-    device_to_ptr = host_to_ptr;
-    host_to_ptr = nullptr;
-  }
-  if (!omp_target_is_present(host_from_ptr, omp_device)) {
-    device_from_ptr = host_from_ptr;
-    host_from_ptr = nullptr;
-  }
-
-#pragma omp target data use_device_ptr(host_to_ptr, host_from_ptr) device(omp_device)
-  {
-    void *to_ptr = host_to_ptr ? host_to_ptr : device_to_ptr;
-    void *from_ptr = host_from_ptr ? host_from_ptr : device_from_ptr;
-    // TODO do we need to handle overlapping memory? does this function do that?
-    omp_target_memcpy(to_ptr, from_ptr, length, /*dst_offset*/ 0,
-        /*src_offset*/ 0, /*dst*/ omp_device, /*src*/ omp_device);
-  }
+  omp_target_memcpy(to_ptr, from_ptr, length, /*dst_offset*/ 0,
+      /*src_offset*/ 0, /*dst*/ omp_device, /*src*/ omp_device);
   return;
 }
 
@@ -63,15 +47,16 @@ extern "C" {
 RT_EXT_API_GROUP_BEGIN
 
 void RTDEF(Assign_omp)(Descriptor &to, const Descriptor &from,
-    const char *sourceFile, int sourceLine, int32_t omp_device) {
+    const char *sourceFile, int sourceLine, omp::OMPDeviceTy omp_device) {
   Terminator terminator{sourceFile, sourceLine};
   // All top-level defined assignments can be recognized in semantics and
   // will have been already been converted to calls, so don't check for
   // defined assignment apart from components.
-  Assign(to, from, terminator,
+  omp::Assign(to, from, terminator,
       MaybeReallocate | NeedFinalization | ComponentCanBeDefinedAssignment,
       omp_device);
 }
 
 } // extern "C"
+} // namespace omp
 } // namespace Fortran::runtime
