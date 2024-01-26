@@ -513,8 +513,18 @@ void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
         nonRecomputable.insert(&*it);
     }
 
-    SmallPtrSet<Operation *, 8> toCache;
-    SmallPtrSet<Operation *, 8> toRecompute;
+    // Iterating these sets must be deterministic w.r.t. the order we insert
+    // insert into them because we need to end up with the same argument order
+    // in the host and all the device modules.
+    // TODO In the future we would want a better pipeline where we can embed the
+    // target code into modules in the host file - then we can properly deal
+    // with issues that can arise from having (slightly) different code on the
+    // device and host. Currently we depend on them having the same (or close
+    // enough) representation at this level that the transformations we do in
+    // this pass will result in the same transformation in all modules of
+    // different targets of the same compilation.
+    SetVector<Operation *> toCache;
+    SetVector<Operation *> toRecompute;
     std::function<void(Value)> collectNonRecomputableDeps = [&](Value v) {
       Operation *op = v.getDefiningOp();
 
