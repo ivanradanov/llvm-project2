@@ -71,7 +71,8 @@ namespace fir {
 using llvm::dbgs;
 using namespace mlir;
 
-static inline mlir::Type getLlvmPtrType(mlir::MLIRContext *context) {
+[[maybe_unused]] static inline mlir::Type
+getLlvmPtrType(mlir::MLIRContext *context) {
   return mlir::LLVM::LLVMPointerType::get(context);
 }
 
@@ -131,15 +132,15 @@ getNestedOpToIsolate(omp::TargetOp targetOp) {
   return std::nullopt;
 }
 
-mlir::LLVM::ConstantOp genI32Constant(mlir::Location loc,
-                                      mlir::RewriterBase &rewriter, int value) {
+static mlir::LLVM::ConstantOp
+genI32Constant(mlir::Location loc, mlir::RewriterBase &rewriter, int value) {
   mlir::Type i32Ty = rewriter.getI32Type();
   mlir::IntegerAttr attr = rewriter.getI32IntegerAttr(value);
   return rewriter.create<mlir::LLVM::ConstantOp>(loc, i32Ty, attr);
 }
 
-mlir::LLVM::ConstantOp genI64Constant(mlir::Location loc,
-                                      mlir::RewriterBase &rewriter, int value) {
+[[maybe_unused]] static mlir::LLVM::ConstantOp
+genI64Constant(mlir::Location loc, mlir::RewriterBase &rewriter, int value) {
   mlir::Type i64Ty = rewriter.getI64Type();
   mlir::IntegerAttr attr = rewriter.getI64IntegerAttr(value);
   return rewriter.create<mlir::LLVM::ConstantOp>(loc, i64Ty, attr);
@@ -255,38 +256,11 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
   return SplitTargetResult{newTargetOp, nullptr};
 }
 
-/// Borrowed from CodeGen.cpp
-///
-/// Helper function for generating the LLVM IR that computes the distance
-/// in bytes between adjacent elements pointed to by a pointer
-/// of type \p ptrTy. The result is returned as a value of \p idxTy integer
-/// type.
-static mlir::Value computeElementDistance(mlir::Location loc,
-                                          mlir::Type llvmObjectType,
-                                          mlir::Type idxTy,
-                                          mlir::RewriterBase &rewriter) {
-  // Note that we cannot use something like
-  // mlir::LLVM::getPrimitiveTypeSizeInBits() for the element type here. For
-  // example, it returns 10 bytes for mlir::Float80Type for targets where it
-  // occupies 16 bytes. Proper solution is probably to use
-  // mlir::DataLayout::getTypeABIAlignment(), but DataLayout is not being set
-  // yet (see llvm-project#57230). For the time being use the '(intptr_t)((type
-  // *)0 + 1)' trick for all types. The generated instructions are optimized
-  // into constant by the first pass of InstCombine, so it should not be a
-  // performance issue.
-  auto llvmPtrTy = ::getLlvmPtrType(llvmObjectType.getContext());
-  auto nullPtr = rewriter.create<mlir::LLVM::ZeroOp>(loc, llvmPtrTy);
-  auto gep = rewriter.create<mlir::LLVM::GEPOp>(
-      loc, llvmPtrTy, llvmObjectType, nullPtr,
-      llvm::ArrayRef<mlir::LLVM::GEPArg>{1});
-  return rewriter.create<mlir::LLVM::PtrToIntOp>(loc, idxTy, gep);
-}
-
 /// Removes unused operands/args from the omp.target op
 ///
 /// TODO is this ok? are there map types that need to be preserved even though
 /// we do not use them in the target region?
-static void minimizeArgs(omp::TargetOp targetOp) {
+[[maybe_unused]] static void minimizeArgs(omp::TargetOp targetOp) {
   auto *targetBlock = &targetOp.getRegion().front();
   for (unsigned i = 0; i < targetBlock->getNumArguments();) {
     if (targetBlock->getArgument(i).use_empty()) {
@@ -941,172 +915,6 @@ struct TeamsCoexecuteToSingle : public OpRewritePattern<omp::TeamsOp> {
     // of the statement it is for so that we get a meaningful message here. Also
     // the message is wrong.
     coexecuteOp.emitWarning("unable to parallelize coexecute");
-
-    return success();
-  }
-};
-
-static Value getHostValue(Value v, RewriterBase &rewriter, IRMapping &mapping) {
-  Operation *op = v.getDefiningOp();
-  if (!op)
-    return nullptr;
-  if (auto loadOp = dyn_cast_or_null<LLVM::LoadOp>(op)) {
-    // TODO need to check aliasing and if there arent any stores
-    Value mem = loadOp.getAddr();
-    auto arg = mem.dyn_cast<BlockArgument>();
-    if (!arg)
-      return nullptr;
-    auto targetOp = dyn_cast<omp::TargetOp>(arg.getOwner()->getParentOp());
-    if (!targetOp)
-      return nullptr;
-    auto argNum = arg.getArgNumber();
-    auto mapInfoOp =
-        cast<omp::MapInfoOp>(targetOp.getMapOperands()[argNum].getDefiningOp());
-    auto hostValue = rewriter.create<LLVM::LoadOp>(
-        loadOp->getLoc(), v.getType(), mapInfoOp.getVarPtr());
-    mapping.map(v, hostValue);
-    return hostValue;
-  }
-  MemoryEffectOpInterface interface = dyn_cast<MemoryEffectOpInterface>(op);
-  if (!interface)
-    return nullptr;
-
-  llvm::SmallVector<MemoryEffects::EffectInstance> effects;
-  interface.getEffects(effects);
-  if (!effects.empty())
-    return nullptr;
-
-  unsigned resNum = 0;
-  unsigned i = 0;
-  for (auto opr : op->getOperands()) {
-    if (opr == v)
-      resNum = i;
-    if (!getHostValue(opr, rewriter, mapping))
-      return nullptr;
-    i++;
-  }
-
-  return rewriter.clone(*op, mapping)->getResult(resNum);
-}
-
-/// Hoists out temporary allocations from the target region to the host
-///
-/// We hoist malloc's which are allocated for temporary storage of arrays
-///
-/// We need to hoist out alloca's as well because these appear when using the
-/// fortran runtime functionss, e.g. @_FortranAAssign which take a pointer to a
-/// struct which describes the array being operated on
-///
-/// TODO should we only do this if we will be splitting this target region, or
-/// always?
-/// TODO we should probably check that the allocation is freed inside the target
-/// region in question (i.e. the pointer does not escape)
-/// TODO lifetime analysis to lower amount of memory required for the mem
-template <typename AllocOpTy>
-struct HoistAllocs : public OpRewritePattern<AllocOpTy> {
-  using OpRewritePattern<AllocOpTy>::OpRewritePattern;
-  LogicalResult matchAndRewrite(AllocOpTy allocMemOp,
-                                PatternRewriter &rewriter) const override {
-    // Only these two types supported currently
-    auto callOp = dyn_cast<LLVM::CallOp>(allocMemOp.getOperation());
-    auto allocaOp = dyn_cast<LLVM::AllocaOp>(allocMemOp.getOperation());
-    assert(callOp || allocaOp);
-
-    if (callOp) {
-      if (auto callee = callOp.getCallee()) {
-        if (*callee != "malloc")
-          return failure();
-      } else {
-        return failure();
-      }
-    }
-
-    auto targetOp = dyn_cast<omp::TargetOp>(allocMemOp->getParentOp());
-    if (!targetOp)
-      return failure();
-
-    auto loc = allocMemOp->getLoc();
-    auto ptrTy = LLVM::LLVMPointerType::get(targetOp.getContext());
-
-    mlir::LLVM::LLVMFuncOp ompTargetAllocFunc =
-        getOmpTargetAlloc(allocMemOp->template getParentOfType<ModuleOp>());
-    mlir::LLVM::LLVMFuncOp ompTargetFreeFunc =
-        getOmpTargetFree(allocMemOp->template getParentOfType<ModuleOp>());
-
-    rewriter.setInsertionPoint(targetOp);
-    Value allocationSize = nullptr;
-    if (callOp) {
-      allocationSize = callOp.getArgOperands()[0];
-    } else if (allocaOp) {
-      allocationSize = computeElementDistance(loc, allocaOp.getType(),
-                                              rewriter.getI64Type(), rewriter);
-      allocationSize = rewriter.create<arith::MulIOp>(loc, allocationSize,
-                                                      allocaOp.getArraySize());
-    } else {
-      llvm_unreachable("Wrong template type");
-    }
-
-    IRMapping mapping;
-    mlir::Value size = getHostValue(allocationSize, rewriter, mapping);
-    if (!size) {
-      LLVM_DEBUG(dbgs() << TAG << "Could not get host value of "
-                        << allocationSize << "\n");
-      return failure();
-    }
-
-    Value device = targetOp.getDevice();
-    if (!device) {
-      // TODO is this the correct way to get the default device?
-      device = genI32Constant(loc, rewriter, 0);
-    }
-    auto newAlloc =
-        rewriter
-            .create<mlir::LLVM::CallOp>(loc, ompTargetAllocFunc,
-                                        SmallVector<Value>({size, device}))
-            ->getResult(0);
-    auto ompHostAlloca = rewriter.create<LLVM::AllocaOp>(
-        loc, ptrTy, ptrTy, genI64Constant(loc, rewriter, 1));
-    rewriter.create<LLVM::StoreOp>(loc, newAlloc, ompHostAlloca);
-
-    SmallVector<Value> bounds = {rewriter.create<omp::DataBoundsOp>(
-        loc, rewriter.getType<mlir::omp::DataBoundsType>(),
-        genI64Constant(loc, rewriter, 0), genI64Constant(loc, rewriter, 1),
-        nullptr, nullptr, false, nullptr)};
-    auto mapInfo = rewriter.create<omp::MapInfoOp>(
-        loc, ptrTy, ompHostAlloca, ptrTy, /*var_ptr_ptr=*/nullptr,
-        /*members*/ ValueRange(), bounds,
-        rewriter.getIntegerAttr(
-            rewriter.getIntegerType(64, false),
-            static_cast<
-                std::underlying_type_t<llvm::omp::OpenMPOffloadMappingFlags>>(
-                llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_TO)),
-        rewriter.getAttr<mlir::omp::VariableCaptureKindAttr>(
-            mlir::omp::VariableCaptureKind::ByCopy),
-        rewriter.getStringAttr("coexecute_hoisted_malloc"));
-
-    auto *targetBlock = &targetOp.getRegion().front();
-    targetOp.getMapOperandsMutable().append({mapInfo});
-    auto newArg = targetBlock->addArgument(mapInfo.getType(), loc);
-    rewriter.setInsertionPointToStart(targetBlock);
-    auto ompDeviceAlloc = rewriter.create<LLVM::LoadOp>(loc, ptrTy, newArg);
-
-    rewriter.setInsertionPointAfter(targetOp);
-    rewriter.create<mlir::LLVM::CallOp>(loc, ompTargetFreeFunc,
-                                        SmallVector<Value>({newAlloc, device}));
-
-    if (callOp) {
-      SmallVector<Operation *> frees;
-      for (Operation *user : allocMemOp.getResult().getUsers())
-        if (auto callOp = dyn_cast<LLVM::CallOp>(user))
-          if (auto callee = callOp.getCallee())
-            if (*callee == "free")
-              frees.push_back(user);
-      for (Operation *user : frees)
-        rewriter.eraseOp(user);
-    }
-
-    rewriter.replaceAllUsesWith(allocMemOp.getResult(), ompDeviceAlloc);
-    rewriter.eraseOp(allocMemOp);
 
     return success();
   }
