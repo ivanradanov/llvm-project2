@@ -153,8 +153,9 @@ struct SplitTargetResult {
 
 /// If multiple coexecutes are nested in a target regions, we will need to split
 /// the target region, but we want to preserve the data semantics of the
-/// original data region - we split the target region into a target_data{target}
-/// nest
+/// original data region and avoid unnecessary data movement at each of the
+/// subkernels - we split the target region into a target_data{target}
+/// nest where only the outer one moves the data
 ///
 /// TODO need to handle special case where the target regions had a always copy
 /// or always free map types (or something similar, I forgot how they are
@@ -200,6 +201,9 @@ std::optional<SplitTargetResult> splitTargetData(omp::TargetOp targetOp,
 
     llvm::omp::OpenMPOffloadMappingFlags newMapType;
     mlir::omp::VariableCaptureKind newCaptureType;
+    // It looks like arrays get passed ByRef, and scalar variables ByCopy so we
+    // remove the to/from mapping for ByRef maps to avoid the copies at each
+    // coexecute subkernel.
     if (originalCaptureType == mlir::omp::VariableCaptureKind::ByCopy) {
       newMapType = originalMapType;
       newCaptureType = originalCaptureType;
