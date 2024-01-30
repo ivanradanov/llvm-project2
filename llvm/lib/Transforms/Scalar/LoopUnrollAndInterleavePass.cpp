@@ -383,6 +383,11 @@ bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
   }
 
   for (BasicBlock *BB : TheLoop->getBlocks()) {
+    // The Latch-Exiting block's terminator's divergence is a special case that
+    // is handled differently
+    if (BB == CombinedLatchExiting)
+      continue;
+
     auto *Term = BB->getTerminator();
     auto *Br = dyn_cast<BranchInst>(Term);
     auto *Sw = dyn_cast<SwitchInst>(Term);
@@ -392,16 +397,14 @@ bool LoopUnrollAndInterleave::collectDivergentBranches(Loop *TheLoop,
       ILLEGAL();
     }
 
-    // TODO we need to check for syncs and divergent branches, because I think
-    // they have legality implications
+    // TODO we need to check for syncs because I think they have legality
+    // implications
     //
     // TODO we can do better if we know there is no
     // synchronisation as we do not need to care about stores from other
     // iterations
     if (Br && Br->isConditional() &&
-        !TheLoop->isLoopInvariant(Br->getCondition()) &&
-        !LI->isLoopHeader(Br->getSuccessor(0)) &&
-        !LI->isLoopHeader(Br->getSuccessor(1))) {
+        !TheLoop->isLoopInvariant(Br->getCondition())) {
       DivergentBranches.insert(Term);
       LLVM_DEBUG(DBGS << "Divergent branch found: " << *Br << "\n");
     }
