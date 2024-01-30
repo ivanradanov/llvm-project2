@@ -143,7 +143,7 @@ private:
     BBSet Blocks;
 
     // Properties
-    bool IsNested;
+    unsigned NestedLevel;
 
     // Used for transformations later
     unique_ptr<ValueToValueMapTy> DRVMap;
@@ -158,7 +158,7 @@ private:
 
     DivergentRegion()
         : From(nullptr), To(nullptr), Entry(nullptr), Exit(nullptr),
-          IsNested(false), DRVMap(new ValueToValueMapTy),
+          NestedLevel(0), DRVMap(new ValueToValueMapTy),
           ReverseDRVMap(new ValueToValueMapTy),
           DefinedOutsideDemotedVMap(new ValueToValueMapTy),
           DefinedInsideDemotedVMap(new ValueToValueMapTy) {}
@@ -583,7 +583,7 @@ void BBInterleave::populateDivergentRegions() {
   }
 
   for (auto &DR : DivergentRegions)
-    DR.IsNested = any_of(DivergentRegions, [&](DivergentRegion &OtherDR) {
+    DR.NestedLevel = llvm::count_if(DivergentRegions, [&](DivergentRegion &OtherDR) {
       return &OtherDR != &DR && OtherDR.Blocks.contains(DR.From);
     });
 
@@ -592,7 +592,7 @@ void BBInterleave::populateDivergentRegions() {
       DBGS << "Divergent region for entry %" << DR.Entry->getName()
            << " and exit %" << DR.Exit->getName() << " from block %"
            << DR.From->getName() << " to block %" << DR.To->getName()
-           << " nested=" << DR.IsNested << ":\n";
+           << " nested=" << DR.NestedLevel << ":\n";
       for (auto *BB : DR.Blocks)
         dbgs() << "%" << BB->getName() << ", ";
       dbgs() << "\n";
