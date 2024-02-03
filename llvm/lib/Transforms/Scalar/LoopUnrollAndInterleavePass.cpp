@@ -1565,6 +1565,29 @@ static Value *advanceOneIteration(Loop *TheLoop, Instruction *IV,
   return Recomputed;
 }
 
+static bool isLegalToInterleave(Loop *TheLoop, LoopInfo &LI) {
+  // Quick check which is specific to coarsening OpenMP GPU kernels. If we have
+  // allocations outside the loop that means we probably hoisted one out of the
+  // loop which makes it illegal to coarsen as the hoisting may have assumed a
+  // sequential loop.
+  //
+  // TODO not really sure about the neccessity of this or if this way of
+  // checking is correct
+  for (auto &BB : *TheLoop->getHeader()->getParent()) {
+    for (auto &I : BB) {
+      if (isa<AllocaInst>(&I) && TheLoop->isLoopInvariant(&I) &&
+          any_of(I.users(), [&](User *User) {
+            if (auto *Inst = dyn_cast<Instruction>(User))
+              return TheLoop->contains(Inst);
+            return false;
+          })) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
     Loop *L, DominatorTree &DT, LoopInfo &LI, ScalarEvolution &SE,
     PostDominatorTree &PDT) {
@@ -1581,6 +1604,9 @@ LoopUnrollResult LoopUnrollAndInterleave::tryToUnrollAndInterleaveLoop(
   if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
     LLVM_DEBUG(DBGS << "Before unroll and interleave:\n" << *F);
   }
+
+  if (!isLegalToInterleave(TheLoop, LI))
+    return LoopUnrollResult::Unmodified;
 
   if (!collectDivergentBranches(TheLoop, &LI))
     return LoopUnrollResult::Unmodified;
