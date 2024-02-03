@@ -1376,6 +1376,9 @@ void BBInterleave::cleanup() {
   for (auto &DR : DivergentRegions) {
     DRTmpStorage.push_back(DR.IdentPtr);
   }
+  if (getenv("UNROLL_AND_INTERLEAVE_DUMP")) {
+    LLVM_DEBUG(DBGS << "Before promotion:\n" << *F);
+  }
   DT->recalculate(*F); // TODO another recalculation...
   PromoteMemToReg(DRTmpStorage, *DT);
 }
