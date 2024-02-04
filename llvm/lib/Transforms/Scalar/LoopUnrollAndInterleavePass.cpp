@@ -1027,13 +1027,16 @@ bool CallInterleave::tryToInterleave(
   return true;
 }
 
-static bool shouldClone(Instruction *I) {
-  if (I->isTerminator())
-    // Do not clone terminators - we use the control flow of the
-    // existing iteration (if the branch is divergent we will insert
-    // an entry to a divergent region here later)
-    return false;
+static bool isConditional(Instruction *I) {
+  // Curently only switch and branch terminators are supported.
+  if (auto *Sw = dyn_cast<SwitchInst>(I))
+    return true;
+  if (auto *BI = dyn_cast<BranchInst>(I))
+    return BI->isConditional();
+  llvm_unreachable("Unsupported terminator encountered");
+}
 
+static bool shouldClone(Instruction *I) {
   if (auto *CI = dyn_cast<CallInst>(I))
     switch (CI->getIntrinsicID()) {
     case Intrinsic::amdgcn_s_barrier:
@@ -1111,6 +1114,7 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
   for (unsigned I = 0; I < Factor; I++)
     ClonedInsts.push_back({});
 
+  SmallVector<Instruction *> ClonedTerminators;
   for (BasicBlock *BB : BBsToCoarsen) {
     SmallVector<Instruction *> ToClone;
     for (Instruction &I : *BB) {
@@ -1135,6 +1139,13 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
       if (!shouldClone(I))
         continue;
 
+      bool IsTerminator = false;
+      if (I->isTerminator()) {
+        if (!isConditional(I))
+          continue;
+        IsTerminator = true;
+      }
+
       for (unsigned It = 1; It < Factor; It++) {
         Instruction *Cloned = I->clone();
         Cloned->insertAfter(LastI);
@@ -1145,10 +1156,23 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
         (*VMaps[It])[I] = Cloned;
         (*ReverseVMaps[It])[Cloned] = I;
         LastI = Cloned;
+        if (IsTerminator) {
+          // We clone even the (conditional) terminators for now, the unneeded
+          // ones will be removed later. We need to preserve them in order to
+          // keep track of the uses of the coarsened conditions - which may end
+          // up getting used in another DR which we need to properly pass values
+          // to.
+          ClonedTerminators.push_back(Cloned);
+          // We want the terminator that will remain after deleting the cloned
+          // ones to be the "actual" terminator i.e. is at the end.
+          Cloned->moveBefore(I);
+        }
       }
     }
   }
   if (UseDynamicConvergence) {
+    // The convergent block to divergent entry branch is unconditional now as we
+    // did not clone them above.
     for (auto *BI : ConvergentToDivergentEdges) {
       Instruction *DivergentCond = nullptr;
       assert(BI && !BI->isConditional());
@@ -1204,6 +1228,13 @@ LoopUnrollResult BBInterleave::tryToUnrollBBs(
   // Find all values used in the divergent region but defined outside and demote
   // them to memory - now we can change the CFG easier.
   demoteDRRegs();
+
+  for (Instruction *I : ClonedTerminators) {
+    // Remove the cloned terminators - we use the control flow of the
+    // existing iteration (if the branch is divergent we will insert
+    // an entry to a divergent region later)
+    I->eraseFromParent();
+  }
 
   for (auto &DR : DivergentRegions) {
     ValueToValueMapTy &ReverseDRLVMap = *DR.ReverseDRVMap;
