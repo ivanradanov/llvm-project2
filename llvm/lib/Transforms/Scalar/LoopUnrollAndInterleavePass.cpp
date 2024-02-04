@@ -586,9 +586,10 @@ void BBInterleave::populateDivergentRegions() {
   }
 
   for (auto &DR : DivergentRegions)
-    DR.NestedLevel = llvm::count_if(DivergentRegions, [&](DivergentRegion &OtherDR) {
-      return &OtherDR != &DR && OtherDR.Blocks.contains(DR.From);
-    });
+    DR.NestedLevel =
+        llvm::count_if(DivergentRegions, [&](DivergentRegion &OtherDR) {
+          return &OtherDR != &DR && OtherDR.Blocks.contains(DR.From);
+        });
 
   LLVM_DEBUG({
     for (auto &DR : DivergentRegions) {
@@ -611,16 +612,7 @@ void BBInterleave::populateDivergentRegions() {
     // If we are not going to use dynamic convergence, then all DRs that have
     // entries in another DR are unreachable - delete them.
     for (auto It = DivergentRegions.begin(); It != DivergentRegions.end();) {
-      bool Erase = false;
-      for (auto &DR : DivergentRegions) {
-        if (&DR == &*It)
-          continue;
-        if (DR.Blocks.contains(It->Entry)) {
-          Erase = true;
-          break;
-        }
-      }
-      if (Erase)
+      if (It->NestedLevel > 0)
         It = DivergentRegions.erase(It);
       else
         ++It;
