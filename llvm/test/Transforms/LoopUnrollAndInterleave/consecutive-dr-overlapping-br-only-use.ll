@@ -255,8 +255,8 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l19_omp_outlined_o
 ; DRCHECK-NEXT:    [[B_0_COARSENED_1:%.*]] = phi i1 [ true, [[IF_THEN]] ], [ false, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY]] ]
 ; DRCHECK-NEXT:    br label [[IF_END:%.*]]
 ; DRCHECK:       if.end:
-; DRCHECK-NEXT:    [[B_0_COARSENED_1_REG2MEM_0:%.*]] = phi i1 [ [[B_0_COARSENED_1]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_DRS_0:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1:%.*]] ]
-; DRCHECK-NEXT:    [[B_0_REG2MEM_1]] = phi i1 [ [[B_0]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_REG2MEM_2:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1]] ]
+; DRCHECK-NEXT:    [[B_0_REG2MEM_1]] = phi i1 [ [[B_0]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_REG2MEM_2:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1:%.*]] ]
+; DRCHECK-NEXT:    [[B_0_COARSENED_1_REG2MEM_0:%.*]] = phi i1 [ [[B_0_COARSENED_1]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_DRS_0:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1]] ]
 ; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp eq i1 [[B_0_COARSENED_1_REG2MEM_0]], [[B_0_REG2MEM_1]]
 ; DRCHECK-NEXT:    br i1 [[TMP11]], label [[IF_END_DIVERGENT_ENTRY:%.*]], label [[IF_END_DIVERGENT_ENTRY_DRS_1_INTRO_0:%.*]]
 ; DRCHECK:       omp.inner.for.body.divergent.entry.drs.0.intro.0:
