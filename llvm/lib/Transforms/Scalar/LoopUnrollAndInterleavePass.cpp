@@ -585,6 +585,9 @@ void BBInterleave::populateDivergentRegions() {
     AddExit(TheBlock, DivergentExit, Convergent);
   }
 
+  // TODO preserve it, should be easy
+  DT->recalculate(*F);
+
   // If a DR can only be reached after entering another DR then it is nested,
   // which means it does not need to be generated if we do not use dynamic
   // convergence.
