@@ -362,8 +362,8 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l17_omp_outlined_o
 ; CHECK-NEXT:    br label [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0]]
 ; CHECK:       omp.inner.for.body.divergent.entry.drs.0:
 ; CHECK-NEXT:    [[DR_COARSENED_IDENT_0:%.*]] = phi i32 [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ 1, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1:%.*]] ]
-; CHECK-NEXT:    [[CONV7_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[CONV7]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CONV7_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; CHECK-NEXT:    [[CMP6_DRS_0_REG2MEM_0:%.*]] = phi i1 [ [[CMP6]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CMP6_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
+; CHECK-NEXT:    [[CONV7_DRS_0_REG2MEM_0:%.*]] = phi i32 [ [[CONV7]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_0]] ], [ [[CONV7_COARSENED_1]], [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY_DRS_0_INTRO_1]] ]
 ; CHECK-NEXT:    br i1 [[CMP6_DRS_0_REG2MEM_0]], label [[IF_THEN_DRS_0:%.*]], label [[IF_ELSE9_DRS_0:%.*]]
 ; CHECK:       if.then.drs.0:
 ; CHECK-NEXT:    [[CALL_DRS_0:%.*]] = tail call noundef zeroext i1 @_Z5test1i(i32 noundef [[CONV7_DRS_0_REG2MEM_0]]) #[[ATTR8:[0-9]+]]

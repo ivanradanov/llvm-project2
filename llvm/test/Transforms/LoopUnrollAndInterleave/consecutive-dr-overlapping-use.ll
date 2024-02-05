@@ -257,8 +257,8 @@ define internal void @__omp_offloading_58_36e080__Z6vecaddPii_l19_omp_outlined_o
 ; DRCHECK-NEXT:    [[B_0_COARSENED_1:%.*]] = phi i32 [ 1, [[IF_THEN]] ], [ 0, [[OMP_INNER_FOR_BODY_DIVERGENT_ENTRY]] ]
 ; DRCHECK-NEXT:    br label [[IF_END:%.*]]
 ; DRCHECK:       if.end:
-; DRCHECK-NEXT:    [[B_0_REG2MEM_1]] = phi i32 [ [[B_0]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_REG2MEM_2:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1:%.*]] ]
-; DRCHECK-NEXT:    [[B_0_COARSENED_1_REG2MEM_0:%.*]] = phi i32 [ [[B_0_COARSENED_1]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_DRS_0:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1]] ]
+; DRCHECK-NEXT:    [[B_0_COARSENED_1_REG2MEM_0:%.*]] = phi i32 [ [[B_0_COARSENED_1]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_DRS_0:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1:%.*]] ]
+; DRCHECK-NEXT:    [[B_0_REG2MEM_1]] = phi i32 [ [[B_0]], [[IF_END_DIVERGENT_EXIT]] ], [ [[B_0_REG2MEM_2:%.*]], [[IF_END_DIVERGENT_EXIT_DRS_0_OUTRO_1]] ]
 ; DRCHECK-NEXT:    [[CALL8:%.*]] = tail call noundef zeroext i1 @_Z5test2i(i32 noundef [[CONV6]]) #[[ATTR6]]
 ; DRCHECK-NEXT:    [[CALL8_COARSENED_1:%.*]] = tail call noundef zeroext i1 @_Z5test2i(i32 noundef [[CONV6_COARSENED_1]]) #[[ATTR6]]
 ; DRCHECK-NEXT:    [[TMP11:%.*]] = icmp eq i1 [[CALL8_COARSENED_1]], [[CALL8]]
