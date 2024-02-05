@@ -143,7 +143,7 @@ private:
     BBSet Blocks;
 
     // Properties
-    unsigned NestedLevel;
+    bool Nested;
 
     // Used for transformations later
     unique_ptr<ValueToValueMapTy> DRVMap;
@@ -158,7 +158,7 @@ private:
 
     DivergentRegion()
         : From(nullptr), To(nullptr), Entry(nullptr), Exit(nullptr),
-          NestedLevel(0), DRVMap(new ValueToValueMapTy),
+          Nested(false), DRVMap(new ValueToValueMapTy),
           ReverseDRVMap(new ValueToValueMapTy),
           DefinedOutsideDemotedVMap(new ValueToValueMapTy),
           DefinedInsideDemotedVMap(new ValueToValueMapTy) {}
@@ -585,18 +585,26 @@ void BBInterleave::populateDivergentRegions() {
     AddExit(TheBlock, DivergentExit, Convergent);
   }
 
-  for (auto &DR : DivergentRegions)
-    DR.NestedLevel =
-        llvm::count_if(DivergentRegions, [&](DivergentRegion &OtherDR) {
-          return &OtherDR != &DR && OtherDR.Blocks.contains(DR.From);
-        });
+  // If a DR can only be reached after entering another DR then it is nested,
+  // which means it does not need to be generated if we do not use dynamic
+  // convergence.
+  for (auto &DR : DivergentRegions) {
+    DR.Nested = false;
+    for (auto &OtherDR : DivergentRegions) {
+      if (&OtherDR != &DR && DT->dominates(OtherDR.Entry, DR.From) &&
+          OtherDR.Blocks.contains(DR.From)) {
+        DR.Nested = true;
+        break;
+      }
+    }
+  }
 
   LLVM_DEBUG({
     for (auto &DR : DivergentRegions) {
       DBGS << "Divergent region for entry %" << DR.Entry->getName()
            << " and exit %" << DR.Exit->getName() << " from block %"
            << DR.From->getName() << " to block %" << DR.To->getName()
-           << " nested=" << DR.NestedLevel << ":\n";
+           << " nested=" << DR.Nested << ":\n";
       for (auto *BB : DR.Blocks)
         dbgs() << "%" << BB->getName() << ", ";
       dbgs() << "\n";
@@ -609,10 +617,10 @@ void BBInterleave::populateDivergentRegions() {
   }
 
   if (!UseDynamicConvergence) {
-    // If we are not going to use dynamic convergence, then all DRs that have
-    // entries in another DR are unreachable - delete them.
+    // If we are not going to use dynamic convergence, then all nested DRs  are
+    // unreachable - delete them.
     for (auto It = DivergentRegions.begin(); It != DivergentRegions.end();) {
-      if (It->NestedLevel > 0)
+      if (It->Nested)
         It = DivergentRegions.erase(It);
       else
         ++It;
