@@ -3061,12 +3061,16 @@ struct AAUndefinedBehaviorImpl : public AAUndefinedBehavior {
         //   (3) Simplified to null pointer where known to be nonnull.
         //       The argument is a poison value and violate noundef attribute.
         IRPosition CalleeArgumentIRP = IRPosition::callsite_argument(CB, idx);
+        bool UsedAssumedInformation = false;
+        if (A.isAssumedDead(
+                CalleeArgumentIRP, this, nullptr, UsedAssumedInformation,
+                /*CheckBBLivenessOnly=*/false, DepClassTy::OPTIONAL))
+          continue;
         bool IsKnownNoUndef;
         AA::hasAssumedIRAttr<Attribute::NoUndef>(
             A, this, CalleeArgumentIRP, DepClassTy::NONE, IsKnownNoUndef);
         if (!IsKnownNoUndef)
           continue;
-        bool UsedAssumedInformation = false;
         std::optional<Value *> SimplifiedVal =
             A.getAssumedSimplified(IRPosition::value(*ArgVal), *this,
                                    UsedAssumedInformation, AA::Interprocedural);
@@ -12356,7 +12360,8 @@ struct AAIndirectCallInfoCallSite : public AAIndirectCallInfo {
 
     // If we know all callees and there are none, the call site is (effectively)
     // dead (or UB).
-    if (AssumedCallees.empty()) {
+    if (/* TODO Make the callback accept a pointer */ false &&
+        AssumedCallees.empty()) {
       assert(AllCalleesKnown &&
              "Expected all callees to be known if there are none.");
       A.changeToUnreachableAfterManifest(CB);
@@ -12364,7 +12369,9 @@ struct AAIndirectCallInfoCallSite : public AAIndirectCallInfo {
     }
 
     // Special handling for the single callee case.
-    if (AllCalleesKnown && AssumedCallees.size() == 1) {
+    if (AllCalleesKnown && AssumedCallees.size() == 1 &&
+        A.shouldSpecializeCallSiteForCallee(*this, *CB,
+                                            *AssumedCallees.back())) {
       auto *NewCallee = AssumedCallees.front();
       if (isLegalToPromote(*CB, NewCallee)) {
         promoteCall(*CB, NewCallee, nullptr);

@@ -1,0 +1,85 @@
+
+#ifndef __IG_OBJ__
+#error "__IG_OBJ__ must be defined"
+#endif
+
+#define INTERFACE_MEM(PREFIX)                                                  \
+  void __##PREFIX##_memcpy(VoidPtrTy Tgt, VoidPtrTy Src, uint64_t N) {         \
+    __IG_OBJ__.memcpy(Tgt, Src, N);                                        \
+  }                                                                            \
+  void __##PREFIX##_memset(VoidPtrTy Tgt, char C, uint64_t N) {                \
+    __IG_OBJ__.memset(Tgt, C, N);                                        \
+  }
+
+#define INTERFACE_CMP_PTR(PREFIX)                                              \
+  void __##PREFIX##_cmp_ptr(VoidPtrTy A, VoidPtrTy B, int32_t Predicate) {     \
+    __IG_OBJ__.cmpPtr(A, B, Predicate);                                        \
+  }
+
+#define INTERFACE_UNREACHABLE(PREFIX)                                          \
+  void __inputgen_unreachable(int32_t No, const char *Name) {                  \
+    printf("Reached unreachable %i due to '%s'\n", No, Name ? Name : "n/a");   \
+    exit(UnreachableExitStatus);                                               \
+  }
+
+#define INTERFACE_FUNCS(TY, NAME, PREFIX)                                      \
+  static TY __ig_convert_##NAME##_from_i64(int64_t Val) {                      \
+    TY TyVal;                                                                  \
+    if constexpr (sizeof(TY) <= sizeof(int64_t)) {                             \
+      /* We need to reinterpret_cast fp types because they are just bitcast    \
+         to the int64_t type in LLVM. */                                       \
+      if constexpr (std::is_same<TY, float>::value) {                          \
+        int32_t Trunc = (int32_t)Val;                                          \
+        TyVal = *reinterpret_cast<TY *>(&Trunc);                               \
+      } else if constexpr (std::is_same<TY, double>::value) {                  \
+        TyVal = *reinterpret_cast<TY *>(&Val);                                 \
+      } else {                                                                 \
+        TyVal = (TY)Val;                                                       \
+      }                                                                        \
+    } else {                                                                   \
+      TyVal = *(TY *)Val;                                                      \
+    }                                                                          \
+    return TyVal;                                                              \
+  }                                                                            \
+  void __##PREFIX##_access_##NAME(VoidPtrTy Ptr, int64_t Val, int32_t Size,    \
+                                  VoidPtrTy Base, int32_t Kind,                \
+                                  BranchHint *BHs, int32_t BHSize) {           \
+    switch (Kind) {                                                            \
+    case 0:                                                                    \
+      __IG_OBJ__.read<TY>(Ptr, Base, Size, BHs, BHSize);                       \
+      return;                                                                  \
+    case 1: {                                                                  \
+      TY TyVal = __ig_convert_##NAME##_from_i64(Val);                          \
+      __IG_OBJ__.write<TY>(Ptr, TyVal, Size);                                  \
+      return;                                                                  \
+    }                                                                          \
+    default:                                                                   \
+      abort();                                                                 \
+    }                                                                          \
+  }                                                                            \
+  TY __##PREFIX##_stub_##NAME(BranchHint *BHs, int32_t BHSize) {               \
+    return __IG_OBJ__.generateNewStubReturn<TY>(BHs, BHSize);                  \
+  }                                                                            \
+  TY __##PREFIX##_arg_##NAME(BranchHint *BHs, int32_t BHSize) {                \
+    return __IG_OBJ__.generateNewArg<TY>(BHs, BHSize);                         \
+  }                                                                            \
+  void __##PREFIX##_arg_record_##NAME(int64_t Val, BranchHint *BHs,            \
+                                      int32_t BHSize) {                        \
+    TY TyVal = __ig_convert_##NAME##_from_i64(Val);                            \
+    __IG_OBJ__.recordArg<TY>(TyVal);                                           \
+  }
+
+#define DEFINE_INTERFACE(PREFIX)                                               \
+  INTERFACE_FUNCS(bool, i1, PREFIX)                                            \
+  INTERFACE_FUNCS(char, i8, PREFIX)                                            \
+  INTERFACE_FUNCS(short, i16, PREFIX)                                          \
+  INTERFACE_FUNCS(int32_t, i32, PREFIX)                                        \
+  INTERFACE_FUNCS(int64_t, i64, PREFIX)                                        \
+  INTERFACE_FUNCS(float, float, PREFIX)                                        \
+  INTERFACE_FUNCS(double, double, PREFIX)                                      \
+  INTERFACE_FUNCS(VoidPtrTy, ptr, PREFIX)                                      \
+  INTERFACE_FUNCS(__int128, i128, PREFIX)                                      \
+  INTERFACE_FUNCS(long double, x86_fp80, PREFIX)                               \
+  INTERFACE_CMP_PTR(PREFIX)                                                    \
+  INTERFACE_UNREACHABLE(PREFIX)                                                \
+  INTERFACE_MEM(PREFIX)

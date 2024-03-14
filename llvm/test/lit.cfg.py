@@ -92,6 +92,7 @@ config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%pluginext", config.llvm_plugin_ext))
 config.substitutions.append(("%exeext", config.llvm_exe_ext))
 
+config.substitutions.append(("%libclang_rt_profile", os.path.join(config.llvm_obj_root, "lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.profile.a")))
 
 lli_args = []
 # The target triple used by default by lli is the process target triple (some
