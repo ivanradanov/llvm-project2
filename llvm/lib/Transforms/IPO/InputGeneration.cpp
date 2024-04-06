@@ -177,7 +177,7 @@ public:
   void instrumentMemIntrinsic(MemIntrinsic *MI);
 
   void instrumentFunction(Function &F);
-  void instrumentEntryPoint(Function &F);
+  void instrumentForEntryPoint(Function &F);
   void createRecordingEntryPoint(Function &F);
   void createGenerationEntryPoint(Function &F);
   void createGlobalCalls(Module &M, IRBuilder<> &IRB);
@@ -214,7 +214,9 @@ public:
     TargetTriple = Triple(M.getTargetTriple());
   }
 
+  bool instrumentClEntryPoint(Module &);
   bool instrumentModule(Module &);
+  bool instrumentEntryPoint(Module &, Function &);
   bool instrumentModuleForFunction(Module &, Function &);
 
 private:
@@ -233,7 +235,7 @@ namespace llvm {
 bool inputGenerationInstrumentModule(Module &M, ModuleAnalysisManager &MAM,
                                      IGInstrumentationModeTy Mode) {
   ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
-  return Profiler.instrumentModuleForFunction(M, F);
+  return Profiler.instrumentModule(M);
 }
 
 /// Set up the entry point for an already instrumented module
@@ -242,7 +244,7 @@ bool inputGenerationInstrumentEntryPoint(Function &F,
                                          IGInstrumentationModeTy Mode) {
   Module &M = *F.getParent();
   ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
-  return Profiler.instrumentModuleForFunction(M, F);
+  return Profiler.instrumentEntryPoint(M, F);
 }
 
 /// More efficient one-shot version of the combination
@@ -260,7 +262,7 @@ bool inputGenerationInstrumentModuleForFunction(Function &F,
 PreservedAnalyses
 InputGenerationInstrumentPass::run(Module &M, AnalysisManager<Module> &MAM) {
   ModuleInputGenInstrumenter Profiler(M, MAM, InstrumentationMode);
-  if (Profiler.instrumentModule(M))
+  if (Profiler.instrumentClEntryPoint(M))
     return PreservedAnalyses::none();
   return PreservedAnalyses::all();
 }
@@ -438,7 +440,7 @@ void createProfileFileNameVar(Module &M, Triple &TT,
   }
 }
 
-bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
+bool ModuleInputGenInstrumenter::instrumentClEntryPoint(Module &M) {
   Function *EntryPoint = M.getFunction(ClEntryPoint);
   if (!EntryPoint) {
     int No;
@@ -457,10 +459,77 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
   return instrumentModuleForFunction(M, *EntryPoint);
 }
 
+bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
+  IGI.initializeCallbacks(M);
+  IGI.provideGlobals(M);
+
+  // instrumentFunction(F);
+  for (auto &Fn : M)
+    if (!Fn.isDeclaration())
+      IGI.instrumentFunction(Fn);
+
+  auto Prefix = getCallbackPrefix(IGI.Mode);
+
+  // Create a module constructor.
+  std::string InputGenVersion = std::to_string(LLVM_INPUT_GEN_VERSION);
+  std::string VersionCheckName =
+      ClInsertVersionCheck ? (Prefix + VersionCheckNamePrefix + InputGenVersion)
+                           : "";
+  std::tie(InputGenCtorFunction, std::ignore) =
+      createSanitizerCtorAndInitFunctions(M, Prefix + ModuleCtorName,
+                                          Prefix + InitName,
+                                          /*InitArgTypes=*/{},
+                                          /*InitArgs=*/{}, VersionCheckName);
+
+  appendToGlobalCtors(M, InputGenCtorFunction, /*Priority=*/1);
+
+  FunctionType *FnTy = FunctionType::get(IGI.VoidTy, false);
+  auto *DeinitFn = Function::Create(FnTy, GlobalValue::InternalLinkage,
+                                    Prefix + ModuleDtorName, M);
+  auto *EntryBB = BasicBlock::Create(*IGI.Ctx, "entry", DeinitFn);
+  FunctionCallee DeinitBody = M.getOrInsertFunction(
+      Prefix + DeinitName, FunctionType::get(IGI.VoidTy, false));
+  CallInst::Create(DeinitBody, "", EntryBB);
+  ReturnInst::Create(*IGI.Ctx, EntryBB);
+
+  appendToGlobalDtors(M, DeinitFn, /*Priority=*/1000);
+
+  createProfileFileNameVar(M, TargetTriple, IGI.Mode);
+
+  return true;
+}
+
+bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M, Function &EntryPoint) {
+  FunctionAnalysisManager &FAM =
+      IGI.MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  auto &TLI = FAM.getResult<TargetLibraryAnalysis>(EntryPoint);
+  IGI.stubDeclarations(M, TLI);
+
+  EntryPoint.setLinkage(GlobalValue::ExternalLinkage);
+
+  switch (IGI.Mode) {
+  case IG_Record:
+    IGI.createRecordingEntryPoint(EntryPoint);
+    IGI.instrumentForEntryPoint(EntryPoint);
+    break;
+  case IG_Generate:
+    IGI.createGenerationEntryPoint(EntryPoint);
+    IGI.instrumentForEntryPoint(EntryPoint);
+    break;
+  case IG_Run:
+    IGI.createRunEntryPoint(EntryPoint);
+    return true;
+  }
+
+
+  return true;
+}
+
 bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
     Module &M, Function &EntryPoint) {
   if (EntryPoint.isDeclaration()) {
-    errs() << "Entry point is declaration, used \"" << ClEntryPoint << "\".\n";
+    errs() << "Entry point is declaration, used \"" << EntryPoint.getName()
+           << "\".\n";
     return false;
   }
 
@@ -478,11 +547,11 @@ bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
   switch (IGI.Mode) {
   case IG_Record:
     IGI.createRecordingEntryPoint(EntryPoint);
-    IGI.instrumentEntryPoint(EntryPoint);
+    IGI.instrumentForEntryPoint(EntryPoint);
     break;
   case IG_Generate:
     IGI.createGenerationEntryPoint(EntryPoint);
-    IGI.instrumentEntryPoint(EntryPoint);
+    IGI.instrumentForEntryPoint(EntryPoint);
     break;
   case IG_Run:
     IGI.createRunEntryPoint(EntryPoint);
@@ -623,7 +692,9 @@ void InputGenInstrumenter::provideGlobals(Module &M) {
   }
 }
 
-void InputGenInstrumenter::instrumentEntryPoint(Function &F) {
+void InputGenInstrumenter::stripUnneeded(Function &F) {
+}
+void InputGenInstrumenter::instrumentForEntryPoint(Function &F) {
 
   Module &M = *F.getParent();
   SetVector<Function *> Functions;
