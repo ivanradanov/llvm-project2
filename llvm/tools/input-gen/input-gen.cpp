@@ -135,8 +135,9 @@ public:
 
   std::vector<Function *> Functions;
 
-  std::unique_ptr<Module> getInstrumentedModule(Module &M, Function &F,
-                                                IGInstrumentationModeTy Mode) {
+  std::unique_ptr<Module>
+  getInstrumentedModuleForEntryPoint(Module &M, Function &F,
+                                     IGInstrumentationModeTy Mode) {
     ValueToValueMapTy VMap;
     auto ClonedModule = CloneModule(M, VMap);
     auto &ClonedF = *cast<Function>(VMap[&F]);
@@ -154,7 +155,30 @@ public:
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-    inputGenerationInstrumentModuleForFunction(ClonedF, MAM, Mode);
+    inputGenerationInstrumentEntryPoint(ClonedF, MAM, Mode);
+
+    return ClonedModule;
+  }
+
+  std::unique_ptr<Module> getInstrumentedModule(Module &M,
+                                                IGInstrumentationModeTy Mode) {
+    ValueToValueMapTy VMap;
+    auto ClonedModule = CloneModule(M, VMap);
+
+    LoopAnalysisManager LAM;
+    FunctionAnalysisManager FAM;
+    CGSCCAnalysisManager CGAM;
+    ModuleAnalysisManager MAM;
+
+    PassBuilder PB;
+
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    inputGenerationInstrumentModule(ClonedModule, MAM, Mode);
 
     return ClonedModule;
   }
@@ -163,6 +187,8 @@ public:
 
   void genAllFunctionsForRuntime(std::string RuntimeName,
                                  IGInstrumentationModeTy Mode) {
+
+    auto InstrM = getInstrumentedModule(M, Mode);
 
     for (size_t It = 0; It < Functions.size(); It++) {
       Function &F = *Functions[It];
@@ -188,8 +214,8 @@ public:
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
 
-      auto InstrumentedM = getInstrumentedModule(M, F, Mode);
-      if (!InstrumentedM) {
+      auto InstrMEntry = getInstrumentedModuleForEntryPoint(M, F, Mode);
+      if (!InstrMEntry) {
         llvm::outs() << "Instrumenting failed\n";
         return;
       }
@@ -197,7 +223,7 @@ public:
 
       llvm::outs() << "Generating input module...\n";
 
-      if (!writeModuleToFile(*InstrumentedM, ModuleFileName)) {
+      if (!writeModuleToFile(*InstrMEntry, ModuleFileName)) {
         llvm::outs() << "Writing module to file failed\n";
         exit(1);
       }

@@ -228,6 +228,25 @@ private:
 InputGenerationInstrumentPass::InputGenerationInstrumentPass() = default;
 
 namespace llvm {
+
+/// Instrument entire module withuot deciding on the entry point yet
+bool inputGenerationInstrumentModule(Module &M, ModuleAnalysisManager &MAM,
+                                     IGInstrumentationModeTy Mode) {
+  ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
+  return Profiler.instrumentModuleForFunction(M, F);
+}
+
+/// Set up the entry point for an already instrumented module
+bool inputGenerationInstrumentEntryPoint(Function &F,
+                                         ModuleAnalysisManager &MAM,
+                                         IGInstrumentationModeTy Mode) {
+  Module &M = *F.getParent();
+  ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
+  return Profiler.instrumentModuleForFunction(M, F);
+}
+
+/// More efficient one-shot version of the combination
+/// inputGenerationInstrumentModule, inputGenerationInstrumentEntryPoint
 bool inputGenerationInstrumentModuleForFunction(Function &F,
                                                 ModuleAnalysisManager &MAM,
                                                 IGInstrumentationModeTy Mode) {
@@ -235,6 +254,7 @@ bool inputGenerationInstrumentModuleForFunction(Function &F,
   ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
   return Profiler.instrumentModuleForFunction(M, F);
 }
+
 } // namespace llvm
 
 PreservedAnalyses

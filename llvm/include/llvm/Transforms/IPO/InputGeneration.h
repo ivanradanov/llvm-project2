@@ -30,6 +30,11 @@ public:
 
 enum IGInstrumentationModeTy { IG_Record, IG_Generate, IG_Run };
 
+bool inputGenerationInstrumentModule(Module &M, ModuleAnalysisManager &MAM,
+                                     IGInstrumentationModeTy Mode);
+bool inputGenerationInstrumentEntryPoint(Function &F,
+                                         ModuleAnalysisManager &MAM,
+                                         IGInstrumentationModeTy Mode);
 bool inputGenerationInstrumentModuleForFunction(Function &F,
                                                 ModuleAnalysisManager &MAM,
                                                 IGInstrumentationModeTy Mode);
