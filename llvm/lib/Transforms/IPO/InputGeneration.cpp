@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/IPO/InputGeneration.h"
+#include "llvm/Transforms/IPO/InputGenerationImpl.h"
 
 #include "llvm/ADT/EnumeratedArray.h"
 #include "llvm/ADT/SetVector.h"
@@ -389,7 +390,7 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
 
     appendToGlobalDtors(M, DeinitFn, /*Priority=*/1000);
 
-    createProfileFileNameVar(M, TargetTriple, IGI.Mode);
+    ::createProfileFileNameVar(M, TargetTriple, IGI.Mode);
   }
 
   return true;
@@ -478,7 +479,7 @@ bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
 
   appendToGlobalDtors(M, DeinitFn, /*Priority=*/1000);
 
-  createProfileFileNameVar(M, TargetTriple, IGI.Mode);
+  ::createProfileFileNameVar(M, TargetTriple, IGI.Mode);
 
   return true;
 }
@@ -493,12 +494,12 @@ void InputGenInstrumenter::initializeCallbacks(Module &M) {
       InterestingMemoryAccess::KindTy K = InterestingMemoryAccess::KindTy(I);
       const std::string KindStr = InterestingMemoryAccess::kindAsStr(K);
       InputGenMemoryAccessCallback[{K, Ty}] =
-          M.getOrInsertFunction(Prefix + KindStr + "_" + getTypeName(Ty),
+          M.getOrInsertFunction(Prefix + KindStr + "_" + ::getTypeName(Ty),
                                 VoidTy, PtrTy, Int64Ty, Int32Ty, PtrTy);
     }
 
     ValueGenCallback[Ty] =
-        M.getOrInsertFunction(Prefix + "get_" + getTypeName(Ty), Ty);
+        M.getOrInsertFunction(Prefix + "get_" + ::getTypeName(Ty), Ty);
   }
 
   InputGenMemmove =
@@ -653,7 +654,7 @@ void InputGenInstrumenter::createRecordingEntryPoint(Function &F) {
 
   for (auto &Arg : F.args()) {
     FunctionCallee ArgPtrFn = M.getOrInsertFunction(
-        RecordingCallbackPrefix + "arg_" + getTypeName(Arg.getType()),
+        RecordingCallbackPrefix + "arg_" + ::getTypeName(Arg.getType()),
         FunctionType::get(Arg.getType(), {Arg.getType()}, false));
     IRB.CreateCall(ArgPtrFn, {&Arg});
   }
@@ -706,7 +707,7 @@ void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
   SmallVector<Value *> Args;
   for (auto &Arg : F.args()) {
     FunctionCallee ArgPtrFn = M.getOrInsertFunction(
-        InputGenCallbackPrefix + "arg_" + getTypeName(Arg.getType()),
+        InputGenCallbackPrefix + "arg_" + ::getTypeName(Arg.getType()),
         FunctionType::get(Arg.getType(), false));
     Args.push_back(IRB.CreateCall(ArgPtrFn, {}));
   }

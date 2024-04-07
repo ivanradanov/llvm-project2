@@ -17,7 +17,7 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/IPO/InputGeneration.h"
+#include "llvm/Transforms/IPO/InputGenerationImpl.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <algorithm>
@@ -135,60 +135,33 @@ public:
 
   std::vector<Function *> Functions;
 
-  std::unique_ptr<Module>
-  getInstrumentedModuleForEntryPoint(Module &M, Function &F,
-                                     IGInstrumentationModeTy Mode) {
-    ValueToValueMapTy VMap;
-    auto ClonedModule = CloneModule(M, VMap);
-    auto &ClonedF = *cast<Function>(VMap[&F]);
-
-    LoopAnalysisManager LAM;
-    FunctionAnalysisManager FAM;
-    CGSCCAnalysisManager CGAM;
-    ModuleAnalysisManager MAM;
-
-    PassBuilder PB;
-
-    PB.registerModuleAnalyses(MAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerLoopAnalyses(LAM);
-    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
-    inputGenerationInstrumentEntryPoint(ClonedF, MAM, Mode);
-
-    return ClonedModule;
-  }
-
-  std::unique_ptr<Module> getInstrumentedModule(Module &M,
-                                                IGInstrumentationModeTy Mode) {
-    ValueToValueMapTy VMap;
-    auto ClonedModule = CloneModule(M, VMap);
-
-    LoopAnalysisManager LAM;
-    FunctionAnalysisManager FAM;
-    CGSCCAnalysisManager CGAM;
-    ModuleAnalysisManager MAM;
-
-    PassBuilder PB;
-
-    PB.registerModuleAnalyses(MAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerLoopAnalyses(LAM);
-    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
-    inputGenerationInstrumentModule(*ClonedModule, MAM, Mode);
-
-    return ClonedModule;
-  }
-
   bool shouldGen(Function &F) { return !F.isDeclaration(); }
 
   void genAllFunctionsForRuntime(std::string RuntimeName,
                                  IGInstrumentationModeTy Mode) {
 
-    auto InstrM = getInstrumentedModule(M, Mode);
+    ValueToValueMapTy VMap;
+    auto ClonedModule = CloneModule(M, VMap);
+
+    LoopAnalysisManager LAM;
+    FunctionAnalysisManager FAM;
+    CGSCCAnalysisManager CGAM;
+    ModuleAnalysisManager MAM;
+
+    PassBuilder PB;
+
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    ModuleInputGenInstrumenter MIGI(*ClonedModule, MAM, Mode);
+    bool Success = MIGI.instrumentModule(*ClonedModule);
+    if (!Success) {
+      llvm::outs() << "Instrumenting failed\n";
+      return;
+    }
 
     for (size_t It = 0; It < Functions.size(); It++) {
       Function &F = *Functions[It];
@@ -214,10 +187,16 @@ public:
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
 
-      auto InstrMEntry = getInstrumentedModuleForEntryPoint(M, F, Mode);
-      if (!InstrMEntry) {
+      ValueToValueMapTy VMap;
+      auto InstrMEntry = CloneModule(M, VMap);
+      auto MIGIFun = MIGI;
+      MIGIFun.switchModule(*InstrMEntry, VMap);
+      bool Success =
+          MIGIFun.instrumentEntryPoint(*InstrMEntry, *cast<Function>(VMap[&F]));
+
+      if (!Success) {
         llvm::outs() << "Instrumenting failed\n";
-        return;
+        continue;
       }
       llvm::outs() << "Instrumenting succeeded\n";
 
@@ -234,7 +213,7 @@ public:
           llvm::outs() << "Compiling executable succeeded\n";
         } else {
           llvm::outs() << "Compiling executable failed\n";
-          return;
+          continue;
         }
       }
     }
