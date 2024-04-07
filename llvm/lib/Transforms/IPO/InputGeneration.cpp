@@ -52,6 +52,7 @@
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/IPO/Attributor.h"
+#include "llvm/Transforms/IPO/InputGenerationImpl.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <cstdint>
@@ -121,144 +122,35 @@ std::string getTypeName(const Type *Ty) {
     return "unknown";
   };
 }
-
-struct InterestingMemoryAccess {
-  Instruction *I = nullptr;
-  Value *Addr = nullptr;
-  Type *AccessTy;
-  Value *V = nullptr;
-  Value *MaybeMask = nullptr;
-
-  enum KindTy { WRITE, READ, READ_THEN_WRITE, Last = READ_THEN_WRITE } Kind;
-
-  static std::string kindAsStr(KindTy K) {
-    switch (K) {
-    case WRITE:
-      return "write";
-    case READ:
-      return "read";
-    case READ_THEN_WRITE:
-      return "read_write";
-    }
-    llvm_unreachable("Unknown kind");
-  }
-};
-
-/// Instrument the code in module to profile memory accesses.
-class InputGenInstrumenter {
-public:
-  InputGenInstrumenter(Module &M, AnalysisManager<Module> &MAM,
-                       IGInstrumentationModeTy Mode)
-      : Mode(Mode), MAM(MAM) {
-    Ctx = &(M.getContext());
-    PtrTy = PointerType::getUnqual(*Ctx);
-    Int1Ty = IntegerType::getIntNTy(*Ctx, 1);
-    Int8Ty = IntegerType::getIntNTy(*Ctx, 8);
-    Int16Ty = IntegerType::getIntNTy(*Ctx, 16);
-    Int32Ty = IntegerType::getIntNTy(*Ctx, 32);
-    Int64Ty = IntegerType::getIntNTy(*Ctx, 64);
-    VoidTy = PointerType::getVoidTy(*Ctx);
-    FloatTy = Type::getFloatTy(*Ctx);
-    DoubleTy = Type::getDoubleTy(*Ctx);
-  }
-
-  /// If it is an interesting memory access, populate information
-  /// about the access and return a InterestingMemoryAccess struct.
-  /// Otherwise return std::nullopt.
-  std::optional<InterestingMemoryAccess>
-  isInterestingMemoryAccess(Instruction *I) const;
-
-  void instrumentMop(const InterestingMemoryAccess &Access,
-                     const DataLayout &DL);
-  void instrumentAddress(const InterestingMemoryAccess &Access,
-                         const DataLayout &DL);
-  void instrumentMaskedLoadOrStore(const InterestingMemoryAccess &Access,
-                                   const DataLayout &DL);
-  void instrumentMemIntrinsic(MemIntrinsic *MI);
-
-  void instrumentFunction(Function &F);
-  void instrumentModuleForEntryPoint(Function &F);
-  void createRecordingEntryPoint(Function &F);
-  void createGenerationEntryPoint(Function &F);
-  void createGlobalCalls(Module &M, IRBuilder<> &IRB);
-  void createRunEntryPoint(Function &F);
-  void stubDeclarations(Module &M, TargetLibraryInfo &TLI);
-  void provideGlobals(Module &M);
-  SetVector<Function *> stripUnneededFunctions(Function &F);
-
-  SmallVector<std::pair<GlobalVariable *, GlobalVariable *>>
-      MaybeExtInitializedGlobals;
-
-  IGInstrumentationModeTy Mode;
-  Type *VoidTy, *FloatTy, *DoubleTy;
-  IntegerType *Int1Ty, *Int8Ty, *Int16Ty, *Int32Ty, *Int64Ty;
-  PointerType *PtrTy;
-  LLVMContext *Ctx;
-
-  AnalysisManager<Module> &MAM;
-
-  void initializeCallbacks(Module &M);
-
-private:
-  // These arrays is indexed by AccessIsWrite
-  DenseMap<std::pair<int, Type *>, FunctionCallee> InputGenMemoryAccessCallback;
-  DenseMap<Type *, FunctionCallee> ValueGenCallback;
-
-  FunctionCallee InputGenMemmove, InputGenMemcpy, InputGenMemset;
-};
-
-class ModuleInputGenInstrumenter {
-public:
-  ModuleInputGenInstrumenter(Module &M, AnalysisManager<Module> &AM,
-                             IGInstrumentationModeTy Mode)
-      : IGI(M, AM, Mode) {
-    TargetTriple = Triple(M.getTargetTriple());
-  }
-
-  bool instrumentClEntryPoint(Module &);
-  bool instrumentModule(Module &);
-  bool instrumentEntryPoint(Module &, Function &);
-  bool instrumentModuleForFunction(Module &, Function &);
-
-private:
-  Triple TargetTriple;
-  Function *InputGenCtorFunction = nullptr;
-  InputGenInstrumenter IGI;
-};
-
 } // end anonymous namespace
 
 InputGenerationInstrumentPass::InputGenerationInstrumentPass() = default;
 
-namespace llvm {
-
-/// Instrument entire module withuot deciding on the entry point yet
-bool inputGenerationInstrumentModule(Module &M, ModuleAnalysisManager &MAM,
-                                     IGInstrumentationModeTy Mode) {
-  ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
-  return Profiler.instrumentModule(M);
+void InputGenInstrumenter::switchModule(Module &NewModule,
+                                        ValueToValueMapTy &VMap) {
+  for (auto &P : InputGenMemoryAccessCallback)
+    InputGenMemoryAccessCallback[P.first] =
+        FunctionCallee(cast<Function>(VMap[P.second.getCallee()]));
+  for (auto &P : ValueGenCallback)
+    ValueGenCallback[P.first] =
+        FunctionCallee(cast<Function>(VMap[P.second.getCallee()]));
+  for (auto &P : MaybeExtInitializedGlobals)
+    P = {cast<GlobalVariable>(VMap[P.first]),
+         cast<GlobalVariable>(VMap[P.first])};
+  InputGenMemmove =
+      FunctionCallee(cast<Function>(VMap[InputGenMemmove.getCallee()]));
+  InputGenMemcpy =
+      FunctionCallee(cast<Function>(VMap[InputGenMemcpy.getCallee()]));
+  InputGenMemset =
+      FunctionCallee(cast<Function>(VMap[InputGenMemset.getCallee()]));
 }
 
-/// Set up the entry point for an already instrumented module
-bool inputGenerationInstrumentEntryPoint(Function &F,
-                                         ModuleAnalysisManager &MAM,
-                                         IGInstrumentationModeTy Mode) {
-  Module &M = *F.getParent();
-  ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
-  return Profiler.instrumentEntryPoint(M, F);
+void ModuleInputGenInstrumenter::switchModule(Module &NewModule,
+                                              ValueToValueMapTy &VMap) {
+  InputGenCtorFunction = cast<Function>(VMap[InputGenCtorFunction]);
+  TargetTriple = Triple(NewModule.getTargetTriple());
+  IGI.switchModule(NewModule, VMap);
 }
-
-/// More efficient one-shot version of the combination
-/// inputGenerationInstrumentModule, inputGenerationInstrumentEntryPoint
-bool inputGenerationInstrumentModuleForFunction(Function &F,
-                                                ModuleAnalysisManager &MAM,
-                                                IGInstrumentationModeTy Mode) {
-  Module &M = *F.getParent();
-  ModuleInputGenInstrumenter Profiler(M, MAM, Mode);
-  return Profiler.instrumentModuleForFunction(M, F);
-}
-
-} // namespace llvm
 
 PreservedAnalyses
 InputGenerationInstrumentPass::run(Module &M, AnalysisManager<Module> &MAM) {
