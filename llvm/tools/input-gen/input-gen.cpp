@@ -178,7 +178,7 @@ public:
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-    inputGenerationInstrumentModule(ClonedModule, MAM, Mode);
+    inputGenerationInstrumentModule(*ClonedModule, MAM, Mode);
 
     return ClonedModule;
   }
