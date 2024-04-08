@@ -111,7 +111,7 @@ public:
   void createRunEntryPoint(Function &F);
   void stubDeclarations(Module &M, TargetLibraryInfo &TLI);
   void provideGlobals(Module &M);
-  SetVector<Function *> stripUnneededFunctions(Function &F);
+  SetVector<Function *> pruneModule(Function &F);
 
   SmallVector<std::pair<GlobalVariable *, GlobalVariable *>>
       MaybeExtInitializedGlobals;

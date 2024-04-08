@@ -83,6 +83,11 @@ static cl::opt<IGInstrumentationModeTy>
                                    clEnumValN(IG_Generate, "generate", ""),
                                    clEnumValN(IG_Run, "run", "")));
 
+static cl::opt<bool>
+    ClPruneModule("input-gen-prune-module",
+                  cl::desc("Prune unneeded functions from module."), cl::Hidden,
+                  cl::init(true));
+
 static cl::opt<bool> ClInsertVersionCheck(
     "input-gen-guard-against-version-mismatch",
     cl::desc("Guard against compiler/runtime version mismatch."), cl::Hidden,
@@ -148,7 +153,8 @@ void InputGenInstrumenter::switchModule(Module &NewModule,
 
 void ModuleInputGenInstrumenter::switchModule(Module &NewModule,
                                               ValueToValueMapTy &VMap) {
-  InputGenCtorFunction = cast<Function>(VMap[InputGenCtorFunction]);
+  if (InputGenCtorFunction)
+    InputGenCtorFunction = cast_or_null<Function>(VMap[InputGenCtorFunction]);
   TargetTriple = Triple(NewModule.getTargetTriple());
   IGI.switchModule(NewModule, VMap);
 }
@@ -354,6 +360,7 @@ bool ModuleInputGenInstrumenter::instrumentClEntryPoint(Module &M) {
 }
 
 bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
+
   IGI.initializeCallbacks(M);
   IGI.provideGlobals(M);
 
@@ -362,7 +369,7 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
     if (!Fn.isDeclaration())
       IGI.instrumentFunction(Fn);
 
-  if (IGI.Mode != IG_Run) {
+  if (IGI.Mode == IG_Generate) {
     auto Prefix = getCallbackPrefix(IGI.Mode);
 
     // Create a module constructor.
@@ -587,8 +594,7 @@ void InputGenInstrumenter::provideGlobals(Module &M) {
   }
 }
 
-SetVector<Function *>
-InputGenInstrumenter::stripUnneededFunctions(Function &F) {
+SetVector<Function *> InputGenInstrumenter::pruneModule(Function &F) {
   Module &M = *F.getParent();
   SetVector<Function *> Functions;
   Functions.insert(&F);
@@ -636,7 +642,7 @@ InputGenInstrumenter::stripUnneededFunctions(Function &F) {
 
 void InputGenInstrumenter::instrumentModuleForEntryPoint(Function &F) {
 
-  auto Functions = stripUnneededFunctions(F);
+  auto Functions = pruneModule(F);
 
   for (auto *Fn : Functions)
     if (!Fn->isDeclaration())

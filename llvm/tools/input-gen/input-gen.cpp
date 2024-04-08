@@ -140,8 +140,8 @@ public:
   void genAllFunctionsForRuntime(std::string RuntimeName,
                                  IGInstrumentationModeTy Mode) {
 
-    ValueToValueMapTy VMap;
-    auto ClonedModule = CloneModule(M, VMap);
+    ValueToValueMapTy VMap1;
+    auto InstrM = CloneModule(M, VMap1);
 
     LoopAnalysisManager LAM;
     FunctionAnalysisManager FAM;
@@ -156,8 +156,8 @@ public:
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-    ModuleInputGenInstrumenter MIGI(*ClonedModule, MAM, Mode);
-    bool Success = MIGI.instrumentModule(*ClonedModule);
+    ModuleInputGenInstrumenter MIGI(*InstrM, MAM, Mode);
+    bool Success = MIGI.instrumentModule(*InstrM);
     if (!Success) {
       llvm::outs() << "Instrumenting failed\n";
       return;
@@ -187,12 +187,12 @@ public:
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
 
-      ValueToValueMapTy VMap;
-      auto InstrMEntry = CloneModule(M, VMap);
+      ValueToValueMapTy VMap2;
+      auto InstrMEntry = CloneModule(*InstrM, VMap2);
       auto MIGIFun = MIGI;
-      MIGIFun.switchModule(*InstrMEntry, VMap);
-      bool Success =
-          MIGIFun.instrumentEntryPoint(*InstrMEntry, *cast<Function>(VMap[&F]));
+      MIGIFun.switchModule(*InstrMEntry, VMap2);
+      bool Success = MIGIFun.instrumentEntryPoint(
+          *InstrMEntry, *cast<Function>(VMap2[VMap1[&F]]));
 
       if (!Success) {
         llvm::outs() << "Instrumenting failed\n";
