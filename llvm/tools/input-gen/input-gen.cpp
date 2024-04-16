@@ -193,18 +193,17 @@ public:
 
       std::string FuncName = F.getName().str();
 
-      std::string BcFileName =
-          OutputDir + "/" + "input-gen.entry." + FuncName + "." + ModeStr + ".bc";
-      std::string SoFileName =
-          OutputDir + "/" + "input-gen.entry." + FuncName + "." + ModeStr + ".so";
+      std::string EntryBcFileName = OutputDir + "/" + "input-gen.entry." +
+                                    FuncName + "." + ModeStr + ".bc";
+      std::string EntrySoFileName = OutputDir + "/" + "input-gen.entry." +
+                                    FuncName + "." + ModeStr + ".so";
 
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
 
-      ValueToValueMapTy VMap2;
-      auto EntryModule = MIGI.generateEntryPointModule();
+      auto EntryModule = MIGI.generateEntryPointModule(*InstrM, F);
 
-      if (!EntryM) {
+      if (!EntryModule) {
         llvm::outs() << "Instrumenting failed\n";
         continue;
       }
@@ -212,14 +211,14 @@ public:
 
       llvm::outs() << "Generating input module...\n";
 
-      if (!writeModuleToFile(*InstrMEntry, BcFileName)) {
+      if (!writeModuleToFile(*EntryModule, EntryBcFileName)) {
         llvm::outs() << "Writing module to file failed\n";
         exit(1);
       }
 
       // TODO Use proper path concat function
       if (CompileInputGenBinaries) {
-        if (compileModule(BcFileName, RuntimeName, SoFileName)) {
+        if (compileLib(EntryBcFileName, EntrySoFileName)) {
           llvm::outs() << "Compiling executable succeeded\n";
         } else {
           llvm::outs() << "Compiling executable failed\n";
