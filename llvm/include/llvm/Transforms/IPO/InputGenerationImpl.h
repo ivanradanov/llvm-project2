@@ -148,7 +148,7 @@ public:
   bool instrumentModule(Module &);
   bool instrumentEntryPoint(Module &, Function &);
   bool instrumentModuleForFunction(Module &, Function &);
-  bool generateEntryPointModule(Module &M, Function &);
+  std::unique_ptr<Module> generateEntryPointModule(Module &M, Function &);
 
 private:
   Triple TargetTriple;

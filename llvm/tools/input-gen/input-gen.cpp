@@ -50,8 +50,8 @@ static cl::opt<std::string> InputFilename(cl::Positional, cl::init("-"),
                                           cl::desc("Input file"),
                                           cl::cat(InputGenCategory));
 
-static cl::opt<bool> CompileInputGenExecutables("compile-input-gen-executables",
-                                                cl::cat(InputGenCategory));
+static cl::opt<bool> CompileInputGenBinaries("compile-input-gen-binaries",
+                                             cl::cat(InputGenCategory));
 
 constexpr char ToolName[] = "input-gen";
 
@@ -117,7 +117,7 @@ public:
   std::string Clang;
   InputGenOrchestration(Module &M) : M(M){};
   void init(int Argc, char **Argv) {
-    if (CompileInputGenExecutables) {
+    if (CompileInputGenBinaries) {
       if (GenRuntime.empty() || RunRuntime.empty())
         fatalError("input-gen: Need to specify input-gen runtimes to compile "
                    "executables.");
@@ -162,27 +162,41 @@ public:
       llvm::outs() << "Instrumenting failed\n";
       return;
     }
+    std::string ModeStr = [&]() {
+      switch (Mode) {
+      case llvm::IG_Generate:
+        return "generate";
+      case llvm::IG_Run:
+        return "run";
+      case llvm::IG_Record:
+        llvm_unreachable("Unsupported mode");
+      }
+      llvm_unreachable("Unknown mode");
+    }();
+    std::string BcFileName =
+        OutputDir + "/" + "input-gen.module." + ModeStr + ".bc";
+    std::string SoFileName =
+        OutputDir + "/" + "input-gen.module." + ModeStr + ".so";
+    if (!writeModuleToFile(*InstrM, BcFileName)) {
+      llvm::outs() << "Writing instrumented module to file failed\n";
+      exit(1);
+    }
+    if (CompileInputGenBinaries) {
+      if (!compileLib(BcFileName, SoFileName)) {
+        llvm::outs() << "Compiling instrumented module failed\n";
+        exit(1);
+      }
+    }
 
     for (size_t It = 0; It < Functions.size(); It++) {
       Function &F = *Functions[It];
 
       std::string FuncName = F.getName().str();
-      std::string ModeStr = [&]() {
-        switch (Mode) {
-        case llvm::IG_Generate:
-          return "generate";
-        case llvm::IG_Run:
-          return "run";
-        case llvm::IG_Record:
-          llvm_unreachable("Unsupported mode");
-        }
-        llvm_unreachable("Unknown mode");
-      }();
 
-      std::string ModuleFileName =
-          OutputDir + "/" + "input-gen." + FuncName + "." + ModeStr + ".bc";
-      std::string ExecutableFileName =
-          OutputDir + "/" + "input-gen." + FuncName + "." + ModeStr + ".a.out";
+      std::string BcFileName =
+          OutputDir + "/" + "input-gen.entry." + FuncName + "." + ModeStr + ".bc";
+      std::string SoFileName =
+          OutputDir + "/" + "input-gen.entry." + FuncName + "." + ModeStr + ".so";
 
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
@@ -198,14 +212,14 @@ public:
 
       llvm::outs() << "Generating input module...\n";
 
-      if (!writeModuleToFile(*InstrMEntry, ModuleFileName)) {
+      if (!writeModuleToFile(*InstrMEntry, BcFileName)) {
         llvm::outs() << "Writing module to file failed\n";
         exit(1);
       }
 
       // TODO Use proper path concat function
-      if (CompileInputGenExecutables) {
-        if (compileModule(ModuleFileName, RuntimeName, ExecutableFileName)) {
+      if (CompileInputGenBinaries) {
+        if (compileModule(BcFileName, RuntimeName, SoFileName)) {
           llvm::outs() << "Compiling executable succeeded\n";
         } else {
           llvm::outs() << "Compiling executable failed\n";
@@ -255,28 +269,29 @@ public:
     return true;
   }
 
-  bool compileModule(std::string ModuleName, std::string Runtime,
-                     std::string ExecutableName) {
-    if (CompileInputGenExecutables) {
+  bool compileLib(std::string ModuleName,
+                  std::string ExecutableName) {
+    if (CompileInputGenBinaries) {
       outs() << "Compiling " << ExecutableName << "\n";
       SmallVector<StringRef, 8> Args = {
-          Clang, "-fopenmp", "-O2", Runtime, ModuleName, "-o", ExecutableName};
+          Clang, "-fopenmp", "-O2", "-shared", ModuleName, "-o", ExecutableName};
       std::string ErrMsg;
       int Res = sys::ExecuteAndWait(
           Args[0], Args, /*Env=*/std::nullopt, /*Redirects=*/{},
           /*SecondsToWait=*/0, /*MemoryLimit=*/0, &ErrMsg);
       if (Res) {
         if (!ErrMsg.empty())
-          errs() << "input-gen: gen binary compilation failed: " + ErrMsg +
+          errs() << "input-gen: lib compilation failed: " + ErrMsg +
                         "\n";
         else
-          errs() << "input-gen: gen binary compilation failed.\n";
+          errs() << "input-gen: lib compilation failed.\n";
         return false;
       }
     }
 
     return true;
   }
+
 };
 
 int main(int argc, char **argv) {

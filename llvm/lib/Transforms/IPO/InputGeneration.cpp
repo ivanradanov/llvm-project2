@@ -334,6 +334,17 @@ bool ModuleInputGenInstrumenter::instrumentClEntryPoint(Module &M) {
 }
 
 bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
+
+  switch (IGI.Mode) {
+    case IG_Run:
+    case IG_Generate:
+      if (auto *OldMain = M.getFunction("main"))
+        OldMain->setName("__input_gen_user_main");
+      break;
+    case IG_Record:
+      break;
+  }
+
   IGI.initializeCallbacks(M);
   IGI.provideGlobals(M);
 
@@ -375,6 +386,11 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
 
   IGI.stubDeclarations(M, *TLI);
 
+  auto *GlobalInitF = Function::Create(FunctionType::get(IGI.VoidTy, /*isVarArg=*/false), GlobalValue::ExternalLinkage, "__input_gen_init", &M);
+  auto *EntryBB = BasicBlock::Create(GlobalInitF->getContext(), "entry", GlobalInitF);
+  IRBuilder<> IRB(EntryBB);
+  IGI.createGlobalCalls(M, IRB);
+
   return true;
 }
 
@@ -391,7 +407,7 @@ bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M,
     break;
   case IG_Run:
     IGI.createRunEntryPoint(EntryPoint);
-    return true;
+    break;
   }
 
   return true;
@@ -404,7 +420,9 @@ ModuleInputGenInstrumenter::generateEntryPointModule(Module &M,
   NewM->setTargetTriple(M.getTargetTriple());
   NewM->setDataLayout(M.getDataLayout());
 
-  Function::Create(EntryPoint.getType(), GlobalValue::ExternalLinkage, );
+  Function *EntryF =
+      Function::Create(EntryPoint.getFunctionType(), GlobalValue::ExternalLinkage,
+                       EntryPoint.getName(), &*NewM);
 
   switch (IGI.Mode) {
   case IG_Record:
@@ -415,8 +433,10 @@ ModuleInputGenInstrumenter::generateEntryPointModule(Module &M,
     break;
   case IG_Run:
     IGI.createRunEntryPoint(EntryPoint);
-    return true;
+    break;
   }
+
+  return NewM;
 }
 
 bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
@@ -687,8 +707,6 @@ void InputGenInstrumenter::createGlobalCalls(Module &M, IRBuilder<> &IRB) {
 
 void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
   Module &M = *F.getParent();
-  if (auto *OldMain = M.getFunction("main"))
-    OldMain->setName("__user_main");
 
   FunctionType *MainTy = FunctionType::get(Int32Ty, {Int32Ty, PtrTy}, false);
   auto *MainFn = Function::Create(MainTy, GlobalValue::ExternalLinkage,
@@ -699,8 +717,6 @@ void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
       ReturnInst::Create(*Ctx, ConstantInt::getNullValue(Int32Ty), EntryBB);
   IRBuilder<> IRB(RI);
   IRB.SetCurrentDebugLocation(F.getEntryBlock().getTerminator()->getDebugLoc());
-
-  createGlobalCalls(M, IRB);
 
   SmallVector<Value *> Args;
   for (auto &Arg : F.args()) {
@@ -714,8 +730,6 @@ void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
 
 void InputGenInstrumenter::createRunEntryPoint(Function &F) {
   Module &M = *F.getParent();
-  if (auto *OldMain = M.getFunction("main"))
-    OldMain->setName("__user_main");
 
   FunctionType *MainTy = FunctionType::get(VoidTy, {PtrTy}, false);
   auto *MainFn = Function::Create(MainTy, GlobalValue::ExternalLinkage,
@@ -725,8 +739,6 @@ void InputGenInstrumenter::createRunEntryPoint(Function &F) {
   auto *RI = ReturnInst::Create(*Ctx, EntryBB);
   IRBuilder<> IRB(RI);
   IRB.SetCurrentDebugLocation(F.getEntryBlock().getTerminator()->getDebugLoc());
-
-  createGlobalCalls(M, IRB);
 
   Argument *ArgsPtr = MainFn->getArg(0);
   unsigned Idx = 0;
