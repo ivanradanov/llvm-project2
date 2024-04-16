@@ -11,6 +11,7 @@
 #include "llvm/ADT/iterator.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -102,7 +103,6 @@ public:
                                    const DataLayout &DL);
   void instrumentMemIntrinsic(MemIntrinsic *MI);
 
-  void switchModule(Module &NewModule, ValueToValueMapTy &VMap);
   void instrumentFunction(Function &F);
   void instrumentModuleForEntryPoint(Function &F);
   void createRecordingEntryPoint(Function &F);
@@ -140,16 +140,20 @@ public:
                              IGInstrumentationModeTy Mode)
       : IGI(M, AM, Mode) {
     TargetTriple = Triple(M.getTargetTriple());
+    TLII.reset(new TargetLibraryInfoImpl(TargetTriple));
+    TLI.reset(new TargetLibraryInfo(*TLII));
   }
 
-  void switchModule(Module &NewModule, ValueToValueMapTy &VMap);
   bool instrumentClEntryPoint(Module &);
   bool instrumentModule(Module &);
   bool instrumentEntryPoint(Module &, Function &);
   bool instrumentModuleForFunction(Module &, Function &);
+  bool generateEntryPointModule(Module &M, Function &);
 
 private:
   Triple TargetTriple;
+  std::unique_ptr<TargetLibraryInfoImpl> TLII;
+  std::unique_ptr<TargetLibraryInfo> TLI;
   Function *InputGenCtorFunction = nullptr;
   InputGenInstrumenter IGI;
 };

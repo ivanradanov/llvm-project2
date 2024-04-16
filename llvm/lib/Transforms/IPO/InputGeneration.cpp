@@ -57,6 +57,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <cstdint>
+#include <memory>
 
 using namespace llvm;
 
@@ -131,33 +132,6 @@ std::string getTypeName(const Type *Ty) {
 } // end anonymous namespace
 
 InputGenerationInstrumentPass::InputGenerationInstrumentPass() = default;
-
-void InputGenInstrumenter::switchModule(Module &NewModule,
-                                        ValueToValueMapTy &VMap) {
-  for (auto &P : InputGenMemoryAccessCallback)
-    InputGenMemoryAccessCallback[P.first] =
-        FunctionCallee(cast<Function>(VMap[P.second.getCallee()]));
-  for (auto &P : ValueGenCallback)
-    ValueGenCallback[P.first] =
-        FunctionCallee(cast<Function>(VMap[P.second.getCallee()]));
-  for (auto &P : MaybeExtInitializedGlobals)
-    P = {cast<GlobalVariable>(VMap[P.first]),
-         cast<GlobalVariable>(VMap[P.first])};
-  InputGenMemmove =
-      FunctionCallee(cast<Function>(VMap[InputGenMemmove.getCallee()]));
-  InputGenMemcpy =
-      FunctionCallee(cast<Function>(VMap[InputGenMemcpy.getCallee()]));
-  InputGenMemset =
-      FunctionCallee(cast<Function>(VMap[InputGenMemset.getCallee()]));
-}
-
-void ModuleInputGenInstrumenter::switchModule(Module &NewModule,
-                                              ValueToValueMapTy &VMap) {
-  if (InputGenCtorFunction)
-    InputGenCtorFunction = cast_or_null<Function>(VMap[InputGenCtorFunction]);
-  TargetTriple = Triple(NewModule.getTargetTriple());
-  IGI.switchModule(NewModule, VMap);
-}
 
 PreservedAnalyses
 InputGenerationInstrumentPass::run(Module &M, AnalysisManager<Module> &MAM) {
@@ -360,7 +334,6 @@ bool ModuleInputGenInstrumenter::instrumentClEntryPoint(Module &M) {
 }
 
 bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
-
   IGI.initializeCallbacks(M);
   IGI.provideGlobals(M);
 
@@ -400,16 +373,13 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
     ::createProfileFileNameVar(M, TargetTriple, IGI.Mode);
   }
 
+  IGI.stubDeclarations(M, *TLI);
+
   return true;
 }
 
 bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M,
                                                       Function &EntryPoint) {
-  FunctionAnalysisManager &FAM =
-      IGI.MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
-  auto &TLI = FAM.getResult<TargetLibraryAnalysis>(EntryPoint);
-  IGI.stubDeclarations(M, TLI);
-
   EntryPoint.setLinkage(GlobalValue::ExternalLinkage);
 
   switch (IGI.Mode) {
@@ -425,6 +395,28 @@ bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M,
   }
 
   return true;
+}
+
+std::unique_ptr<Module>
+ModuleInputGenInstrumenter::generateEntryPointModule(Module &M,
+                                                     Function &EntryPoint) {
+  auto NewM = std::make_unique<Module>("entry_point_module", M.getContext());
+  NewM->setTargetTriple(M.getTargetTriple());
+  NewM->setDataLayout(M.getDataLayout());
+
+  Function::Create(EntryPoint.getType(), GlobalValue::ExternalLinkage, );
+
+  switch (IGI.Mode) {
+  case IG_Record:
+    IGI.createRecordingEntryPoint(EntryPoint);
+    break;
+  case IG_Generate:
+    IGI.createGenerationEntryPoint(EntryPoint);
+    break;
+  case IG_Run:
+    IGI.createRunEntryPoint(EntryPoint);
+    return true;
+  }
 }
 
 bool ModuleInputGenInstrumenter::instrumentModuleForFunction(

@@ -188,13 +188,9 @@ public:
       llvm::outs() << "Instrumenting...\n";
 
       ValueToValueMapTy VMap2;
-      auto InstrMEntry = CloneModule(*InstrM, VMap2);
-      auto MIGIFun = MIGI;
-      MIGIFun.switchModule(*InstrMEntry, VMap2);
-      bool Success = MIGIFun.instrumentEntryPoint(
-          *InstrMEntry, *cast<Function>(VMap2[VMap1[&F]]));
+      auto EntryModule = MIGI.generateEntryPointModule();
 
-      if (!Success) {
+      if (!EntryM) {
         llvm::outs() << "Instrumenting failed\n";
         continue;
       }
