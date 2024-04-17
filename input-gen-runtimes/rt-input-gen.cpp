@@ -497,21 +497,15 @@ void free(void *) {}
 }
 
 int main(int argc, char **argv) {
-  const char *OutputDir = "-";
-  int Start = 0;
-  int End = 1;
-  const char *So, *FuncName;
-
-  if (argc == 6) {
-    OutputDir = argv[1];
-    Start = std::stoi(argv[2]);
-    End = std::stoi(argv[3]);
-    So = argv[4];
-    FuncName = argv[5];
-  } else {
+  if (argc != 5) {
     std::cerr << "Wrong usage." << std::endl;
     return 1;
   }
+
+  const char *OutputDir = argv[1];
+  int Start = std::stoi(argv[2]);
+  int End = std::stoi(argv[3]);
+  const char *FuncName = argv[4];
 
   VERBOSE = (bool)getenv("VERBOSE");
 
@@ -521,9 +515,9 @@ int main(int argc, char **argv) {
 
   std::cout << "Will generate " << Size << " inputs." << std::endl;
 
-  void *Handle = dlopen(So, RTLD_NOW);
+  void *Handle = dlopen(NULL, RTLD_NOW);
   if (!Handle) {
-    std::cout << "Could not open " << So << std::endl;
+    std::cout << "Could not dyn load binary" << std::endl;
     std::cout << dlerror() << std::endl;
     return 11;
   }
@@ -532,7 +526,8 @@ int main(int argc, char **argv) {
       Handle, (std::string("__inputgen_entry") + FuncName).c_str());
 
   if (!EntryFn) {
-    std::cout << "Function " << FuncName << " not found in " << So << std::endl;
+    std::cout << "Function " << FuncName << " not found in binary."
+              << std::endl;
     return 12;
   }
 

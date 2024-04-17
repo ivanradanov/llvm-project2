@@ -196,14 +196,14 @@ public:
     }
     std::string BcFileName =
         OutputDir + "/" + "input-gen.module." + ModeStr + ".bc";
-    std::string SoFileName =
-        OutputDir + "/" + "input-gen.module." + ModeStr + ".so";
+    std::string ExecutableFileName =
+        OutputDir + "/" + "input-gen.module." + ModeStr + ".a.out";
     if (!writeModuleToFile(*InstrM, BcFileName)) {
       llvm::outs() << "Writing instrumented module to file failed\n";
       exit(1);
     }
     if (CompileInputGenBinaries) {
-      if (!compileLib(BcFileName, SoFileName)) {
+      if (!compileExecutable(BcFileName, ExecutableFileName, RuntimeName)) {
         llvm::outs() << "Compiling instrumented module failed\n";
         exit(1);
       }
@@ -250,29 +250,32 @@ public:
     return true;
   }
 
-  bool compileLib(std::string ModuleName,
-                  std::string ExecutableName) {
+  bool compileExecutable(std::string ModuleName, std::string ExecutableName,
+                         std::string RuntimeName) {
     if (CompileInputGenBinaries) {
       outs() << "Compiling " << ExecutableName << "\n";
       SmallVector<StringRef, 8> Args = {
-          Clang, "-fopenmp", "-O2", "-shared", ModuleName, "-o", ExecutableName};
+          Clang,       "-fopenmp", "-O2", "-ldl",        "-rdynamic",
+          RuntimeName, ModuleName, "-o",  ExecutableName};
       std::string ErrMsg;
       int Res = sys::ExecuteAndWait(
           Args[0], Args, /*Env=*/std::nullopt, /*Redirects=*/{},
           /*SecondsToWait=*/0, /*MemoryLimit=*/0, &ErrMsg);
       if (Res) {
+        errs() << "input-gen: executable compilation failed";
         if (!ErrMsg.empty())
-          errs() << "input-gen: lib compilation failed: " + ErrMsg +
-                        "\n";
-        else
-          errs() << "input-gen: lib compilation failed.\n";
+          errs() << ": " << ErrMsg;
+        errs() << ".\n";
+        errs() << "Args: ";
+        for (auto Arg : Args)
+          errs() << "\"" << Arg << "\" ";
+        errs() << "\n";
         return false;
       }
     }
 
     return true;
   }
-
 };
 
 int main(int argc, char **argv) {

@@ -348,12 +348,22 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
   IGI.initializeCallbacks(M);
   IGI.provideGlobals(M);
 
-  // instrumentFunction(F);
-  for (auto &Fn : M)
-    if (!Fn.isDeclaration())
-      IGI.instrumentFunction(Fn);
+  switch (IGI.Mode) {
+  case IG_Run:
+    break;
+  case IG_Generate:
+  case IG_Record:
+    for (auto &Fn : M)
+      if (!Fn.isDeclaration())
+        IGI.instrumentFunction(Fn);
+    break;
+  }
 
-  if (IGI.Mode == IG_Generate) {
+  switch (IGI.Mode) {
+  case IG_Run:
+  case IG_Record:
+    break;
+  case IG_Generate:
     auto Prefix = getCallbackPrefix(IGI.Mode);
 
     // Create a module constructor.
@@ -384,16 +394,22 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
     ::createProfileFileNameVar(M, TargetTriple, IGI.Mode);
   }
 
-  IGI.stubDeclarations(M, *TLI);
+  switch (IGI.Mode) {
+  case IG_Record:
+    break;
+  case IG_Run:
+  case IG_Generate:
+    IGI.stubDeclarations(M, *TLI);
 
-  auto *GlobalInitF =
-      Function::Create(FunctionType::get(IGI.VoidTy, /*isVarArg=*/false),
-                       GlobalValue::ExternalLinkage, "__input_gen_init", &M);
-  auto *EntryBB =
-      BasicBlock::Create(GlobalInitF->getContext(), "entry", GlobalInitF);
-  IRBuilder<> IRB(EntryBB);
-  IGI.createGlobalCalls(M, IRB);
-  IRB.CreateRetVoid();
+    auto *GlobalInitF =
+        Function::Create(FunctionType::get(IGI.VoidTy, /*isVarArg=*/false),
+                         GlobalValue::ExternalLinkage, "__input_gen_init", &M);
+    auto *EntryBB =
+        BasicBlock::Create(GlobalInitF->getContext(), "entry", GlobalInitF);
+    IRBuilder<> IRB(EntryBB);
+    IGI.createGlobalCalls(M, IRB);
+    IRB.CreateRetVoid();
+  }
 
   return true;
 }

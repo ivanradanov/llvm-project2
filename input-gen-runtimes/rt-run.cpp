@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <random>
 #include <vector>
@@ -50,8 +52,6 @@ void __inputgen_global(int32_t NumGlobals, void *Global, void **ReplGlobal,
   memcpy(Global, Globals[GlobalsIt], GlobalSize);
 }
 
-void __inputrun_entry(char *);
-
 #define RW(TY, NAME)                                                           \
   TY __inputrun_get_##NAME() { return getNewValue<TY>(); }
 
@@ -70,12 +70,13 @@ void free(void *) {}
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2)
+  if (argc != 3)
     return 1;
 
   VERBOSE = (bool)getenv("VERBOSE");
 
   char *InputName = argv[1];
+  char *FuncName = argv[2];
   printf("Replay %s\n", InputName);
 
   std::ifstream Input(InputName, std::ios::in | std::ios::binary);
@@ -86,7 +87,7 @@ int main(int argc, char **argv) {
   auto MemSize = readSingleEl<uint64_t>(Input);
   char *Memory = ccast(malloc(MemSize));
   if (VERBOSE)
-    printf("MemSize %lu : %p\n", MemSize, Memory);
+    printf("MemSize %lu : %p\n", MemSize, (void *)Memory);
 
   std::map<uint64_t, char *> ObjMap;
   auto NumObjects = readSingleEl<uint32_t>(Input);
@@ -139,7 +140,7 @@ int main(int argc, char **argv) {
   auto NumArgs = readSingleEl<uint32_t>(Input);
   char *ArgsMemory = ccast(malloc(NumArgs * sizeof(uintptr_t)));
   if (VERBOSE)
-    printf("Args %u : %p\n", NumArgs, ArgsMemory);
+    printf("Args %u : %p\n", NumArgs, (void *)ArgsMemory);
   for (uint32_t I = 0; I < NumArgs; ++I) {
     auto Content = readSingleEl<uintptr_t>(Input);
     auto ObjIdx = readSingleEl<int32_t>(Input);
@@ -157,8 +158,26 @@ int main(int argc, char **argv) {
     GetObjectPtrs.push_back(ObjMap[ObjIdx]);
   }
 
+  void *Handle = dlopen(NULL, RTLD_NOW);
+  if (!Handle) {
+    std::cout << "Could not dyn load binary" << std::endl;
+    std::cout << dlerror() << std::endl;
+    return 11;
+  }
+  typedef void (*EntryFnType)(char *);
+  EntryFnType EntryFn = (EntryFnType)dlsym(
+      Handle, (std::string("__inputrun_entry") + FuncName).c_str());
+
+  if (!EntryFn) {
+    std::cout << "Function " << FuncName << " not found in binary."
+              << std::endl;
+    return 12;
+  }
+
   printf("Run\n");
-  __inputrun_entry(ArgsMemory);
+  EntryFn(ArgsMemory);
+
+  dlclose(Handle);
 
   // TODO: we intercept free
   free(ArgsMemory);
