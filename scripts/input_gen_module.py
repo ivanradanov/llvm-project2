@@ -29,7 +29,6 @@ class Function:
             self.run_input(input, timeout)
 
     def run_input(self, input, timeout):
-        # Maybe we can time this
         print('Running executables for', self.input_run_executable)
 
         try:
@@ -39,6 +38,7 @@ class Function:
                 [
                     self.input_run_executable,
                     input,
+                    self.name,
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
@@ -99,9 +99,9 @@ class InputGenModule:
                 self.functions.append(func)
 
                 input_gen_executable = os.path.join(
-                    self.outdir, 'input-gen.' + fname + '.generate.a.out')
+                    self.outdir, 'input-gen.module.generate.a.out')
                 input_run_executable = os.path.join(
-                    self.outdir, 'input-gen.' + fname + '.run.a.out')
+                    self.outdir, 'input-gen.module.run.a.out')
                 inputs_dir = os.path.join(self.outdir, 'input-gen.' + fname + '.inputs')
 
                 if not os.path.isfile(input_gen_executable):
@@ -122,7 +122,8 @@ class InputGenModule:
                         [
                             input_gen_executable,
                             inputs_dir,
-                            str(start), str(end)
+                            str(start), str(end),
+                            fname,
                         ],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL)
@@ -146,12 +147,12 @@ class InputGenModule:
                         # Populate the generated inputs
                         func.inputs = [
                             os.path.join(inputs_dir,
-                                        '{}.input.{}.bin'.format(os.path.basename(input_gen_executable), str(i)))
+                                        '{}.input.{}.{}.bin'.format(os.path.basename(input_gen_executable), fname, str(i)))
                             for i in range(start, end)]
-                        for input in func.inputs:
+                        for inpt in func.inputs:
                             # If the input gen process exited successfully these
                             # _must_ be here
-                            assert(os.path.isfile(input))
+                            assert(os.path.isfile(inpt))
 
                 except subprocess.CalledProcessError as e:
                     print('Input gen process failed: @{}'.format(fname))
