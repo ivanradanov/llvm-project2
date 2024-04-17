@@ -70,13 +70,20 @@ void free(void *) {}
 }
 
 int main(int argc, char **argv) {
-  if (argc != 3)
+  if (argc != 3 && argc != 2) {
+    std::cerr << "Wrong usage." << std::endl;
     return 1;
+  }
+
+  char *InputName = argv[1];
+  std::string FuncName = ("__inputrun_entry");
+  if (argc == 3) {
+    FuncName += "_";
+    FuncName += argv[2];
+  }
 
   VERBOSE = (bool)getenv("VERBOSE");
 
-  char *InputName = argv[1];
-  char *FuncName = argv[2];
   printf("Replay %s\n", InputName);
 
   std::ifstream Input(InputName, std::ios::in | std::ios::binary);
@@ -165,8 +172,7 @@ int main(int argc, char **argv) {
     return 11;
   }
   typedef void (*EntryFnType)(char *);
-  EntryFnType EntryFn = (EntryFnType)dlsym(
-      Handle, (std::string("__inputrun_entry_") + FuncName).c_str());
+  EntryFnType EntryFn = (EntryFnType)dlsym(Handle, FuncName.c_str());
 
   if (!EntryFn) {
     std::cout << "Function " << FuncName << " not found in binary."

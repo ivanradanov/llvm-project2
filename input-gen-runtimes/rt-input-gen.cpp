@@ -132,17 +132,21 @@ struct HeapTy : ObjectTy {
 std::vector<int32_t> GetObjects;
 
 struct InputGenRTTy {
-  InputGenRTTy(const char *ExecPath, const char *OutputDir, const char *FuncName, int Seed)
-      : Seed(Seed), FuncName(FuncName), OutputDir(OutputDir), ExecPath(ExecPath),
-        Heap(new HeapTy()) {
+  InputGenRTTy(const char *ExecPath, const char *OutputDir,
+               const char *FuncIdent, int Seed)
+      : Seed(Seed), FuncIdent(FuncIdent), OutputDir(OutputDir),
+        ExecPath(ExecPath), Heap(new HeapTy()) {
     Gen.seed(Seed);
     SeedStub = rand(false);
     GenStub.seed(SeedStub);
+    if (this->FuncIdent != "") {
+      this->FuncIdent += ".";
+    }
   }
   ~InputGenRTTy() { report(); }
 
   int32_t Seed, SeedStub;
-  std::string FuncName;
+  std::string FuncIdent;
   std::string OutputDir;
   std::filesystem::path ExecPath;
   std::mt19937 Gen, GenStub;
@@ -225,9 +229,9 @@ struct InputGenRTTy {
     } else {
       auto FileName = ExecPath.filename().string();
       std::string ReportOutName(OutputDir + "/" + FileName + ".report." +
-                                FuncName + "." + std::to_string(Seed) + ".txt");
+                                FuncIdent + std::to_string(Seed) + ".txt");
       std::string InputOutName(OutputDir + "/" + FileName + ".input." +
-                               FuncName + "." + std::to_string(Seed) + ".bin");
+                               FuncIdent + std::to_string(Seed) + ".bin");
       std::ofstream InputOutStream(InputOutName,
                                    std::ios::out | std::ios::binary);
       FILE *ReportOutFD = fopen(ReportOutName.c_str(), "w");
@@ -506,9 +510,11 @@ int main(int argc, char **argv) {
   int Start = std::stoi(argv[2]);
   int End = std::stoi(argv[3]);
   std::string FuncName = ("__inputgen_entry");
+  std::string FuncIdent = "";
   if (argc == 5) {
     FuncName += "_";
     FuncName += argv[4];
+    FuncIdent += argv[4];
   }
 
   VERBOSE = (bool)getenv("VERBOSE");
@@ -526,8 +532,7 @@ int main(int argc, char **argv) {
     return 11;
   }
   typedef void (*EntryFnType)(int, char **);
-  EntryFnType EntryFn = (EntryFnType)dlsym(
-      Handle, (std::string("__inputgen_entry_") + FuncName).c_str());
+  EntryFnType EntryFn = (EntryFnType)dlsym(Handle, FuncName.c_str());
 
   if (!EntryFn) {
     std::cout << "Function " << FuncName << " not found in binary."
@@ -536,7 +541,7 @@ int main(int argc, char **argv) {
   }
 
   for (int I = Start; I < End; I++) {
-    InputGenRTTy LocalInputGenRT(argv[0], OutputDir, FuncName.c_str(), I);
+    InputGenRTTy LocalInputGenRT(argv[0], OutputDir, FuncIdent.c_str(), I);
     InputGenRT = &LocalInputGenRT;
     EntryFn(argc, argv);
   }
