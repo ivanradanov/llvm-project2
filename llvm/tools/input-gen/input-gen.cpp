@@ -140,8 +140,8 @@ public:
   void genAllFunctionsForRuntime(std::string RuntimeName,
                                  IGInstrumentationModeTy Mode) {
 
-    ValueToValueMapTy VMap1;
-    auto InstrM = CloneModule(M, VMap1);
+    ValueToValueMapTy VMap;
+    auto InstrM = CloneModule(M, VMap);
 
     LoopAnalysisManager LAM;
     FunctionAnalysisManager FAM;
@@ -173,21 +173,6 @@ public:
       }
       llvm_unreachable("Unknown mode");
     }();
-    std::string BcFileName =
-        OutputDir + "/" + "input-gen.module." + ModeStr + ".bc";
-    std::string SoFileName =
-        OutputDir + "/" + "input-gen.module." + ModeStr + ".so";
-    if (!writeModuleToFile(*InstrM, BcFileName)) {
-      llvm::outs() << "Writing instrumented module to file failed\n";
-      exit(1);
-    }
-    if (CompileInputGenBinaries) {
-      if (!compileLib(BcFileName, SoFileName)) {
-        llvm::outs() << "Compiling instrumented module failed\n";
-        exit(1);
-      }
-    }
-
     for (size_t It = 0; It < Functions.size(); It++) {
       Function &F = *Functions[It];
 
@@ -201,29 +186,26 @@ public:
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
 
-      auto EntryModule = MIGI.generateEntryPointModule(*InstrM, F);
+      auto Success =
+          MIGI.instrumentEntryPoint(*InstrM, *cast<Function>(VMap[&F]), true);
 
-      if (!EntryModule) {
+      if (!Success) {
         llvm::outs() << "Instrumenting failed\n";
         continue;
       }
-      llvm::outs() << "Instrumenting succeeded\n";
-
-      llvm::outs() << "Generating input module...\n";
-
-      if (!writeModuleToFile(*EntryModule, EntryBcFileName)) {
-        llvm::outs() << "Writing module to file failed\n";
+    }
+    std::string BcFileName =
+        OutputDir + "/" + "input-gen.module." + ModeStr + ".bc";
+    std::string SoFileName =
+        OutputDir + "/" + "input-gen.module." + ModeStr + ".so";
+    if (!writeModuleToFile(*InstrM, BcFileName)) {
+      llvm::outs() << "Writing instrumented module to file failed\n";
+      exit(1);
+    }
+    if (CompileInputGenBinaries) {
+      if (!compileLib(BcFileName, SoFileName)) {
+        llvm::outs() << "Compiling instrumented module failed\n";
         exit(1);
-      }
-
-      // TODO Use proper path concat function
-      if (CompileInputGenBinaries) {
-        if (compileLib(EntryBcFileName, EntrySoFileName)) {
-          llvm::outs() << "Compiling executable succeeded\n";
-        } else {
-          llvm::outs() << "Compiling executable failed\n";
-          continue;
-        }
       }
     }
   }

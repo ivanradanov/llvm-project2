@@ -399,7 +399,8 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
 }
 
 bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M,
-                                                      Function &EntryPoint) {
+                                                      Function &EntryPoint,
+                                                      bool UniqName) {
   EntryPoint.setLinkage(GlobalValue::ExternalLinkage);
 
   switch (IGI.Mode) {
@@ -407,10 +408,10 @@ bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M,
     IGI.createRecordingEntryPoint(EntryPoint);
     break;
   case IG_Generate:
-    IGI.createGenerationEntryPoint(EntryPoint);
+    IGI.createGenerationEntryPoint(EntryPoint, UniqName);
     break;
   case IG_Run:
-    IGI.createRunEntryPoint(EntryPoint);
+    IGI.createRunEntryPoint(EntryPoint, UniqName);
     break;
   }
 
@@ -433,10 +434,10 @@ ModuleInputGenInstrumenter::generateEntryPointModule(Module &M,
     IGI.createRecordingEntryPoint(*EntryF);
     break;
   case IG_Generate:
-    IGI.createGenerationEntryPoint(*EntryF);
+    IGI.createGenerationEntryPoint(*EntryF, true);
     break;
   case IG_Run:
-    IGI.createRunEntryPoint(*EntryF);
+    IGI.createRunEntryPoint(*EntryF, true);
     break;
   }
 
@@ -468,11 +469,11 @@ bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
     IGI.instrumentModuleForEntryPoint(EntryPoint);
     break;
   case IG_Generate:
-    IGI.createGenerationEntryPoint(EntryPoint);
+    IGI.createGenerationEntryPoint(EntryPoint, false);
     IGI.instrumentModuleForEntryPoint(EntryPoint);
     break;
   case IG_Run:
-    IGI.createRunEntryPoint(EntryPoint);
+    IGI.createRunEntryPoint(EntryPoint, false);
     return true;
   }
 
@@ -709,13 +710,17 @@ void InputGenInstrumenter::createGlobalCalls(Module &M, IRBuilder<> &IRB) {
   }
 }
 
-void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
+void InputGenInstrumenter::createGenerationEntryPoint(Function &F,
+                                                      bool UniqName) {
   Module &M = *F.getParent();
 
+  std::string EntryPointName = getCallbackPrefix(Mode) + "entry";
+  if (UniqName)
+    EntryPointName += F.getName();
   FunctionType *MainTy = FunctionType::get(Int32Ty, {Int32Ty, PtrTy}, false);
-  auto *MainFn = Function::Create(MainTy, GlobalValue::ExternalLinkage,
-                                  getCallbackPrefix(Mode) + "entry", M);
-  auto *EntryBB = BasicBlock::Create(*Ctx, "entry", MainFn);
+  auto *EntryPoint =
+      Function::Create(MainTy, GlobalValue::ExternalLinkage, EntryPointName, M);
+  auto *EntryBB = BasicBlock::Create(*Ctx, "entry", EntryPoint);
 
   auto *RI =
       ReturnInst::Create(*Ctx, ConstantInt::getNullValue(Int32Ty), EntryBB);
@@ -723,6 +728,9 @@ void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
   if (!F.isDeclaration())
     IRB.SetCurrentDebugLocation(
         F.getEntryBlock().getTerminator()->getDebugLoc());
+
+  Function *InitF = M.getFunction("__input_gen_init");
+  IRB.CreateCall(FunctionCallee(InitF->getFunctionType(), InitF), {});
 
   SmallVector<Value *> Args;
   for (auto &Arg : F.args()) {
@@ -734,13 +742,16 @@ void InputGenInstrumenter::createGenerationEntryPoint(Function &F) {
   IRB.CreateCall(FunctionCallee(F.getFunctionType(), &F), Args, "");
 }
 
-void InputGenInstrumenter::createRunEntryPoint(Function &F) {
+void InputGenInstrumenter::createRunEntryPoint(Function &F, bool UniqName) {
   Module &M = *F.getParent();
 
+  std::string EntryPointName = getCallbackPrefix(Mode) + "entry";
+  if (UniqName)
+    EntryPointName += F.getName();
   FunctionType *MainTy = FunctionType::get(VoidTy, {PtrTy}, false);
-  auto *MainFn = Function::Create(MainTy, GlobalValue::ExternalLinkage,
-                                  getCallbackPrefix(Mode) + "entry", M);
-  auto *EntryBB = BasicBlock::Create(*Ctx, "entry", MainFn);
+  auto *EntryPoint =
+      Function::Create(MainTy, GlobalValue::ExternalLinkage, EntryPointName, M);
+  auto *EntryBB = BasicBlock::Create(*Ctx, "entry", EntryPoint);
 
   auto *RI = ReturnInst::Create(*Ctx, EntryBB);
   IRBuilder<> IRB(RI);
@@ -748,7 +759,10 @@ void InputGenInstrumenter::createRunEntryPoint(Function &F) {
     IRB.SetCurrentDebugLocation(
         F.getEntryBlock().getTerminator()->getDebugLoc());
 
-  Argument *ArgsPtr = MainFn->getArg(0);
+  Function *InitF = M.getFunction("__input_gen_init");
+  IRB.CreateCall(FunctionCallee(InitF->getFunctionType(), InitF), {});
+
+  Argument *ArgsPtr = EntryPoint->getArg(0);
   unsigned Idx = 0;
   SmallVector<Value *> Args;
   for (auto &Arg : F.args()) {

@@ -106,9 +106,9 @@ public:
   void instrumentFunction(Function &F);
   void instrumentModuleForEntryPoint(Function &F);
   void createRecordingEntryPoint(Function &F);
-  void createGenerationEntryPoint(Function &F);
+  void createGenerationEntryPoint(Function &F, bool UniqName);
+  void createRunEntryPoint(Function &F, bool UniqName);
   void createGlobalCalls(Module &M, IRBuilder<> &IRB);
-  void createRunEntryPoint(Function &F);
   void stubDeclarations(Module &M, TargetLibraryInfo &TLI);
   void provideGlobals(Module &M);
   SetVector<Function *> pruneModule(Function &F);
@@ -146,7 +146,7 @@ public:
 
   bool instrumentClEntryPoint(Module &);
   bool instrumentModule(Module &);
-  bool instrumentEntryPoint(Module &, Function &);
+  bool instrumentEntryPoint(Module &, Function &, bool);
   bool instrumentModuleForFunction(Module &, Function &);
   std::unique_ptr<Module> generateEntryPointModule(Module &M, Function &);
 

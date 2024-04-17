@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <dlfcn.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -74,7 +75,8 @@ static constexpr uint64_t HeapSize = 1UL << 32;
 struct HeapTy : ObjectTy {
   HeapTy(HeapTy *LastHeap = nullptr)
       : ObjectTy(malloc(HeapSize), HeapSize), LastHeap(LastHeap) {
-    printf("New heap [%p:%p)\n", begin(), end());
+    if (VERBOSE)
+      printf("New heap [%p:%p)\n", begin(), end());
   }
   HeapTy *LastHeap = nullptr;
 
@@ -491,8 +493,6 @@ ARG(double, double)
 ARG(void *, ptr)
 #undef ARG
 
-int __inputgen_entry(int, char **);
-
 void free(void *) {}
 }
 
@@ -500,12 +500,15 @@ int main(int argc, char **argv) {
   const char *OutputDir = "-";
   int Start = 0;
   int End = 1;
+  const char *So, *FuncName;
 
-  if (argc == 4) {
+  if (argc == 6) {
     OutputDir = argv[1];
     Start = std::stoi(argv[2]);
     End = std::stoi(argv[3]);
-  } else if (argc != 1) {
+    So = argv[4];
+    FuncName = argv[5];
+  } else {
     std::cerr << "Wrong usage." << std::endl;
     return 1;
   }
@@ -518,12 +521,29 @@ int main(int argc, char **argv) {
 
   std::cout << "Will generate " << Size << " inputs." << std::endl;
 
-#pragma omp parallel for schedule(dynamic, 5)
+  void *Handle = dlopen(So, RTLD_NOW);
+  if (!Handle) {
+    std::cout << "Could not open " << So << std::endl;
+    std::cout << dlerror() << std::endl;
+    return 11;
+  }
+  typedef void (*EntryFnType)(int, char **);
+  EntryFnType EntryFn = (EntryFnType)dlsym(
+      Handle, (std::string("__inputgen_entry") + FuncName).c_str());
+
+  if (!EntryFn) {
+    std::cout << "Function " << FuncName << " not found in " << So << std::endl;
+    return 12;
+  }
+
+  // #pragma omp parallel for schedule(dynamic, 5)
   for (int I = Start; I < End; I++) {
     InputGenRTTy LocalInputGenRT(argv[0], OutputDir, I);
     InputGenRT = &LocalInputGenRT;
-    __inputgen_entry(argc, argv);
+    EntryFn(argc, argv);
   }
+
+  dlclose(Handle);
 
   return 0;
 }
