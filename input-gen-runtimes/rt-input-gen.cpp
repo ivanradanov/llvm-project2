@@ -12,7 +12,6 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <omp.h>
 #include <random>
 #include <set>
 #include <type_traits>
@@ -225,10 +224,10 @@ struct InputGenRTTy {
       report(stdout, Null);
     } else {
       auto FileName = ExecPath.filename().string();
-      std::string ReportOutName(OutputDir + "/" + FileName + ".report." + FuncName +
-                                std::to_string(Seed) + ".txt");
-      std::string InputOutName(OutputDir + "/" + FileName + ".input." + FuncName +
-                               std::to_string(Seed) + ".bin");
+      std::string ReportOutName(OutputDir + "/" + FileName + ".report." +
+                                FuncName + "." + std::to_string(Seed) + ".txt");
+      std::string InputOutName(OutputDir + "/" + FileName + ".input." +
+                               FuncName + "." + std::to_string(Seed) + ".bin");
       std::ofstream InputOutStream(InputOutName,
                                    std::ios::out | std::ios::binary);
       FILE *ReportOutFD = fopen(ReportOutName.c_str(), "w");
@@ -498,7 +497,7 @@ void free(void *) {}
 }
 
 int main(int argc, char **argv) {
-  if (argc != 5) {
+  if (argc != 5 && argc != 4) {
     std::cerr << "Wrong usage." << std::endl;
     return 1;
   }
@@ -506,7 +505,11 @@ int main(int argc, char **argv) {
   const char *OutputDir = argv[1];
   int Start = std::stoi(argv[2]);
   int End = std::stoi(argv[3]);
-  const char *FuncName = argv[4];
+  std::string FuncName = ("__inputgen_entry");
+  if (argc == 5) {
+    FuncName += "_";
+    FuncName += argv[4];
+  }
 
   VERBOSE = (bool)getenv("VERBOSE");
 
@@ -532,9 +535,8 @@ int main(int argc, char **argv) {
     return 12;
   }
 
-  // #pragma omp parallel for schedule(dynamic, 5)
   for (int I = Start; I < End; I++) {
-    InputGenRTTy LocalInputGenRT(argv[0], OutputDir, FuncName, I);
+    InputGenRTTy LocalInputGenRT(argv[0], OutputDir, FuncName.c_str(), I);
     InputGenRT = &LocalInputGenRT;
     EntryFn(argc, argv);
   }

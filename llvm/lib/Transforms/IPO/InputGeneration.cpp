@@ -78,11 +78,11 @@ static const std::string RecordingCallbackPrefix = "__record_";
 static std::string InputGenOutputFilename = "input_gen_%{fn}_%{uuid}.c";
 
 static cl::opt<IGInstrumentationModeTy>
-    InstrumentationMode("input-gen-mode", cl::desc("Instrumentation mode"),
-                        cl::Hidden, cl::init(IG_Generate),
-                        cl::values(clEnumValN(IG_Record, "record", ""),
-                                   clEnumValN(IG_Generate, "generate", ""),
-                                   clEnumValN(IG_Run, "run", "")));
+    ClInstrumentationMode("input-gen-mode", cl::desc("Instrumentation mode"),
+                          cl::Hidden, cl::init(IG_Generate),
+                          cl::values(clEnumValN(IG_Record, "record", ""),
+                                     clEnumValN(IG_Generate, "generate", ""),
+                                     clEnumValN(IG_Run, "run", "")));
 
 static cl::opt<bool>
     ClPruneModule("input-gen-prune-module",
@@ -135,7 +135,7 @@ InputGenerationInstrumentPass::InputGenerationInstrumentPass() = default;
 
 PreservedAnalyses
 InputGenerationInstrumentPass::run(Module &M, AnalysisManager<Module> &MAM) {
-  ModuleInputGenInstrumenter Profiler(M, MAM, InstrumentationMode);
+  ModuleInputGenInstrumenter Profiler(M, MAM, ClInstrumentationMode);
   if (Profiler.instrumentClEntryPoint(M))
     return PreservedAnalyses::none();
   return PreservedAnalyses::all();
@@ -468,58 +468,9 @@ bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
     return false;
   }
 
-  FunctionAnalysisManager &FAM =
-      IGI.MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
-  auto &TLI = FAM.getResult<TargetLibraryAnalysis>(EntryPoint);
-
-  IGI.initializeCallbacks(M);
-
-  IGI.stubDeclarations(M, TLI);
-  IGI.provideGlobals(M);
-
-  EntryPoint.setLinkage(GlobalValue::ExternalLinkage);
-
-  switch (IGI.Mode) {
-  case IG_Record:
-    IGI.createRecordingEntryPoint(EntryPoint);
-    IGI.instrumentModuleForEntryPoint(EntryPoint);
-    break;
-  case IG_Generate:
-    IGI.createGenerationEntryPoint(EntryPoint, false);
-    IGI.instrumentModuleForEntryPoint(EntryPoint);
-    break;
-  case IG_Run:
-    IGI.createRunEntryPoint(EntryPoint, false);
-    return true;
-  }
-
-  auto Prefix = getCallbackPrefix(IGI.Mode);
-
-  // Create a module constructor.
-  std::string InputGenVersion = std::to_string(LLVM_INPUT_GEN_VERSION);
-  std::string VersionCheckName =
-      ClInsertVersionCheck ? (Prefix + VersionCheckNamePrefix + InputGenVersion)
-                           : "";
-  std::tie(InputGenCtorFunction, std::ignore) =
-      createSanitizerCtorAndInitFunctions(M, Prefix + ModuleCtorName,
-                                          Prefix + InitName,
-                                          /*InitArgTypes=*/{},
-                                          /*InitArgs=*/{}, VersionCheckName);
-
-  appendToGlobalCtors(M, InputGenCtorFunction, /*Priority=*/1);
-
-  FunctionType *FnTy = FunctionType::get(IGI.VoidTy, false);
-  auto *DeinitFn = Function::Create(FnTy, GlobalValue::InternalLinkage,
-                                    Prefix + ModuleDtorName, M);
-  auto *EntryBB = BasicBlock::Create(*IGI.Ctx, "entry", DeinitFn);
-  FunctionCallee DeinitBody = M.getOrInsertFunction(
-      Prefix + DeinitName, FunctionType::get(IGI.VoidTy, false));
-  CallInst::Create(DeinitBody, "", EntryBB);
-  ReturnInst::Create(*IGI.Ctx, EntryBB);
-
-  appendToGlobalDtors(M, DeinitFn, /*Priority=*/1000);
-
-  ::createProfileFileNameVar(M, TargetTriple, IGI.Mode);
+  IGI.pruneModule(EntryPoint);
+  instrumentModule(M);
+  instrumentEntryPoint(M, EntryPoint, /*UniqName=*/false);
 
   return true;
 }

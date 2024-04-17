@@ -1,4 +1,4 @@
-; RUN: input-gen  --output-dir %T --compile-input-gen-executables --input-gen-runtime %S/../../../../input-gen-runtimes/rt-input-gen.bc --input-run-runtime %S/../../../../input-gen-runtimes/rt-run.bc %s
+; RUN: input-gen  --output-dir %T --compile-input-gen-executables --input-gen-runtime %S/../../../../input-gen-runtimes/rt-input-gen.cpp --input-run-runtime %S/../../../../input-gen-runtimes/rt-run.cpp %s
 ; RUN: %S/run_all.sh %T
 source_filename = "linked_list.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"

@@ -33,25 +33,28 @@ using namespace llvm;
 
 cl::OptionCategory InputGenCategory("input-gen Options");
 
-static cl::opt<std::string> OutputDir("output-dir", cl::Required,
-                                      cl::cat(InputGenCategory));
+static cl::opt<std::string> ClOutputDir("output-dir", cl::Required,
+                                        cl::cat(InputGenCategory));
 
-static cl::opt<std::string> GenRuntime(
+static cl::opt<std::string> ClGenRuntime(
     "input-gen-runtime",
     cl::desc("Input gen runtime to link into the instrumented module."),
     cl::cat(InputGenCategory));
 
-static cl::opt<std::string> RunRuntime(
+static cl::opt<std::string> ClRunRuntime(
     "input-run-runtime",
     cl::desc("Input gen runtime to link into the instrumented module."),
     cl::cat(InputGenCategory));
 
-static cl::opt<std::string> InputFilename(cl::Positional, cl::init("-"),
-                                          cl::desc("Input file"),
-                                          cl::cat(InputGenCategory));
+static cl::opt<std::string> ClInputFilename(cl::Positional, cl::init("-"),
+                                            cl::desc("Input file"),
+                                            cl::cat(InputGenCategory));
 
-static cl::opt<bool> CompileInputGenBinaries("compile-input-gen-binaries",
-                                             cl::cat(InputGenCategory));
+static cl::opt<bool>
+    ClCompileInputGenExecutables("compile-input-gen-executables",
+                                 cl::cat(InputGenCategory));
+
+static cl::opt<std::string> ClFunction("function", cl::cat(InputGenCategory));
 
 constexpr char ToolName[] = "input-gen";
 
@@ -117,8 +120,8 @@ public:
   std::string Clang;
   InputGenOrchestration(Module &M) : M(M){};
   void init(int Argc, char **Argv) {
-    if (CompileInputGenBinaries) {
-      if (GenRuntime.empty() || RunRuntime.empty())
+    if (ClCompileInputGenExecutables) {
+      if (ClGenRuntime.empty() || ClRunRuntime.empty())
         fatalError("input-gen: Need to specify input-gen runtimes to compile "
                    "executables.");
 
@@ -137,6 +140,60 @@ public:
 
   bool shouldGen(Function &F) { return !F.isDeclaration(); }
 
+  void genFunctionsForRuntime(std::string RuntimeName,
+                              IGInstrumentationModeTy Mode,
+                              Function &EntryPoint) {
+
+    ValueToValueMapTy VMap;
+    auto InstrM = CloneModule(M, VMap);
+
+    LoopAnalysisManager LAM;
+    FunctionAnalysisManager FAM;
+    CGSCCAnalysisManager CGAM;
+    ModuleAnalysisManager MAM;
+
+    PassBuilder PB;
+
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    ModuleInputGenInstrumenter MIGI(*InstrM, MAM, Mode);
+    bool Success = MIGI.instrumentModuleForFunction(
+        *InstrM, *cast<Function>(VMap[&EntryPoint]));
+    if (!Success) {
+      llvm::outs() << "Instrumenting failed\n";
+      return;
+    }
+    std::string ModeStr = [&]() {
+      switch (Mode) {
+      case llvm::IG_Generate:
+        return "generate";
+      case llvm::IG_Run:
+        return "run";
+      case llvm::IG_Record:
+        llvm_unreachable("Unsupported mode");
+      }
+      llvm_unreachable("Unknown mode");
+    }();
+    std::string BcFileName = ClOutputDir + "/" + "input-gen.function." +
+                             EntryPoint.getName().str() + "." + ModeStr + ".bc";
+    std::string ExecutableFileName = ClOutputDir + "/" + "input-gen.function." +
+                                     EntryPoint.getName().str() + "." +
+                                     ModeStr + ".a.out";
+    if (!writeModuleToFile(*InstrM, BcFileName)) {
+      llvm::outs() << "Writing instrumented module to file failed\n";
+      exit(1);
+    }
+    if (ClCompileInputGenExecutables) {
+      if (!compileExecutable(BcFileName, ExecutableFileName, RuntimeName)) {
+        llvm::outs() << "Compiling instrumented module failed\n";
+        exit(1);
+      }
+    }
+  }
   void genAllFunctionsForRuntime(std::string RuntimeName,
                                  IGInstrumentationModeTy Mode) {
 
@@ -177,12 +234,6 @@ public:
       Function &F = *Functions[It];
 
       std::string FuncName = F.getName().str();
-
-      std::string EntryBcFileName = OutputDir + "/" + "input-gen.entry." +
-                                    FuncName + "." + ModeStr + ".bc";
-      std::string EntrySoFileName = OutputDir + "/" + "input-gen.entry." +
-                                    FuncName + "." + ModeStr + ".so";
-
       llvm::outs() << "Handling function @" << F.getName() << "\n";
       llvm::outs() << "Instrumenting...\n";
 
@@ -195,14 +246,14 @@ public:
       }
     }
     std::string BcFileName =
-        OutputDir + "/" + "input-gen.module." + ModeStr + ".bc";
+        ClOutputDir + "/" + "input-gen.module." + ModeStr + ".bc";
     std::string ExecutableFileName =
-        OutputDir + "/" + "input-gen.module." + ModeStr + ".a.out";
+        ClOutputDir + "/" + "input-gen.module." + ModeStr + ".a.out";
     if (!writeModuleToFile(*InstrM, BcFileName)) {
       llvm::outs() << "Writing instrumented module to file failed\n";
       exit(1);
     }
-    if (CompileInputGenBinaries) {
+    if (ClCompileInputGenExecutables) {
       if (!compileExecutable(BcFileName, ExecutableFileName, RuntimeName)) {
         llvm::outs() << "Compiling instrumented module failed\n";
         exit(1);
@@ -211,7 +262,7 @@ public:
   }
 
   void dumpFunctions() {
-    std::string AvailFuncsFileName = OutputDir + "/" + "available_functions";
+    std::string AvailFuncsFileName = ClOutputDir + "/" + "available_functions";
     auto Fs = std::ofstream(AvailFuncsFileName);
     for (auto &F : M.getFunctionList()) {
       if (shouldGen(F)) {
@@ -221,9 +272,19 @@ public:
     }
   }
 
+  void genFunctionForAllRuntimes(std::string FunctionName) {
+    Function *EntryPoint = M.getFunction(FunctionName);
+    if (!EntryPoint) {
+      errs() << "No entry point " << FunctionName << " found.\n";
+      exit(1);
+    }
+    genFunctionsForRuntime(ClGenRuntime, IG_Generate, *EntryPoint);
+    genFunctionsForRuntime(ClRunRuntime, IG_Run, *EntryPoint);
+  }
+
   void genAllFunctionForAllRuntimes() {
-    genAllFunctionsForRuntime(GenRuntime, IG_Generate);
-    genAllFunctionsForRuntime(RunRuntime, IG_Run);
+    genAllFunctionsForRuntime(ClGenRuntime, IG_Generate);
+    genAllFunctionsForRuntime(ClRunRuntime, IG_Run);
   }
 
   bool writeModuleToFile(Module &M, std::string FileName) {
@@ -252,7 +313,7 @@ public:
 
   bool compileExecutable(std::string ModuleName, std::string ExecutableName,
                          std::string RuntimeName) {
-    if (CompileInputGenBinaries) {
+    if (ClCompileInputGenExecutables) {
       outs() << "Compiling " << ExecutableName << "\n";
       SmallVector<StringRef, 8> Args = {
           Clang,       "-fopenmp", "-O2", "-ldl",        "-rdynamic",
@@ -286,7 +347,7 @@ int main(int argc, char **argv) {
   LLVMContext Context;
 
   SMDiagnostic Diag;
-  std::unique_ptr<Module> M = parseIRFile(InputFilename, Diag, Context);
+  std::unique_ptr<Module> M = parseIRFile(ClInputFilename, Diag, Context);
   if (!M) {
     Diag.print("input-gen", errs());
     return 1;
@@ -295,8 +356,12 @@ int main(int argc, char **argv) {
   InputGenOrchestration IGO(*M);
 
   IGO.init(argc, argv);
-  IGO.dumpFunctions();
-  IGO.genAllFunctionForAllRuntimes();
+  if (ClFunction.getNumOccurrences() > 0) {
+    IGO.genFunctionForAllRuntimes(ClFunction);
+  } else {
+    IGO.dumpFunctions();
+    IGO.genAllFunctionForAllRuntimes();
+  }
 
   return 0;
 }
