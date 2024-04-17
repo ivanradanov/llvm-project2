@@ -731,8 +731,10 @@ void InputGenInstrumenter::createGenerationEntryPoint(Function &F,
   Module &M = *F.getParent();
 
   std::string EntryPointName = getCallbackPrefix(Mode) + "entry";
-  if (UniqName)
+  if (UniqName) {
+    EntryPointName += "_";
     EntryPointName += F.getName();
+  }
   FunctionType *MainTy = FunctionType::get(Int32Ty, {Int32Ty, PtrTy}, false);
   auto *EntryPoint =
       Function::Create(MainTy, GlobalValue::ExternalLinkage, EntryPointName, M);
@@ -762,8 +764,10 @@ void InputGenInstrumenter::createRunEntryPoint(Function &F, bool UniqName) {
   Module &M = *F.getParent();
 
   std::string EntryPointName = getCallbackPrefix(Mode) + "entry";
-  if (UniqName)
+  if (UniqName) {
+    EntryPointName += "_";
     EntryPointName += F.getName();
+  }
   FunctionType *MainTy = FunctionType::get(VoidTy, {PtrTy}, false);
   auto *EntryPoint =
       Function::Create(MainTy, GlobalValue::ExternalLinkage, EntryPointName, M);

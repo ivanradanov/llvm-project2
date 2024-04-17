@@ -133,8 +133,8 @@ struct HeapTy : ObjectTy {
 std::vector<int32_t> GetObjects;
 
 struct InputGenRTTy {
-  InputGenRTTy(const char *ExecPath, const char *OutputDir, int Seed)
-      : Seed(Seed), OutputDir(OutputDir), ExecPath(ExecPath),
+  InputGenRTTy(const char *ExecPath, const char *OutputDir, const char *FuncName, int Seed)
+      : Seed(Seed), FuncName(FuncName), OutputDir(OutputDir), ExecPath(ExecPath),
         Heap(new HeapTy()) {
     Gen.seed(Seed);
     SeedStub = rand(false);
@@ -143,6 +143,7 @@ struct InputGenRTTy {
   ~InputGenRTTy() { report(); }
 
   int32_t Seed, SeedStub;
+  std::string FuncName;
   std::string OutputDir;
   std::filesystem::path ExecPath;
   std::mt19937 Gen, GenStub;
@@ -224,9 +225,9 @@ struct InputGenRTTy {
       report(stdout, Null);
     } else {
       auto FileName = ExecPath.filename().string();
-      std::string ReportOutName(OutputDir + "/" + FileName + ".report." +
+      std::string ReportOutName(OutputDir + "/" + FileName + ".report." + FuncName +
                                 std::to_string(Seed) + ".txt");
-      std::string InputOutName(OutputDir + "/" + FileName + ".input." +
+      std::string InputOutName(OutputDir + "/" + FileName + ".input." + FuncName +
                                std::to_string(Seed) + ".bin");
       std::ofstream InputOutStream(InputOutName,
                                    std::ios::out | std::ios::binary);
@@ -523,7 +524,7 @@ int main(int argc, char **argv) {
   }
   typedef void (*EntryFnType)(int, char **);
   EntryFnType EntryFn = (EntryFnType)dlsym(
-      Handle, (std::string("__inputgen_entry") + FuncName).c_str());
+      Handle, (std::string("__inputgen_entry_") + FuncName).c_str());
 
   if (!EntryFn) {
     std::cout << "Function " << FuncName << " not found in binary."
@@ -533,7 +534,7 @@ int main(int argc, char **argv) {
 
   // #pragma omp parallel for schedule(dynamic, 5)
   for (int I = Start; I < End; I++) {
-    InputGenRTTy LocalInputGenRT(argv[0], OutputDir, I);
+    InputGenRTTy LocalInputGenRT(argv[0], OutputDir, FuncName, I);
     InputGenRT = &LocalInputGenRT;
     EntryFn(argc, argv);
   }

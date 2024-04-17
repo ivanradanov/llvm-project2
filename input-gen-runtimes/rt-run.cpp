@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
   }
   typedef void (*EntryFnType)(char *);
   EntryFnType EntryFn = (EntryFnType)dlsym(
-      Handle, (std::string("__inputrun_entry") + FuncName).c_str());
+      Handle, (std::string("__inputrun_entry_") + FuncName).c_str());
 
   if (!EntryFn) {
     std::cout << "Function " << FuncName << " not found in binary."
