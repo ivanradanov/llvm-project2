@@ -39,6 +39,8 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -561,11 +563,14 @@ void fissionTarget(omp::TargetOp targetOp, RewriterBase &rewriter) {
     if (auto flc = loc.dyn_cast<FileLineColLoc>()) {
       int offset = 0;
       int increment = 1;
-      preLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset, flc.getColumn());
+      preLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset,
+                                   flc.getColumn());
       offset += increment;
-      isolatedLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset, flc.getColumn());
+      isolatedLoc = FileLineColLoc::get(
+          flc.getFilename(), flc.getLine() + offset, flc.getColumn());
       offset += increment;
-      postLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset, flc.getColumn());
+      postLoc = FileLineColLoc::get(flc.getFilename(), flc.getLine() + offset,
+                                    flc.getColumn());
     } else {
       llvm_unreachable("target op must have file line col loc");
     }
@@ -728,6 +733,14 @@ static T getPerfectlyNested(Operation *op) {
   return nullptr;
 }
 
+static bool canCollapse(fir::DoLoopOp nested, fir::DoLoopOp outermost) {
+  return llvm::all_of(nested->getOperands(), [&](Value v) {
+    if (auto *op = v.getDefiningOp())
+      return op->getParentOp()->isProperAncestor(outermost);
+    return true;
+  });
+}
+
 struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(omp::TeamsOp teamsOp,
@@ -741,8 +754,23 @@ struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
     auto coexecuteLoc = teamsOp->getLoc();
     assert(teamsOp.getAllReductionVars().empty());
 
-    auto loopOp = getPerfectlyNested<fir::DoLoopOp>(coexecuteOp);
-    if (loopOp && shouldParallelize(loopOp)) {
+    SmallVector<fir::DoLoopOp> nestToParallelize;
+    auto outermostLoopOp = getPerfectlyNested<fir::DoLoopOp>(coexecuteOp);
+    if (outermostLoopOp && shouldParallelize(outermostLoopOp)) {
+      nestToParallelize.push_back(outermostLoopOp);
+      while (auto nestedLoopOp =
+                 getPerfectlyNested<fir::DoLoopOp>(nestToParallelize.back())) {
+        if (canCollapse(nestedLoopOp, outermostLoopOp))
+          nestToParallelize.push_back(nestedLoopOp);
+        else
+          break;
+      }
+      llvm::for_each(nestToParallelize, [&](fir::DoLoopOp loopOp) {
+        auto *loopTerminator = loopOp.getBody()->getTerminator();
+        assert(loopTerminator->getNumResults() == 0);
+      });
+      auto innermostLoopOp = nestToParallelize.back();
+
       rewriter.setInsertionPoint(coexecuteOp);
       auto distributeOp = rewriter.create<omp::DistributeOp>(teamsLoc);
       rewriter.createBlock(&distributeOp.getRegion(),
@@ -755,21 +783,37 @@ struct TeamsCoexecuteLowering : public OpRewritePattern<omp::TeamsOp> {
       rewriter.create<omp::TerminatorOp>(coexecuteLoc);
       rewriter.createBlock(&parallelOp.getRegion(),
                            parallelOp.getRegion().begin(), {}, {});
-      auto wsLoop = rewriter.create<omp::WsLoopOp>(
-          coexecuteLoc, loopOp.getLowerBound(), loopOp.getUpperBound(),
-          loopOp.getStep());
-      wsLoop.setInclusive(true);
+      auto lbs = llvm::map_to_vector(nestToParallelize,
+                                     [&](fir::DoLoopOp doLoop) -> Value {
+                                       return doLoop.getLowerBound();
+                                     });
+      auto ubs = llvm::map_to_vector(nestToParallelize,
+                                     [&](fir::DoLoopOp doLoop) -> Value {
+                                       return doLoop.getUpperBound();
+                                     });
+      auto steps = llvm::map_to_vector(
+          nestToParallelize,
+          [&](fir::DoLoopOp doLoop) -> Value { return doLoop.getStep(); });
+      auto wsLoop =
+          rewriter.create<omp::WsLoopOp>(coexecuteLoc, lbs, ubs, steps);
       rewriter.create<omp::TerminatorOp>(coexecuteLoc);
-      auto *loopTerminator = loopOp.getBody()->getTerminator();
-      assert(loopTerminator->getNumResults() == 0);
-      rewriter.setInsertionPoint(loopTerminator);
+      wsLoop.setInclusive(true);
+      rewriter.createBlock(&wsLoop.getRegion(), wsLoop.getRegion().begin(), {},
+                           {});
+
+      IRMapping mapping;
+      unsigned numCollapse = nestToParallelize.size();
+      for (unsigned j = 0; j < numCollapse; j++) {
+        Value originalIV = nestToParallelize[j].getInductionVar();
+        mapping.map(originalIV, wsLoop.getRegion().front().addArgument(
+                                    originalIV.getType(), originalIV.getLoc()));
+      }
+      for (auto op = innermostLoopOp.getBody()->begin();
+           op != innermostLoopOp.getBody()->end(); op++)
+        rewriter.clone(*op, mapping);
       rewriter.replaceOpWithNewOp<omp::YieldOp>(
-          loopOp.getBody()->getTerminator(), ValueRange());
-      rewriter.inlineRegionBefore(loopOp.getRegion(), wsLoop.getRegion(),
-                                  wsLoop.getRegion().begin());
-      // Currently the number of args in the wsloop block matches the number of
-      // args in the do loop, so we do not need to remap any arguments or add
-      // new ones, but we may need to when we involve reductions
+          rewriter.getInsertionBlock()->getTerminator(), ValueRange());
+
       rewriter.replaceOp(coexecuteOp, parallelOp);
       return success();
     }
@@ -1053,7 +1097,9 @@ void FIROMPOptPass::runOnOperation() {
       if (auto flc = loc.dyn_cast<FileLineColLoc>()) {
         int offset = 1'000'000'000;
         int multiplier = 100;
-        auto newLoc = FileLineColLoc::get(flc.getFilename(), multiplier * flc.getLine() + offset, flc.getColumn() + offset);
+        auto newLoc = FileLineColLoc::get(flc.getFilename(),
+                                          multiplier * flc.getLine() + offset,
+                                          flc.getColumn() + offset);
         targetOp->setLoc(newLoc);
       } else {
         llvm_unreachable("target op must have file line col loc");
