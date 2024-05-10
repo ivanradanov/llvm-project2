@@ -8,6 +8,6 @@ class MemRedPass : public PassInfoMixin<MemRedPass> {
 public:
   PreservedAnalyses run(Module &, ModuleAnalysisManager &);
 };
-}
+} // namespace llvm
 
 #endif
