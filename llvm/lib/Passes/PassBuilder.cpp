@@ -127,6 +127,7 @@
 #include "llvm/Transforms/Coroutines/CoroSplit.h"
 #include "llvm/Transforms/HipStdPar/HipStdPar.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/MemRed.h"
 #include "llvm/Transforms/IPO/Annotation2Metadata.h"
 #include "llvm/Transforms/IPO/ArgumentPromotion.h"
 #include "llvm/Transforms/IPO/Attributor.h"

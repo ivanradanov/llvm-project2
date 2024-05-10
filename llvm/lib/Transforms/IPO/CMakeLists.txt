@@ -1,4 +1,5 @@
 add_llvm_component_library(LLVMipo
+  MemRed.cpp
   AlwaysInliner.cpp
   Annotation2Metadata.cpp
   ArgumentPromotion.cpp

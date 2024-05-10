@@ -59,6 +59,7 @@
 #include "llvm/Transforms/IPO/Inliner.h"
 #include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/IPO/MemProfContextDisambiguation.h"
+#include "llvm/Transforms/IPO/MemRed.h"
 #include "llvm/Transforms/IPO/MergeFunctions.h"
 #include "llvm/Transforms/IPO/ModuleInliner.h"
 #include "llvm/Transforms/IPO/OpenMPOpt.h"
@@ -1530,6 +1531,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // Until the issue fixed, disable this pass during pre-linking phase.
   if (!LTOPreLink)
     MPM.addPass(RelLookupTableConverterPass());
+
+  MPM.addPass(MemRedPass());
 
   return MPM;
 }
