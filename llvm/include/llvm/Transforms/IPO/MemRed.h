@@ -4,7 +4,7 @@
 #include "llvm/IR/PassManager.h"
 
 namespace llvm {
-class MemRedPass : public PassInfoMixin<MemRedPass> {
+class MemRedAnalysePass : public PassInfoMixin<MemRedAnalysePass> {
 public:
   PreservedAnalyses run(Module &, ModuleAnalysisManager &);
 };

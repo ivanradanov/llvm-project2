@@ -15,7 +15,7 @@ using namespace llvm;
 static cl::opt<std::string> ClOutDir("memred-outdir", cl::init("."), cl::Hidden,
                                      cl::desc("memred-dir"));
 
-PreservedAnalyses MemRedPass::run(Module &M, ModuleAnalysisManager &MAM) {
+PreservedAnalyses MemRedAnalysePass::run(Module &M, ModuleAnalysisManager &MAM) {
   auto T = Triple(M.getTargetTriple());
   if (!(T.isNVPTX() || T.isAMDGCN() || T.isAMDGPU()))
     return PreservedAnalyses::none();
