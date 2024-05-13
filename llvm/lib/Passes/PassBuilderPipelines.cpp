@@ -1532,7 +1532,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   if (!LTOPreLink)
     MPM.addPass(RelLookupTableConverterPass());
 
-  MPM.addPass(MemRedPass());
+  MPM.addPass(MemRedInstrumentPass());
+  MPM.addPass(MemRedAnalysePass());
 
   return MPM;
 }
