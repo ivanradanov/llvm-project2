@@ -1,10 +1,13 @@
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <list>
 #include <memory>
+#include <vector>
 
 #include <cuda_runtime.h>
 
@@ -80,10 +83,18 @@ static struct EventsTy {
   public:
     const char *Name;
     cudaStream_t Stream;
+    // TODO these should be Allocation IDs and not raw pointers
+    std::vector<void *> PtrArgs;
     void dump(std::ostream &Log) override {
       Log << "Kernel call:";
       DUMP(Name);
       DUMP(Stream);
+      size_t Idx = 0;
+      for (void *PtrArg : PtrArgs) {
+        DUMP(Idx);
+        DUMP(PtrArg);
+        Idx++;
+      }
     }
   };
   class CopyTy : public EventTy {
@@ -123,9 +134,19 @@ static struct EventsTy {
 
   KernelCallTy *insertNewKernelCall(const char *Name, void **Args,
                                     cudaStream_t Stream) {
-    // TODO figure out the pointer args
     auto K = std::make_unique<KernelCallTy>();
     K->Name = Name;
+
+    auto Kernel = std::find_if(Kernels.begin(), Kernels.end(),
+                               [&](KernelTy &K) { return K.Name == Name; });
+    if (Kernel == Kernels.end()) {
+      std::cerr << "Could not find kernel " << Name << std::endl;
+      abort();
+    }
+
+    for (auto ArgNo : Kernel->PtrArgs)
+      K->PtrArgs.push_back(*reinterpret_cast<void **>(Args[ArgNo]));
+
     auto *Ret = K.get();
     Events.push_back(std::move(K));
     return Ret;
@@ -161,7 +182,63 @@ static struct EventsTy {
   static constexpr uintptr_t MaxAllocationSize =
       1ULL * 160 /*GB*/ * 1024 * 1024 * 1024;
 
-  EventsTy() { OA.setSize(MaxAllocationSize); }
+  struct KernelTy {
+    std::string Name;
+    std::vector<size_t> PtrArgs;
+  };
+  std::vector<KernelTy> Kernels;
+
+  EventsTy() {
+    OA.setSize(MaxAllocationSize);
+
+    // TODO getenv this
+    char *KernelAnalysisFile = "./.memred.memory.analysis.out";
+
+    std::ifstream In(KernelAnalysisFile);
+
+    std::string Ignore;
+    while (In) {
+      KernelTy Kernel;
+      char C;
+      do {
+        In.read(&C, 1);
+      } while (In && C != '@');
+      if (!In)
+        break;
+      std::string FuncName;
+      In >> FuncName;
+      FuncName.erase(FuncName.size() - 2);
+      Kernel.Name = FuncName;
+
+      // TODO we need to read the whoel function memory effects here
+      In >> Ignore >> Ignore >> Ignore; // Memory Effect: ArgMemOnly
+
+      while (1) {
+        std::string ArgKw;
+        In >> ArgKw;
+        if (ArgKw == "Function" || !In)
+          break;
+        if (ArgKw != "Arg") {
+          std::cerr << ArgKw;
+          abort();
+        }
+
+        In.read(&C, 1); // ' '
+        In.read(&C, 1); // '#'
+
+        size_t ArgNo;
+        In >> ArgNo;
+        Kernel.PtrArgs.push_back(ArgNo);
+
+        // TODO we need to read the memory effects on the specific arguments
+        // here
+        In >> Ignore >> Ignore >> Ignore >> Ignore >>
+            Ignore; // :  Effect: WriteOnly Capture: No
+      }
+      Kernels.push_back(Kernel);
+    }
+  }
+
   ~EventsTy() {
     auto &Log = std::cerr;
     Log << "Graph:\n";
