@@ -147,7 +147,7 @@ static struct EventsTy {
   }
 
   AllocationTy *insertNewAllocation(void *RealPtr, size_t Size) {
-    size_t Idx = NumAllocations;
+    size_t Idx = NumAllocations++;
     auto A = std::make_unique<AllocationTy>();
     A->RealPtr = RealPtr;
     A->VirtualPtr = OA.localPtrToGlobalPtr(Idx, OA.getObjBasePtr());
