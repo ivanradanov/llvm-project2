@@ -87,6 +87,7 @@ add_definitions(--offload-arch=native)
 
 set(sources
   assign.cpp
+  matmul.cpp
 )
 
 add_flang_library(FortranOmpRuntime
