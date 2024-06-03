@@ -38,14 +38,10 @@ function coexecute_a(x, y, tmp, n) result(any_less)
   integer :: n
   logical :: any_less
   real, dimension(n, n) :: x, y, tmp
-  !$omp target
-  !$omp teams
-  !$omp coexecute
+  !$omp target teams coexecute
       y(1:n/2,1:n) = 1.0
       y = y + x
       tmp = n * matmul(x, y + 1.0)
       any_less = any(tmp(1:n/2,1:n/3) < 1.0)
-  !$omp end coexecute
-  !$omp end teams
-  !$omp end target
+  !$omp end target teams coexecute
 end function coexecute_a
