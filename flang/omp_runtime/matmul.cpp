@@ -17,6 +17,14 @@
 namespace Fortran::runtime {
 namespace omp {
 
+#define CHECK_HIP(X) \
+  do { \
+    hipError_t rstatus = X; \
+    if (rstatus != hipSuccess) \
+      terminator.Crash( \
+          "hip error: %s (%d)", hipGetErrorString(rstatus), rstatus); \
+  } while (0)
+
 #define CHECK_ROCBLAS(X) \
   do { \
     rocblas_status rstatus = X; \
@@ -116,19 +124,23 @@ static inline RT_API_ATTRS void DoMatmul(
             CHECK_ROCBLAS(rocblas_sgemm(handle, transA, transB, extent[0], n,
                 extent[1], &hAlpha, ptrX, extent[0], ptrY, extent[1], &hBeta,
                 ptrRes, extent[0]));
-            return;
           } else if constexpr (std::is_same_v<XT, double>) {
             double hAlpha = 1;
             double hBeta = 1;
             CHECK_ROCBLAS(rocblas_dgemm(handle, transA, transB, extent[0], n,
                 extent[1], &hAlpha, ptrX, extent[0], ptrY, extent[1], &hBeta,
                 ptrRes, extent[0]));
-            return;
           } else if constexpr (std::is_same_v<XT, std::complex<float>>) {
+            terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
             // TODO: call BLAS-3 CGEMM
           } else if constexpr (std::is_same_v<XT, std::complex<double>>) {
+            terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
             // TODO: call BLAS-3 ZGEMM
           }
+          // TODO we would like to synchronize with finer granularity
+          CHECK_HIP(hipDeviceSynchronize());
+          CHECK_ROCBLAS(rocblas_destroy_handle(handle));
+          return;
         }
         terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
         return;
