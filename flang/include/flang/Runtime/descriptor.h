@@ -369,6 +369,9 @@ public:
 
   RT_API_ATTRS std::size_t Elements() const;
 
+  typedef int32_t OMPDeviceTy;
+  RT_API_ATTRS int AllocateTarget(OMPDeviceTy ompDevice);
+
   // Allocate() assumes Elements() and ElementBytes() work;
   // define the extents of the dimensions and the element length
   // before calling.  It (re)computes the byte strides after

@@ -85,6 +85,21 @@ add_definitions(-U_LIBCPP_ENABLE_ASSERTIONS)
 add_definitions(-fopenmp)
 add_definitions(--offload-arch=native)
 
+
+# ROCm support
+# Configure ROCm support.
+if (NOT DEFINED ROCM_PATH)
+  if (NOT DEFINED ENV{ROCM_PATH})
+    set(ROCM_PATH "/opt/rocm" CACHE PATH "Path to which ROCm has been installed")
+  else()
+    set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "Path to which ROCm has been installed")
+  endif()
+endif()
+
+set(REAL_CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}")
+list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH} "${ROCM_PATH}/hip")
+find_package(hip REQUIRED)
+
 set(sources
   assign.cpp
   matmul.cpp
@@ -96,4 +111,9 @@ add_flang_library(FortranOmpRuntime
   FortranDecimal
 
   INSTALL_WITH_TOOLCHAIN
+)
+
+target_link_libraries(FortranOmpRuntime
+  PUBLIC
+  hip::host hip::amdhip64
 )

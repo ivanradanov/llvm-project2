@@ -11,21 +11,21 @@ constexpr static bool FLANG_OMP_RUNTIME_DEBUG = false;
 
 typedef int32_t OMPDeviceTy;
 
-[[maybe_unused]] static void *getDevicePtr(
-    void *any_ptr, OMPDeviceTy omp_device) {
+template <typename T> static T *getDevicePtr(T *anyPtr, OMPDeviceTy ompDevice) {
+  auto voidAnyPtr = reinterpret_cast<void *>(anyPtr);
   if (FLANG_OMP_RUNTIME_DEBUG)
-    fprintf(stderr, "getDevicePtr(%p, %d) = ", any_ptr, omp_device);
-  if (!omp_target_is_present(any_ptr, omp_device)) {
+    fprintf(stderr, "getDevicePtr(%p, %d) = ", voidAnyPtr, ompDevice);
+  if (!omp_target_is_present(voidAnyPtr, ompDevice)) {
     // If not present on the device it should already be a device ptr
     if (FLANG_OMP_RUNTIME_DEBUG)
-      fprintf(stderr, "%p\n", any_ptr);
-    return any_ptr;
+      fprintf(stderr, "%p\n", voidAnyPtr);
+    return anyPtr;
   }
-  void *device_ptr = nullptr;
-#pragma omp target data use_device_ptr(any_ptr) device(omp_device)
-  device_ptr = any_ptr;
+  T *device_ptr = nullptr;
+#pragma omp target data use_device_ptr(anyPtr) device(ompDevice)
+  device_ptr = anyPtr;
   if (FLANG_OMP_RUNTIME_DEBUG)
-    fprintf(stderr, "%p\n", device_ptr);
+    fprintf(stderr, "%p\n", reinterpret_cast<void *>(device_ptr));
   return device_ptr;
 }
 } // namespace Fortran::runtime::omp

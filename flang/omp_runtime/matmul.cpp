@@ -6,14 +6,24 @@
 #include "flang/Runtime/descriptor.h"
 #include "flang/Runtime/entry-names.h"
 
-// #include <math.h>
-// #include <hip/hip_runtime_api.h>
-// #include <rocblas/rocblas.h>
+#define __HIP_PLATFORM_AMD__
+
+#include <hip/hip_runtime_api.h>
+#include <math.h>
+#include <rocblas/rocblas.h>
 
 #include <omp.h>
 
 namespace Fortran::runtime {
 namespace omp {
+
+#define CHECK_ROCBLAS(X) \
+  do { \
+    rocblas_status rstatus = X; \
+    if (rstatus != rocblas_status_success) \
+      terminator.Crash("rocblas error: %s (%d)", \
+          rocblas_status_to_string(rstatus), rstatus); \
+  } while (0)
 
 // Implements an instance of MATMUL for given argument types.
 template <bool IS_ALLOCATING, TypeCategory RCAT, int RKIND, typename XT,
@@ -39,7 +49,7 @@ static inline RT_API_ATTRS void DoMatmul(
     for (int j{0}; j < resRank; ++j) {
       result.GetDimension(j).SetBounds(1, extent[j]);
     }
-    if (int stat{result.Allocate()}) {
+    if (int stat{result.AllocateTarget(ompDevice)}) {
       terminator.Crash(
           "MATMUL: could not allocate memory for result; STAT=%d", stat);
     }
@@ -89,19 +99,38 @@ static inline RT_API_ATTRS void DoMatmul(
       // by the element size, which is usually true.
       if (resRank == 2) { // M*M -> M
         if (std::is_same_v<XT, YT>) {
+          const rocblas_operation transA = rocblas_operation_none;
+          const rocblas_operation transB = rocblas_operation_none;
+          rocblas_handle handle;
+          CHECK_ROCBLAS(rocblas_create_handle(&handle));
+          // enable passing alpha parameter from pointer to host memory
+          CHECK_ROCBLAS(
+              rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
+          auto ptrX = getDevicePtr(x.OffsetElement<XT>(), ompDevice);
+          auto ptrY = getDevicePtr(y.OffsetElement<XT>(), ompDevice);
+          auto ptrRes =
+              getDevicePtr(result.template OffsetElement<XT>(), ompDevice);
           if constexpr (std::is_same_v<XT, float>) {
-
-            // TODO: call BLAS-3 SGEMM
-            // TODO: try using CUTLASS for device.
+            float hAlpha = 1;
+            float hBeta = 1;
+            CHECK_ROCBLAS(rocblas_sgemm(handle, transA, transB, extent[0], n,
+                extent[1], &hAlpha, ptrX, extent[0], ptrY, extent[1], &hBeta,
+                ptrRes, extent[0]));
+            return;
           } else if constexpr (std::is_same_v<XT, double>) {
-            // TODO: call BLAS-3 DGEMM
+            double hAlpha = 1;
+            double hBeta = 1;
+            CHECK_ROCBLAS(rocblas_dgemm(handle, transA, transB, extent[0], n,
+                extent[1], &hAlpha, ptrX, extent[0], ptrY, extent[1], &hBeta,
+                ptrRes, extent[0]));
+            return;
           } else if constexpr (std::is_same_v<XT, std::complex<float>>) {
             // TODO: call BLAS-3 CGEMM
           } else if constexpr (std::is_same_v<XT, std::complex<double>>) {
             // TODO: call BLAS-3 ZGEMM
           }
         }
-        terminator.Crash("MATMUL: unsupported matmul M*M");
+        terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
         return;
       } else if (xRank == 2) { // M*V -> V
         if (std::is_same_v<XT, YT>) {
@@ -214,7 +243,6 @@ void RTDEF(MatmulDirect_omp)(Descriptor &c, const Descriptor &a,
     omp::OMPDeviceTy ompDevice) {
   omp::Matmul<false>{}(c, a, b, sourceFile, sourceLine, ompDevice);
 }
-
 
 } // extern "C"
 } // namespace omp

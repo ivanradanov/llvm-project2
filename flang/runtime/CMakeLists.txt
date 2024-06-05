@@ -99,6 +99,7 @@ set(sources
   derived-api.cpp
   derived.cpp
   descriptor-io.cpp
+  descriptor-omp.cpp
   descriptor.cpp
   dot-product.cpp
   edit-input.cpp
