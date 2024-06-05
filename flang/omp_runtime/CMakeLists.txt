@@ -103,6 +103,7 @@ find_package(hip REQUIRED)
 set(sources
   assign.cpp
   matmul.cpp
+  rocm.cpp
 )
 
 add_flang_library(FortranOmpRuntime

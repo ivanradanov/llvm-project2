@@ -1,4 +1,5 @@
-#include "./utils.h"
+#include "rocm.h"
+#include "utils.h"
 #include "../runtime/freestanding-tools.h"
 #include "../runtime/terminator.h"
 #include "../runtime/tools.h"
@@ -6,32 +7,10 @@
 #include "flang/Runtime/descriptor.h"
 #include "flang/Runtime/entry-names.h"
 
-#define __HIP_PLATFORM_AMD__
-
-#include <hip/hip_runtime_api.h>
-#include <math.h>
-#include <rocblas/rocblas.h>
-
 #include <omp.h>
 
 namespace Fortran::runtime {
 namespace omp {
-
-#define CHECK_HIP(X) \
-  do { \
-    hipError_t rstatus = X; \
-    if (rstatus != hipSuccess) \
-      terminator.Crash( \
-          "hip error: %s (%d)", hipGetErrorString(rstatus), rstatus); \
-  } while (0)
-
-#define CHECK_ROCBLAS(X) \
-  do { \
-    rocblas_status rstatus = X; \
-    if (rstatus != rocblas_status_success) \
-      terminator.Crash("rocblas error: %s (%d)", \
-          rocblas_status_to_string(rstatus), rstatus); \
-  } while (0)
 
 // Implements an instance of MATMUL for given argument types.
 template <bool IS_ALLOCATING, TypeCategory RCAT, int RKIND, typename XT,
@@ -109,11 +88,7 @@ static inline RT_API_ATTRS void DoMatmul(
         if (std::is_same_v<XT, YT>) {
           const rocblas_operation transA = rocblas_operation_none;
           const rocblas_operation transB = rocblas_operation_none;
-          rocblas_handle handle;
-          CHECK_ROCBLAS(rocblas_create_handle(&handle));
           // enable passing alpha parameter from pointer to host memory
-          CHECK_ROCBLAS(
-              rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
           auto ptrX = getDevicePtr(x.OffsetElement<XT>(), ompDevice);
           auto ptrY = getDevicePtr(y.OffsetElement<XT>(), ompDevice);
           auto ptrRes =
@@ -121,15 +96,15 @@ static inline RT_API_ATTRS void DoMatmul(
           if constexpr (std::is_same_v<XT, float>) {
             float hAlpha = 1;
             float hBeta = 1;
-            CHECK_ROCBLAS(rocblas_sgemm(handle, transA, transB, extent[0], n,
-                extent[1], &hAlpha, ptrX, extent[0], ptrY, extent[1], &hBeta,
-                ptrRes, extent[0]));
+            CHECK_ROCBLAS(rocblas_sgemm(rocm::getRocmContext().handle, transA,
+                transB, extent[0], n, extent[1], &hAlpha, ptrX, extent[0], ptrY,
+                extent[1], &hBeta, ptrRes, extent[0]));
           } else if constexpr (std::is_same_v<XT, double>) {
             double hAlpha = 1;
             double hBeta = 1;
-            CHECK_ROCBLAS(rocblas_dgemm(handle, transA, transB, extent[0], n,
-                extent[1], &hAlpha, ptrX, extent[0], ptrY, extent[1], &hBeta,
-                ptrRes, extent[0]));
+            CHECK_ROCBLAS(rocblas_dgemm(rocm::getRocmContext().handle, transA,
+                transB, extent[0], n, extent[1], &hAlpha, ptrX, extent[0], ptrY,
+                extent[1], &hBeta, ptrRes, extent[0]));
           } else if constexpr (std::is_same_v<XT, std::complex<float>>) {
             terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
             // TODO: call BLAS-3 CGEMM
@@ -139,7 +114,6 @@ static inline RT_API_ATTRS void DoMatmul(
           }
           // TODO we would like to synchronize with finer granularity
           CHECK_HIP(hipDeviceSynchronize());
-          CHECK_ROCBLAS(rocblas_destroy_handle(handle));
           return;
         }
         terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
