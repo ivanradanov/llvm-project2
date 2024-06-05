@@ -38,8 +38,9 @@ namespace {
 template <class OP>
 class HlfirIntrinsicConversion : public mlir::OpRewritePattern<OP> {
 public:
-  explicit HlfirIntrinsicConversion(mlir::MLIRContext *ctx)
-      : mlir::OpRewritePattern<OP>{ctx} {
+  explicit HlfirIntrinsicConversion(mlir::MLIRContext *ctx,
+                                    mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<OP>{ctx, benefit} {
     // required for cases where intrinsics are chained together e.g.
     // matmul(matmul(a, b), c)
     // because converting the inner operation then invalidates the
@@ -342,6 +343,82 @@ struct CountOpConversion : public HlfirIntrinsicConversion<hlfir::CountOp> {
   }
 };
 
+struct MatmulAssignConversion
+    : public HlfirIntrinsicConversion<hlfir::MatmulOp> {
+  using HlfirIntrinsicConversion<hlfir::MatmulOp>::HlfirIntrinsicConversion;
+  explicit MatmulAssignConversion(mlir::MLIRContext *ctx)
+      : HlfirIntrinsicConversion(ctx, 10) {}
+  mlir::LogicalResult
+  matchAndRewrite(hlfir::MatmulOp matmul,
+                  mlir::PatternRewriter &rewriter) const override {
+    fir::FirOpBuilder builder{rewriter, matmul.getOperation()};
+    const mlir::Location &loc = matmul->getLoc();
+
+    mlir::Value result = matmul.getResult();
+    hlfir::AssignOp assign = nullptr;
+    hlfir::DestroyOp destroy = nullptr;
+    mlir::Value assignTo = nullptr;
+    for (auto &operand : result.getUses()) {
+      auto *owner = operand.getOwner();
+      if (auto assignOp = mlir::dyn_cast<hlfir::AssignOp>(owner)) {
+        if (assign)
+          return mlir::failure();
+        if (assignOp.getRhs() != operand.get())
+          return mlir::failure();
+        assign = assignOp;
+        assignTo = assignOp.getLhs();
+      } else if (auto destroyOp = mlir::dyn_cast<hlfir::DestroyOp>(owner)) {
+        if (destroy)
+          return mlir::failure();
+        destroy = destroyOp;
+      }
+    }
+
+    if (!assign || !destroy)
+      return mlir::failure();
+
+    // For now just make sure there are not memory effect ops between the matmul
+    // and assign. TODO We can do better analysis here with AA and make sure the
+    // array assigned to does not get used between the matmul and assign
+    assert(matmul->isBeforeInBlock(assign));
+    for (mlir::Operation *op = matmul.getOperation()->getNextNode();
+         op != assign; op = op->getNextNode()) {
+      llvm::SmallVector<mlir::MemoryEffects::EffectInstance> effects;
+      mlir::MemoryEffectOpInterface interface =
+          mlir::dyn_cast<mlir::MemoryEffectOpInterface>(op);
+      if (!interface) {
+        return mlir::failure();
+      }
+      interface.getEffects(effects);
+      if (!effects.empty())
+        return mlir::failure();
+    }
+
+    mlir::Value lhs = matmul.getLhs();
+    mlir::Value rhs = matmul.getRhs();
+    llvm::SmallVector<IntrinsicArgument, 2> inArgs;
+    inArgs.push_back({lhs, lhs.getType()});
+    inArgs.push_back({rhs, rhs.getType()});
+    inArgs.push_back({assignTo, assignTo.getType()});
+
+    auto *argLowering = fir::getIntrinsicArgumentLowering("matmul_direct");
+    llvm::SmallVector<fir::ExtendedValue, 3> args =
+        lowerArguments(matmul, inArgs, rewriter, argLowering);
+
+    mlir::Type scalarResultType =
+        hlfir::getFortranElementType(matmul.getType());
+
+    auto [resultExv, mustBeFreed] = fir::genIntrinsicCall(
+        builder, loc, "matmul_direct", scalarResultType, args);
+
+    processReturnValue(matmul, resultExv, mustBeFreed, builder, rewriter);
+
+    rewriter.eraseOp(assign);
+    rewriter.eraseOp(destroy);
+    return mlir::success();
+  }
+};
+
 struct MatmulOpConversion : public HlfirIntrinsicConversion<hlfir::MatmulOp> {
   using HlfirIntrinsicConversion<hlfir::MatmulOp>::HlfirIntrinsicConversion;
 
@@ -479,11 +556,12 @@ public:
     mlir::MLIRContext *context = &getContext();
     mlir::RewritePatternSet patterns(context);
     patterns
-        .insert<MatmulOpConversion, MatmulTransposeOpConversion,
-                AllOpConversion, AnyOpConversion, SumOpConversion,
-                ProductOpConversion, TransposeOpConversion, CountOpConversion,
-                DotProductOpConversion, MaxvalOpConversion, MinvalOpConversion,
-                MinlocOpConversion, MaxlocOpConversion>(context);
+        .insert<MatmulAssignConversion, MatmulOpConversion,
+                MatmulTransposeOpConversion, AllOpConversion, AnyOpConversion,
+                SumOpConversion, ProductOpConversion, TransposeOpConversion,
+                CountOpConversion, DotProductOpConversion, MaxvalOpConversion,
+                MinvalOpConversion, MinlocOpConversion, MaxlocOpConversion>(
+            context);
     mlir::ConversionTarget target(*context);
     target.addLegalDialect<mlir::BuiltinDialect, mlir::arith::ArithDialect,
                            mlir::func::FuncDialect, fir::FIROpsDialect,

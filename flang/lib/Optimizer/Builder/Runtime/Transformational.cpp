@@ -332,8 +332,12 @@ void fir::runtime::genEoshiftVector(fir::FirOpBuilder &builder,
 /// Generate call to Matmul intrinsic runtime routine.
 void fir::runtime::genMatmul(fir::FirOpBuilder &builder, mlir::Location loc,
                              mlir::Value resultBox, mlir::Value matrixABox,
-                             mlir::Value matrixBBox) {
-  auto func = fir::runtime::getRuntimeFunc<mkRTKey(Matmul)>(loc, builder);
+                             mlir::Value matrixBBox, bool direct) {
+  mlir::func::FuncOp func;
+  if (direct)
+    func = fir::runtime::getRuntimeFunc<mkRTKey(MatmulDirect)>(loc, builder);
+  else
+    func = fir::runtime::getRuntimeFunc<mkRTKey(Matmul)>(loc, builder);
   auto fTy = func.getFunctionType();
   auto sourceFile = fir::factory::locationToFilename(builder, loc);
   auto sourceLine =

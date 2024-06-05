@@ -400,7 +400,11 @@ static constexpr IntrinsicHandler handlers[]{
     {"maskl", &I::genMask<mlir::arith::ShLIOp>},
     {"maskr", &I::genMask<mlir::arith::ShRUIOp>},
     {"matmul",
-     &I::genMatmul,
+     &I::genMatmul<false>,
+     {{{"matrix_a", asAddr}, {"matrix_b", asAddr}}},
+     /*isElemental=*/false},
+    {"matmul_direct",
+     &I::genMatmul<true>,
      {{{"matrix_a", asAddr}, {"matrix_b", asAddr}}},
      /*isElemental=*/false},
     {"matmul_transpose",
@@ -4779,11 +4783,10 @@ mlir::Value IntrinsicLibrary::genMask(mlir::Type resultType,
 }
 
 // MATMUL
+template <bool direct>
 fir::ExtendedValue
 IntrinsicLibrary::genMatmul(mlir::Type resultType,
                             llvm::ArrayRef<fir::ExtendedValue> args) {
-  assert(args.size() == 2);
-
   // Handle required matmul arguments
   fir::BoxValue matrixTmpA = builder.createBox(loc, args[0]);
   mlir::Value matrixA = fir::getBase(matrixTmpA);
@@ -4792,17 +4795,27 @@ IntrinsicLibrary::genMatmul(mlir::Type resultType,
   unsigned resultRank =
       (matrixTmpA.rank() == 1 || matrixTmpB.rank() == 1) ? 1 : 2;
 
-  // Create mutable fir.box to be passed to the runtime for the result.
-  mlir::Type resultArrayType = builder.getVarLenSeqTy(resultType, resultRank);
-  fir::MutableBoxValue resultMutableBox =
-      fir::factory::createTempMutableBox(builder, loc, resultArrayType);
-  mlir::Value resultIrBox =
-      fir::factory::getMutableIRBox(builder, loc, resultMutableBox);
-  // Call runtime. The runtime is allocating the result.
-  fir::runtime::genMatmul(builder, loc, resultIrBox, matrixA, matrixB);
-  // Read result from mutable fir.box and add it to the list of temps to be
-  // finalized by the StatementContext.
-  return readAndAddCleanUp(resultMutableBox, resultType, "MATMUL");
+  if (direct) {
+    assert(args.size() == 3);
+    fir::BoxValue matrixTmpRes = builder.createBox(loc, args[2]);
+    mlir::Value matrixRes = fir::getBase(matrixTmpRes);
+    fir::runtime::genMatmul(builder, loc, matrixRes, matrixA, matrixB, direct);
+    return matrixRes;
+  } else {
+    assert(args.size() == 2);
+    // Create mutable fir.box to be passed to the runtime for the result.
+    mlir::Type resultArrayType = builder.getVarLenSeqTy(resultType, resultRank);
+    fir::MutableBoxValue resultMutableBox =
+        fir::factory::createTempMutableBox(builder, loc, resultArrayType);
+    mlir::Value resultIrBox =
+        fir::factory::getMutableIRBox(builder, loc, resultMutableBox);
+    // Call runtime. The runtime is allocating the result.
+    fir::runtime::genMatmul(builder, loc, resultIrBox, matrixA, matrixB,
+                            direct);
+    // Read result from mutable fir.box and add it to the list of temps to be
+    // finalized by the StatementContext.
+    return readAndAddCleanUp(resultMutableBox, resultType, "MATMUL");
+  }
 }
 
 // MATMUL_TRANSPOSE

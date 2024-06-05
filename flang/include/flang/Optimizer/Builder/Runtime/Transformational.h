@@ -53,7 +53,7 @@ void genEoshiftVector(fir::FirOpBuilder &builder, mlir::Location loc,
 
 void genMatmul(fir::FirOpBuilder &builder, mlir::Location loc,
                mlir::Value matrixABox, mlir::Value matrixBBox,
-               mlir::Value resultBox);
+               mlir::Value resultBox, bool direct);
 
 void genMatmulTranspose(fir::FirOpBuilder &builder, mlir::Location loc,
                         mlir::Value matrixABox, mlir::Value matrixBBox,
