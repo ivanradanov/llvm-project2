@@ -5,9 +5,37 @@
 #include <cstdio>
 #include <omp.h>
 
+#ifdef FLANG_OMP_RUNTIME_TIME
+#include <chrono>
+#include <iostream>
+#define TIMER_DEFINE(Name) \
+  std::chrono::steady_clock::time_point Timer##Name##Begin;
+#define TIMER_START(Name) \
+  do { \
+    if (true) \
+      Timer##Name##Begin = std::chrono::steady_clock::now(); \
+  } while (0)
+#define TIMER_END(Name) \
+  do { \
+    if (true) { \
+      std::chrono::steady_clock::time_point Timer##Name##End = \
+          std::chrono::steady_clock::now(); \
+      std::cout << "Time for " << #Name << ": " \
+                << std::chrono::duration_cast<std::chrono::microseconds>( \
+                       Timer##Name##End - Timer##Name##Begin) \
+                       .count() \
+                << std::endl; \
+    } \
+  } while (0)
+#else
+#define TIMER_DEFINE(Name)
+#define TIMER_START(Name)
+#define TIMER_END(Name)
+#endif
+
 namespace Fortran::runtime::omp {
 
-constexpr static bool FLANG_OMP_RUNTIME_DEBUG = false;
+static bool FLANG_OMP_RUNTIME_DEBUG = getenv("FLANG_OMP_RUNTIME_DEBUG");
 
 typedef int32_t OMPDeviceTy;
 

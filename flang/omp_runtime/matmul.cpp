@@ -12,6 +12,9 @@
 namespace Fortran::runtime {
 namespace omp {
 
+TIMER_DEFINE(comp)
+TIMER_DEFINE(all)
+
 // Implements an instance of MATMUL for given argument types.
 template <bool IS_ALLOCATING, TypeCategory RCAT, int RKIND, typename XT,
     typename YT>
@@ -86,6 +89,7 @@ static inline RT_API_ATTRS void DoMatmul(
       // by the element size, which is usually true.
       if (resRank == 2) { // M*M -> M
         if (std::is_same_v<XT, YT>) {
+          TIMER_START(comp);
           const rocblas_operation transA = rocblas_operation_none;
           const rocblas_operation transB = rocblas_operation_none;
           // enable passing alpha parameter from pointer to host memory
@@ -95,13 +99,13 @@ static inline RT_API_ATTRS void DoMatmul(
               getDevicePtr(result.template OffsetElement<XT>(), ompDevice);
           if constexpr (std::is_same_v<XT, float>) {
             float hAlpha = 1;
-            float hBeta = 1;
+            float hBeta = 0;
             CHECK_ROCBLAS(rocblas_sgemm(rocm::getRocmContext().handle, transA,
                 transB, extent[0], n, extent[1], &hAlpha, ptrX, extent[0], ptrY,
                 extent[1], &hBeta, ptrRes, extent[0]));
           } else if constexpr (std::is_same_v<XT, double>) {
             double hAlpha = 1;
-            double hBeta = 1;
+            double hBeta = 0;
             CHECK_ROCBLAS(rocblas_dgemm(rocm::getRocmContext().handle, transA,
                 transB, extent[0], n, extent[1], &hAlpha, ptrX, extent[0], ptrY,
                 extent[1], &hBeta, ptrRes, extent[0]));
@@ -114,6 +118,7 @@ static inline RT_API_ATTRS void DoMatmul(
           }
           // TODO we would like to synchronize with finer granularity
           CHECK_HIP(hipDeviceSynchronize());
+          TIMER_END(comp);
           return;
         }
         terminator.Crash("MATMUL: unsupported matmul M*M %s", __func__);
@@ -227,7 +232,9 @@ void RTDEF(Matmul_omp)(Descriptor &c, const Descriptor &a, const Descriptor &b,
 void RTDEF(MatmulDirect_omp)(Descriptor &c, const Descriptor &a,
     const Descriptor &b, const char *sourceFile, int sourceLine,
     omp::OMPDeviceTy ompDevice) {
+  TIMER_START(all);
   omp::Matmul<false>{}(c, a, b, sourceFile, sourceLine, ompDevice);
+  TIMER_END(all);
 }
 
 } // extern "C"
