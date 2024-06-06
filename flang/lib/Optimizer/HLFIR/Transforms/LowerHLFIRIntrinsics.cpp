@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "flang/Optimizer/Analysis/AliasAnalysis.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
 #include "flang/Optimizer/Builder/HLFIRTools.h"
 #include "flang/Optimizer/Builder/IntrinsicCall.h"
@@ -377,6 +378,15 @@ struct MatmulAssignConversion
     if (!assign || !destroy)
       return mlir::failure();
 
+    mlir::Value lhs = matmul.getLhs();
+    mlir::Value rhs = matmul.getRhs();
+
+    // We need a copy if the inputs may alias with the assigned-to matrix
+    fir::AliasAnalysis aliasAnalysis;
+    if (!(aliasAnalysis.alias(assignTo, lhs).isNo() &&
+          aliasAnalysis.alias(assignTo, rhs).isNo()))
+      return mlir::failure();
+
     // For now just make sure there are not memory effect ops between the matmul
     // and assign. TODO We can do better analysis here with AA and make sure the
     // array assigned to does not get used between the matmul and assign
@@ -394,8 +404,6 @@ struct MatmulAssignConversion
         return mlir::failure();
     }
 
-    mlir::Value lhs = matmul.getLhs();
-    mlir::Value rhs = matmul.getRhs();
     llvm::SmallVector<IntrinsicArgument, 2> inArgs;
     inArgs.push_back({lhs, lhs.getType()});
     inArgs.push_back({rhs, rhs.getType()});
