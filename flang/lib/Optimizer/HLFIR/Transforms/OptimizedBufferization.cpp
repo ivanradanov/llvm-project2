@@ -812,6 +812,8 @@ class OptimizedBufferizationPass
           OptimizedBufferizationPass> {
 public:
   void runOnOperation() override {
+    if (getenv("WORKDISTRIBUTE_TRIVIAL"))
+      return;
     mlir::func::FuncOp func = getOperation();
     mlir::MLIRContext *context = &getContext();
 

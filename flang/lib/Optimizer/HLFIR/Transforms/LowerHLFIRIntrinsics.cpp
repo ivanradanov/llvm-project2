@@ -352,6 +352,8 @@ struct MatmulAssignConversion
   mlir::LogicalResult
   matchAndRewrite(hlfir::MatmulOp matmul,
                   mlir::PatternRewriter &rewriter) const override {
+    if (getenv("WORKDISTRIBUTE_TRIVIAL"))
+      return mlir::failure();
     fir::FirOpBuilder builder{rewriter, matmul.getOperation()};
     const mlir::Location &loc = matmul->getLoc();
 
