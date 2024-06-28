@@ -1,8 +1,8 @@
-add_mlir_conversion_library(MLIRLLVMToControlFlow
-  LLVMToControlFlow.cpp
+add_mlir_conversion_library(MLIRLLVMToArith
+  LLVMToArith.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/LLVMToControlFlow
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/LLVMToArith
 
   DEPENDS
   MLIRConversionPassIncGen
@@ -12,7 +12,7 @@ add_mlir_conversion_library(MLIRLLVMToControlFlow
   Core
 
   LINK_LIBS PUBLIC
-  MLIRControlFlowDialect
+  MLIRArithDialect
   MLIRLLVMDialect
   MLIRPass
   MLIRTransformUtils
