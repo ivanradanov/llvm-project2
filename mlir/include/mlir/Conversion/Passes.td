@@ -320,11 +320,21 @@ def ConvertComplexToStandard : Pass<"convert-complex-to-standard"> {
 }
 
 //===----------------------------------------------------------------------===//
+// LLVMToArith
+//===----------------------------------------------------------------------===//
+
+def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith", "ModuleOp"> {
+  let summary = "Convert LLVM arith operations to the Arith dialect";
+  let dependentDialects = ["arith::ArithDialect"];
+  let constructor = "mlir::createConvertLLVMToArithPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // LLVMToControlFlow
 //===----------------------------------------------------------------------===//
 
 def ConvertLLVMToControlFlowPass : Pass<"convert-llvm-to-cf", "ModuleOp"> {
-  let summary = "Convert ControlFlow operations to the LLVM dialect";
+  let summary = "Convert LLVM cf operations to the ControlFlow dialect";
   let dependentDialects = ["cf::ControlFlowDialect"];
   let constructor = "mlir::createConvertLLVMToControlFlowPass()";
 }
