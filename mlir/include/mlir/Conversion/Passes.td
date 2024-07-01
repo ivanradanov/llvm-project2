@@ -334,7 +334,11 @@ def ConvertComplexToStandard : Pass<"convert-complex-to-standard"> {
 
 def ConvertGPULaunchToCallPass : Pass<"convert-gpu-launch-to-call", "ModuleOp"> {
   let summary = "";
-  let dependentDialects = ["func::FuncDialect", "affine::AffineDialect"];
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+    "scf::SCFDialect",
+  ];
   let constructor = "mlir::createConvertGPULaunchToCallPass()";
 }
 
