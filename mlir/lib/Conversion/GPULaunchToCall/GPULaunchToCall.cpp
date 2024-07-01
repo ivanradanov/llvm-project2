@@ -30,30 +30,6 @@ using namespace mlir;
 
 #define PASS_NAME "convert-gpu-launch-to-call"
 
-static FailureOr<func::FuncOp> outlineOp(RewriterBase &rewriter, Location loc,
-                                         Operation *op, StringRef funcName,
-                                         func::CallOp *callOp) {
-  assert(!funcName.empty() && "funcName cannot be empty");
-
-  OpBuilder::InsertionGuard g(rewriter);
-  rewriter.setInsertionPoint(op);
-  auto executeOp = rewriter.create<scf::ExecuteRegionOp>(loc, TypeRange());
-  rewriter.createBlock(&executeOp.getRegion());
-  rewriter.clone(*op);
-  rewriter.create<scf::YieldOp>(loc);
-  auto ret = outlineSingleBlockRegion(rewriter, loc, executeOp.getRegion(),
-                                      funcName, callOp);
-  if (failed(ret)) {
-    rewriter.eraseOp(executeOp);
-    return ret;
-  }
-  rewriter.eraseOp(executeOp.getRegion().front().getTerminator());
-  rewriter.inlineBlockBefore(&executeOp.getRegion().front(), op);
-  rewriter.eraseOp(executeOp);
-  rewriter.eraseOp(op);
-  return ret;
-}
-
 struct ConvertGPULaunchToCall
     : public impl::ConvertGPULaunchToCallPassBase<ConvertGPULaunchToCall> {
   using Base::Base;
