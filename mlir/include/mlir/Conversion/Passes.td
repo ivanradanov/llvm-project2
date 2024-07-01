@@ -320,6 +320,16 @@ def ConvertComplexToStandard : Pass<"convert-complex-to-standard"> {
 }
 
 //===----------------------------------------------------------------------===//
+// GPULaunchToCall
+//===----------------------------------------------------------------------===//
+
+def ConvertGPULaunchToCallPass : Pass<"convert-gpu-launch-to-call", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = ["func::FuncDialect"];
+  let constructor = "mlir::createConvertGPULaunchToCallPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // LLVMToArith
 //===----------------------------------------------------------------------===//
 
