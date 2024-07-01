@@ -6,12 +6,16 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -26,13 +30,70 @@ using namespace mlir;
 
 #define PASS_NAME "convert-gpu-launch-to-call"
 
+static FailureOr<func::FuncOp> outlineOp(RewriterBase &rewriter, Location loc,
+                                         Operation *op, StringRef funcName,
+                                         func::CallOp *callOp) {
+  assert(!funcName.empty() && "funcName cannot be empty");
+
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(op);
+  auto executeOp = rewriter.create<scf::ExecuteRegionOp>(loc, TypeRange());
+  rewriter.createBlock(&executeOp.getRegion());
+  rewriter.clone(*op);
+  rewriter.create<scf::YieldOp>(loc);
+  auto ret = outlineSingleBlockRegion(rewriter, loc, executeOp.getRegion(),
+                                      funcName, callOp);
+  if (failed(ret)) {
+    rewriter.eraseOp(executeOp);
+    return ret;
+  }
+  rewriter.eraseOp(executeOp.getRegion().front().getTerminator());
+  rewriter.inlineBlockBefore(&executeOp.getRegion().front(), op);
+  rewriter.eraseOp(executeOp);
+  rewriter.eraseOp(op);
+  return ret;
+}
+
 struct ConvertGPULaunchToCall
     : public impl::ConvertGPULaunchToCallPassBase<ConvertGPULaunchToCall> {
   using Base::Base;
   void runOnOperation() override {
-    // TODO needs stream support
     auto context = getOperation()->getContext();
     auto res = getOperation()->walk([&](gpu::LaunchFuncOp launchOp) {
+      auto st = SymbolTable::getNearestSymbolTable(launchOp);
+      if (!st)
+        return WalkResult::interrupt();
+
+      std::string funcName = launchOp.getKernelModuleName().str() + "." +
+                             launchOp.getKernelName().str() + ".mlir.outlined";
+      auto symOp = SymbolTable::lookupSymbolIn(st, funcName);
+
+      assert(launchOp.getAsyncDependencies().size() == 0);
+      IRRewriter rewriter(launchOp);
+      func::FuncOp func = cast_or_null<func::FuncOp>(symOp);
+      auto loc = launchOp->getLoc();
+      if (!func) {
+        assert(!symOp);
+        OpBuilder builder = OpBuilder::atBlockBegin(&st->getRegion(0).front());
+        func = builder.create<func::FuncOp>(
+            loc, funcName,
+            FunctionType::get(context, launchOp->getOperandTypes(),
+                              TypeRange()));
+        Block *entryBlock = builder.createBlock(
+            &func.getBody(), {}, launchOp->getOperandTypes(),
+            SmallVector<Location>(launchOp->getNumOperands(),
+                                  builder.getUnknownLoc()));
+        IRMapping mapping;
+        mapping.map(launchOp.getOperands(), entryBlock->getArguments());
+        auto newLaunchOp = builder.clone(*launchOp, mapping);
+        builder.create<func::ReturnOp>(loc, ValueRange());
+      }
+      rewriter.replaceOpWithNewOp<func::CallOp>(launchOp, funcName, TypeRange(),
+                                                launchOp.getOperands());
+      return WalkResult::advance();
+    });
+    // TODO needs stream support
+    res = getOperation()->walk([&](gpu::LaunchFuncOp launchOp) {
       auto st = SymbolTable::getNearestSymbolTable(launchOp);
       if (!st)
         return WalkResult::interrupt();
@@ -49,8 +110,7 @@ struct ConvertGPULaunchToCall
       }
 
       auto kernelSymbol = launchOp.getKernel();
-      auto gpuKernelFunc =
-          SymbolTable::lookupSymbolIn(st, kernelSymbol);
+      auto gpuKernelFunc = SymbolTable::lookupSymbolIn(st, kernelSymbol);
       auto callLoc = launchOp->getLoc();
       auto funcLoc = gpuKernelFunc->getLoc();
       OpBuilder builder(gpuKernelFunc);
@@ -90,19 +150,16 @@ struct ConvertGPULaunchToCall
         assert(paramLocs.size() == newArgs && paramTypes.size() == newArgs &&
                paramAttrs.size() == newArgs);
 
-        auto newFty = LLVM::LLVMFunctionType::get(fty.getReturnType(),
-                                                  paramTypes, fty.isVarArg());
-        LLVM::LLVMFuncOp llvmFuncOp = builder.create<LLVM::LLVMFuncOp>(
-            funcLoc, llvmKernel.getSymName(), newFty, llvmKernel.getLinkage(),
-            llvmKernel.getDsoLocal(), llvmKernel.getCConv(),
-            llvmKernel.getComdatAttr(),
+        auto newFty = FunctionType::get(context, paramTypes, TypeRange());
+        func::FuncOp funcOp = builder.create<func::FuncOp>(
+            funcLoc, llvmKernel.getSymName(), newFty,
             /* TODO attrs if we pass in llvmKernel->getAttrs() here we get an
                error in the op builder */
-            ArrayRef<NamedAttribute>(), paramAttrs,
-            llvmKernel.getFunctionEntryCount());
-        llvmFuncOp->setAttr("gpu.kernel", builder.getUnitAttr());
-        newEntryBlock = builder.createBlock(&llvmFuncOp.getBody(), {},
-                                            paramTypes, paramLocs);
+            ArrayRef<NamedAttribute>(), paramAttrs);
+        // TODO temp until we get attrs working
+        funcOp->setAttr("gpu.kernel", builder.getUnitAttr());
+        newEntryBlock =
+            builder.createBlock(&funcOp.getBody(), {}, paramTypes, paramLocs);
         kernelRegion = &llvmKernel.getFunctionBody();
       } else if (auto funcKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
         // TODO
@@ -157,26 +214,8 @@ struct ConvertGPULaunchToCall
 
       // is return void
       assert(kernelRegion->front().back().getNumResults() == 0);
-
-      auto convertToIndex = [&](Value v) {
-        //if (v.getType() != builder.getIndexType())
-          //v = builder.create<arith::IndexCastOp>(callLoc, builder.getIndexType(), v);
-        return v;
-      };
-
-      SmallVector<Value> newCallArgs;
-      builder.setInsertionPoint(launchOp);
-      newCallArgs.push_back(convertToIndex(launchOp.getGridSizeX()));
-      newCallArgs.push_back(convertToIndex(launchOp.getGridSizeY()));
-      newCallArgs.push_back(convertToIndex(launchOp.getGridSizeZ()));
-      newCallArgs.push_back(convertToIndex(launchOp.getBlockSizeX()));
-      newCallArgs.push_back(convertToIndex(launchOp.getBlockSizeY()));
-      newCallArgs.push_back(convertToIndex(launchOp.getBlockSizeZ()));
-      newCallArgs.push_back(launchOp.getDynamicSharedMemorySize());
-      newCallArgs.insert(newCallArgs.end(),
-                         launchOp.getKernelOperands().begin(),
-                         launchOp.getKernelOperands().end());
-      assert(newCallArgs.size() == launchOp.getNumKernelOperands() + additionalArgs);
+      builder.setInsertionPointToEnd(newEntryBlock);
+      builder.create<func::ReturnOp>(funcLoc, ValueRange());
 
       gpuKernelFunc->erase();
 
