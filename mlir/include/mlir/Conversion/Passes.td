@@ -328,7 +328,6 @@ def ConvertGPULaunchToCallPass : Pass<"convert-gpu-launch-to-call", "ModuleOp"> 
   let dependentDialects = [
     "func::FuncDialect",
     "affine::AffineDialect",
-    "scf::SCFDialect",
   ];
   let constructor = "mlir::createConvertGPULaunchToCallPass()";
 }
