@@ -50,7 +50,7 @@ def CallJitOp : Func_Op<"call_jit",
     }]>
   ];
 
-  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
 
   let extraClassDeclaration = [{

@@ -131,8 +131,6 @@ struct OutlineGPUJitRegions
       } else {
         func = cast<func::FuncOp>(symOp);
       }
-      rewriter.replaceOpWithNewOp<func::CallOp>(launchOp, funcName, TypeRange(),
-                                                launchOp.getOperands());
       auto outlinedModule = outlineFunctionForJit(func);
       LLVM_DEBUG({
         if (succeeded(outlinedModule))
@@ -144,10 +142,10 @@ struct OutlineGPUJitRegions
 
       std::string out;
       llvm::raw_string_ostream os(out);
-
       os << **outlinedModule;
-
-      os.str().c_str();
+      StringAttr ir = rewriter.getStringAttr(os.str().c_str());
+      rewriter.replaceOpWithNewOp<func::CallJitOp>(
+          launchOp, funcName, ir, TypeRange(), launchOp.getOperands());
 
       assert(
           mlir::verify((*(*outlinedModule)).getOperation(), true).succeeded());
