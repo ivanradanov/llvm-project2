@@ -19,7 +19,7 @@ namespace mlir {
 
 class Pass;
 
-std::unique_ptr<Pass> createConvertGPULaunchToCallPass();
+std::unique_ptr<Pass> createOutlineGPUJitRegionsPass();
 
 } // namespace mlir
 
