@@ -46,10 +46,9 @@ struct ConvertGPULaunchToCall
 
       assert(launchOp.getAsyncDependencies().size() == 0);
       IRRewriter rewriter(launchOp);
-      func::FuncOp func = cast_or_null<func::FuncOp>(symOp);
       auto loc = launchOp->getLoc();
-      if (!func) {
-        assert(!symOp);
+      func::FuncOp func;
+      if (!symOp) {
         OpBuilder builder = OpBuilder::atBlockBegin(&st->getRegion(0).front());
         func = builder.create<func::FuncOp>(
             loc, funcName,
@@ -63,6 +62,8 @@ struct ConvertGPULaunchToCall
         mapping.map(launchOp.getOperands(), entryBlock->getArguments());
         auto newLaunchOp = builder.clone(*launchOp, mapping);
         builder.create<func::ReturnOp>(loc, ValueRange());
+      } else {
+        func = cast<func::FuncOp>(symOp);
       }
       rewriter.replaceOpWithNewOp<func::CallOp>(launchOp, funcName, TypeRange(),
                                                 launchOp.getOperands());
