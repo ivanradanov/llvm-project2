@@ -29,6 +29,35 @@ class Func_Op<string mnemonic, list<Trait> traits = []> :
     Op<Func_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
+// CallJitOp
+//===----------------------------------------------------------------------===//
+
+def CallJitOp : Func_Op<"call_jit",
+    [MemRefsNormalizable]> {
+  let summary = "call jit operation";
+  let description = [{
+  }];
+
+  let builders = [
+    OpBuilder<(ins "StringRef":$callee,
+      "StringAttr":$ir,
+      "TypeRange":$results,
+      CArg<"ValueRange", "{}">:$operands), [{
+      $_state.addOperands(operands);
+      $_state.addAttribute("callee", StringAttr::get($_builder.getContext(), callee));
+      $_state.addAttribute("ir", ir);
+      $_state.addTypes(results);
+    }]>
+  ];
+
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>);
+
+  let extraClassDeclaration = [{
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CallOp
 //===----------------------------------------------------------------------===//
 

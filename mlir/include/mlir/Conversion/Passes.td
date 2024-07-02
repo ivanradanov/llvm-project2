@@ -323,13 +323,13 @@ def ConvertComplexToStandard : Pass<"convert-complex-to-standard"> {
 // GPULaunchToCall
 //===----------------------------------------------------------------------===//
 
-def ConvertGPULaunchToCallPass : Pass<"convert-gpu-launch-to-call", "ModuleOp"> {
+def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
   let summary = "";
   let dependentDialects = [
     "func::FuncDialect",
     "affine::AffineDialect",
   ];
-  let constructor = "mlir::createConvertGPULaunchToCallPass()";
+  let constructor = "mlir::createOutlineGPUJitRegionsPass()";
 }
 
 //===----------------------------------------------------------------------===//
