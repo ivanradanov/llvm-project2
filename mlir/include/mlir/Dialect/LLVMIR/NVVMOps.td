@@ -104,13 +104,12 @@ class NVVM_Attr<string attrName, string attrMnemonic, list<Trait> traits = []>
 // NVVM intrinsic operations
 //===----------------------------------------------------------------------===//
 
-class NVVM_IntrOp<string mnem, list<Trait> traits,
-                  int numResults>
+class NVVM_IntrOp<string mnem, list<Trait> traits = [],
+                  int numResults = 0>
   : LLVM_IntrOpBase<NVVM_Dialect, mnem, "nvvm_" # !subst(".", "_", mnem),
                     /*list<int> overloadedResults=*/[],
                     /*list<int> overloadedOperands=*/[],
                     traits, numResults>;
-
 
 //===----------------------------------------------------------------------===//
 // NVVM special register op definitions
@@ -255,7 +254,7 @@ def NVVM_MBarrierInitSharedOp : NVVM_PTXBuilder_Op<"mbarrier.init.shared">,
   }];
 }
 
-def NVVM_MBarrierInvalOp : NVVM_Op<"mbarrier.inval">,
+def NVVM_MBarrierInvalOp : NVVM_IntrOp<"mbarrier.inval">,
   Arguments<(ins LLVM_AnyPointer:$addr)> {
   string llvmBuilder = [{
       createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_inval, {$addr});
@@ -263,7 +262,7 @@ def NVVM_MBarrierInvalOp : NVVM_Op<"mbarrier.inval">,
   let assemblyFormat = "$addr attr-dict `:` type(operands)";
 }
 
-def NVVM_MBarrierInvalSharedOp : NVVM_Op<"mbarrier.inval.shared">,
+def NVVM_MBarrierInvalSharedOp : NVVM_IntrOp<"mbarrier.inval.shared">,
   Arguments<(ins LLVM_PointerShared:$addr)> {
   string llvmBuilder = [{
       createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_inval_shared, {$addr});
@@ -361,8 +360,7 @@ def NVVM_MBarrierTryWaitParitySharedOp : NVVM_PTXBuilder_Op<"mbarrier.try_wait.p
   }];
 }
 
-def NVVM_MBarrierTestWaitOp : NVVM_Op<"mbarrier.test.wait">,
-  Results<(outs LLVM_Type:$res)>,
+def NVVM_MBarrierTestWaitOp : NVVM_IntrOp<"mbarrier.test.wait", [], 1>,
   Arguments<(ins LLVM_AnyPointer:$addr, LLVM_Type:$state)> {
   string llvmBuilder = [{
       $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_test_wait, {$addr, $state});
@@ -370,8 +368,7 @@ def NVVM_MBarrierTestWaitOp : NVVM_Op<"mbarrier.test.wait">,
   let assemblyFormat = "$addr `,` $state attr-dict `:` type(operands) `->` type($res)";
 }
 
-def NVVM_MBarrierTestWaitSharedOp : NVVM_Op<"mbarrier.test.wait.shared">,
-  Results<(outs LLVM_Type:$res)>,
+def NVVM_MBarrierTestWaitSharedOp : NVVM_IntrOp<"mbarrier.test.wait.shared", [], 1>,
   Arguments<(ins LLVM_PointerShared:$addr, LLVM_Type:$state)> {
   string llvmBuilder = [{
       $res = createIntrinsicCall(builder, llvm::Intrinsic::nvvm_mbarrier_test_wait_shared, {$addr, $state});
@@ -383,14 +380,14 @@ def NVVM_MBarrierTestWaitSharedOp : NVVM_Op<"mbarrier.test.wait.shared">,
 // NVVM synchronization op definitions
 //===----------------------------------------------------------------------===//
 
-def NVVM_Barrier0Op : NVVM_Op<"barrier0"> {
+def NVVM_Barrier0Op : NVVM_IntrOp<"barrier0"> {
   string llvmBuilder = [{
       createIntrinsicCall(builder, llvm::Intrinsic::nvvm_barrier0);
   }];
   let assemblyFormat = "attr-dict";
 }
 
-def NVVM_BarrierOp : NVVM_Op<"barrier", [AttrSizedOperandSegments]> {
+def NVVM_BarrierOp : NVVM_IntrOp<"barrier", [AttrSizedOperandSegments]> {
   let arguments = (ins     
     Optional<I32>:$barrierId,
     Optional<I32>:$numberOfThreads);
@@ -509,7 +506,7 @@ def NVVM_ClusterWaitOp : NVVM_Op<"cluster.wait"> {
   let assemblyFormat = "attr-dict";
 }
 
-def NVVM_FenceScClusterOp : NVVM_Op<"fence.sc.cluster"> {
+def NVVM_FenceScClusterOp : NVVM_IntrOp<"fence.sc.cluster"> {
   string llvmBuilder = [{
       createIntrinsicCall(builder, llvm::Intrinsic::nvvm_fence_sc_cluster);
   }];
@@ -766,14 +763,14 @@ def NVVM_CpAsyncOp : NVVM_PTXBuilder_Op<"cp.async.shared.global">,
   }];
 }
 
-def NVVM_CpAsyncCommitGroupOp : NVVM_Op<"cp.async.commit.group"> {
+def NVVM_CpAsyncCommitGroupOp : NVVM_IntrOp<"cp.async.commit.group"> {
   string llvmBuilder = [{
       createIntrinsicCall(builder, llvm::Intrinsic::nvvm_cp_async_commit_group);
   }];
   let assemblyFormat = "attr-dict";
 }
 
-def NVVM_CpAsyncWaitGroupOp : NVVM_Op<"cp.async.wait.group">,
+def NVVM_CpAsyncWaitGroupOp : NVVM_IntrOp<"cp.async.wait.group">,
   Arguments<(ins I32Attr:$n)> {
   string llvmBuilder = [{
       createIntrinsicCall(
