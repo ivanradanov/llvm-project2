@@ -1,5 +1,7 @@
 add_mlir_conversion_library(MLIRGPULaunchToCall
   GPULaunchToCall.cpp
+  OutlineGpuJitRegions.cpp
+  PromoteWhile.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/GPULaunchToCall
@@ -14,5 +16,6 @@ add_mlir_conversion_library(MLIRGPULaunchToCall
   LINK_LIBS PUBLIC
   MLIRGPUDialect
   MLIRAffineDialect
+  MLIRSCFDialect
   MLIRPass
   )
