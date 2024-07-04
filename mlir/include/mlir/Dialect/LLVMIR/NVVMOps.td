@@ -174,6 +174,22 @@ def NVVM_ClockOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.clock">;
 def NVVM_Clock64Op : NVVM_SpecialRegisterOp<"read.ptx.sreg.clock64">;
 
 //===----------------------------------------------------------------------===//
+// NVVM math op definitions
+//===----------------------------------------------------------------------===//
+
+class NVVM_UnaryMathOp<string mnem>
+  : NVVM_IntrOp<mnem, [Pure], 1> {
+  let arguments = (ins F32:$arg);
+  let results = (outs F32:$res);
+  let assemblyFormat = "$arg attr-dict `:` type($res)";
+}
+
+def NVVM_Lg2ApproxFOp : NVVM_UnaryMathOp<"lg2.approx.f">;
+def NVVM_Lg2ApproxFtzFOp : NVVM_UnaryMathOp<"lg2.approx.ftz.f">;
+def NVVM_Ex2ApproxFOp : NVVM_UnaryMathOp<"ex2.approx.f">;
+def NVVM_Ex2ApproxFtzFOp : NVVM_UnaryMathOp<"ex2.approx.ftz.f">;
+
+//===----------------------------------------------------------------------===//
 // NVVM approximate op definitions
 //===----------------------------------------------------------------------===//
 
