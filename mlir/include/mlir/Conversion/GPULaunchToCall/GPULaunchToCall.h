@@ -20,6 +20,7 @@ namespace mlir {
 class Pass;
 
 std::unique_ptr<Pass> createOutlineGPUJitRegionsPass();
+std::unique_ptr<Pass> createPromoteScfWhilePass();
 
 } // namespace mlir
 

@@ -332,6 +332,16 @@ def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
   let constructor = "mlir::createOutlineGPUJitRegionsPass()";
 }
 
+def PromoteScfWhilePass : Pass<"promote-scf-while", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createPromoteScfWhilePass()";
+}
+
+
 //===----------------------------------------------------------------------===//
 // LLVMToArith
 //===----------------------------------------------------------------------===//
