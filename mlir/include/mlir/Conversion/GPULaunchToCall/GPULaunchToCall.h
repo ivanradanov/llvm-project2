@@ -21,6 +21,7 @@ class Pass;
 
 std::unique_ptr<Pass> createOutlineGPUJitRegionsPass();
 std::unique_ptr<Pass> createPromoteScfWhilePass();
+std::unique_ptr<Pass> createLLVMToAffineAccessPass();
 
 } // namespace mlir
 

@@ -35,6 +35,17 @@ class Affine_Op<string mnemonic, list<Trait> traits = []> :
 def ImplicitAffineTerminator
     : SingleBlockImplicitTerminator<"AffineYieldOp">;
 
+def AffineScopeOp : Affine_Op<"scope", [
+      AffineScope,
+      AutomaticAllocationScope,
+      RecursiveMemoryEffects,
+    ]>,
+    Arguments<(ins Variadic<AnyType>:$operands)>,
+    Results<(outs Variadic<AnyType>:$results)> {
+  let summary = "Inline affine scope";
+  let regions = (region SizedRegion<1>:$region);
+}
+
 def AffineApplyOp : Affine_Op<"apply", [Pure]> {
   let summary = "affine apply operation";
   let description = [{
