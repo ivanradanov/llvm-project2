@@ -42,6 +42,10 @@ using namespace mlir;
 #define PASS_NAME "outline-gpu-jit-regions"
 #define DEBUG_TYPE PASS_NAME
 
+// TODO we need to also include all used globals.
+// TODO can we use globals from another file? e.g. our precompiled gpu module
+// will contain the global definition and the jitted kernels will contain global
+// declarations and we link them at runtime
 static FailureOr<std::unique_ptr<ModuleOp>>
 outlineFunctionForJit(func::FuncOp f) {
   Operation *oldModule = f->getParentOp();
