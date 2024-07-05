@@ -141,6 +141,25 @@ class AllocLikeOp<string mnemonic,
 // AssumeAlignmentOp
 //===----------------------------------------------------------------------===//
 
+def AtAddrOp : MemRef_Op<"ataddr"> {
+  let summary =
+      "Construct a c-style memref at an addr";
+  let description = [{
+  }];
+  let arguments = (ins AnyType:$addr);
+  let results = (outs AnyRankedOrUnrankedMemRef:$dest);
+  let builders = [
+    OpBuilder<(ins "Value":$source), [{
+      return build($_builder, $_state,
+        TypeRange(MemRefType::get({ShapedType::kDynamic}, $_builder.getI8Type())),
+        ValueRange(source));
+    }]>];
+}
+
+//===----------------------------------------------------------------------===//
+// AssumeAlignmentOp
+//===----------------------------------------------------------------------===//
+
 def AssumeAlignmentOp : MemRef_Op<"assume_alignment"> {
   let summary =
       "assertion that gives alignment information to the input memref";
