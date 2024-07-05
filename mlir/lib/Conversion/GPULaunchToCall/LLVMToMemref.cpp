@@ -55,6 +55,9 @@ using MemRefVal = TypedValue<MemRefType>;
 
 struct ValueToPosMap {
   DenseMap<Value, unsigned> map;
+  unsigned numDims = 0;
+  unsigned numSymbols = 0;
+
   unsigned get(Value v) {
     // TODO follow this through casts, exts, etc
     auto it = map.find(v);
@@ -65,22 +68,27 @@ struct ValueToPosMap {
     return newPos;
   }
 
-  template <typename T, typename... Ts>
+  template <typename... Ts>
+  inline FailureOr<AffineExpr> buildPassthrough(Operation *op) {
+    assert(op->getNumOperands() == 1);
+    if (isa<Ts...>(op))
+      return buildExpr(op->getOperand(0));
+    return failure();
+  }
+
+  template <typename... Ts>
   inline FailureOr<AffineExpr>
   buildBinOpExpr(Operation *op,
                  AffineExpr (AffineExpr::*handler)(AffineExpr) const) {
     assert(op->getNumOperands() == 2);
-    if (auto specificOp = dyn_cast<T>(op)) {
+    if (isa<Ts...>(op)) {
       auto lhs = buildExpr(op->getOperand(0));
       auto rhs = buildExpr(op->getOperand(1));
       if (failed(lhs) || failed(rhs))
         return failure();
       return ((*lhs).*handler)(*rhs);
     }
-    if constexpr (sizeof...(Ts) == 0)
-      return failure();
-    else
-      return buildBinOpExpr<Ts...>(op, handler);
+    return failure();
   }
 
   FailureOr<AffineExpr> buildExpr(Value v) {
@@ -91,25 +99,41 @@ struct ValueToPosMap {
     } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
       return getAffineConstantExpr(cst.value(), context);
     } else if (affine::isValidDim(v)) {
+      numDims++;
       return getAffineDimExpr(get(v), v.getContext());
     } else if (affine::isValidSymbol(v)) {
+      numSymbols++;
       return getAffineSymbolExpr(get(v), v.getContext());
     }
 
-    // clang-format off
-    #define RIS(X) do { auto res = X; if (succeeded(res)) return *res; } while (0)
-    RIS((buildBinOpExpr<LLVM::AddOp, arith::AddIOp>(
-             op, &AffineExpr::operator+)));
-    RIS((buildBinOpExpr<LLVM::SubOp, arith::SubIOp>(
-             op, &AffineExpr::operator-)));
-    RIS((buildBinOpExpr<LLVM::URemOp, arith::RemSIOp, LLVM::SRemOp, arith::RemUIOp>(
-             op, &AffineExpr::operator%)));
-    RIS((buildBinOpExpr<LLVM::MulOp, arith::MulIOp>(
-             op, &AffineExpr::operator*)));
-    RIS((buildBinOpExpr<LLVM::UDivOp, LLVM::SDivOp, arith::DivUIOp, arith::DivSIOp>(
-             op, &AffineExpr::floorDiv)));
-    #undef RIS
-    // clang-format on
+    if (op) {
+      // clang-format off
+#define RIS(X) do { auto res = X; if (succeeded(res)) return *res; } while (0)
+      RIS((buildBinOpExpr<LLVM::AddOp, arith::AddIOp>(
+               op, &AffineExpr::operator+)));
+      RIS((buildBinOpExpr<LLVM::SubOp, arith::SubIOp>(
+               op, &AffineExpr::operator-)));
+      RIS((buildBinOpExpr<LLVM::URemOp, arith::RemSIOp, LLVM::SRemOp, arith::RemUIOp>(
+               op, &AffineExpr::operator%)));
+      RIS((buildBinOpExpr<LLVM::MulOp, arith::MulIOp>(
+               op, &AffineExpr::operator*)));
+      RIS((buildBinOpExpr<LLVM::UDivOp, LLVM::SDivOp, arith::DivUIOp, arith::DivSIOp>(
+               op, &AffineExpr::floorDiv)));
+      RIS((buildPassthrough<
+           LLVM::ZExtOp, LLVM::SExtOp, LLVM::TruncOp,
+           arith::ExtSIOp, arith::ExtUIOp, arith::TruncIOp>(op)));
+#undef RIS
+      // clang-format on
+    } else {
+      auto ba = dyn_cast<BlockArgument>(v);
+      assert(ba);
+      // It is a block argument invalid for either dim or sym - we will scope it
+      // later
+      // TODO I think we may grab an affine op reduction block arg - we should
+      // handle these separately
+      numSymbols++;
+      return getAffineSymbolExpr(get(v), context);
+    }
     return failure();
   }
 
@@ -263,7 +287,8 @@ static FailureOr<AffineAccess> buildAffineAccess(const DataLayout &dataLayout,
 
     AffineAccess newAA;
     newAA.inputs = aa->inputs;
-    newAA.inputs.insert(newAA.inputs.end(), gep->operand_begin(),
+    // Skip over the address (operand 0) and grab the gep indices
+    newAA.inputs.insert(newAA.inputs.end(), std::next(gep->operand_begin()),
                         gep->operand_end());
     newAA.base = aa->base;
     newAA.expr = aa->expr + *gepExpr;
@@ -290,20 +315,22 @@ struct LLVMToAffineAccessPass
       PtrVal addr = store.getAddr();
       LLVM_DEBUG(llvm::dbgs()
                  << "Building affine access for " << store << "\n");
-      ValueToPosMap map;
+      ValueToPosMap v2p;
       auto aa =
-          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr, map);
-      if (failed(aa))
-        return;
-      // auto map = AffineMap::get(aa->expr);
-      // affine::canonicalizeMapAndOperands(map, operands);
+          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr, v2p);
+      auto map = AffineMap::get(v2p.numDims, v2p.numSymbols, aa->expr);
+      affine::canonicalizeMapAndOperands(&map, &aa->inputs);
+      LLVM_DEBUG(llvm::dbgs() << "Got map: "<< map << "\n");
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
       LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
-      ValueToPosMap map;
+      ValueToPosMap v2p;
       auto aa =
-          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr, map);
+          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr, v2p);
+      auto map = AffineMap::get(v2p.numDims, v2p.numSymbols, aa->expr);
+      affine::canonicalizeMapAndOperands(&map, &aa->inputs);
+      LLVM_DEBUG(llvm::dbgs() << "Got map: "<< map << "\n");
     });
   }
 };
