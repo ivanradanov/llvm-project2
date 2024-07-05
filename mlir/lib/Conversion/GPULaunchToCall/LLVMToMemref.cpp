@@ -29,7 +29,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include <cstdint>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "llvm/ADT/STLExtras.h"
@@ -65,14 +64,63 @@ struct ValueToPosMap {
     map.insert({v, newPos});
     return newPos;
   }
-  AffineExpr getExpr(llvm::PointerUnion<mlir::IntegerAttr, mlir::Value> index,
-                     MLIRContext *context) {
-    AffineExpr expr;
-    auto constIndex = dyn_cast<IntegerAttr>(index);
-    if (constIndex)
-      return getAffineConstantExpr(constIndex.getInt(), context);
+
+  template <typename T, typename... Ts>
+  inline FailureOr<AffineExpr>
+  buildBinOpExpr(Operation *op,
+                 AffineExpr (AffineExpr::*handler)(AffineExpr) const) {
+    assert(op->getNumOperands() == 2);
+    if (auto specificOp = dyn_cast<T>(op)) {
+      auto lhs = buildExpr(op->getOperand(0));
+      auto rhs = buildExpr(op->getOperand(1));
+      if (failed(lhs) || failed(rhs))
+        return failure();
+      return ((*lhs).*handler)(*rhs);
+    }
+    if constexpr (sizeof...(Ts) == 0)
+      return failure();
     else
-      return getAffineDimExpr(get(cast<Value>(index)), context);
+      return buildBinOpExpr<Ts...>(op, handler);
+  }
+
+  FailureOr<AffineExpr> buildExpr(Value v) {
+    auto context = v.getContext();
+    Operation *op = v.getDefiningOp();
+    if (auto cst = dyn_cast_or_null<arith::ConstantIntOp>(op)) {
+      return getAffineConstantExpr(cst.value(), context);
+    } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
+      return getAffineConstantExpr(cst.value(), context);
+    } else if (affine::isValidDim(v)) {
+      return getAffineDimExpr(get(v), v.getContext());
+    } else if (affine::isValidSymbol(v)) {
+      return getAffineSymbolExpr(get(v), v.getContext());
+    }
+
+    // clang-format off
+    #define RIS(X) do { auto res = X; if (succeeded(res)) return *res; } while (0)
+    RIS((buildBinOpExpr<LLVM::AddOp, arith::AddIOp>(
+             op, &AffineExpr::operator+)));
+    RIS((buildBinOpExpr<LLVM::SubOp, arith::SubIOp>(
+             op, &AffineExpr::operator-)));
+    RIS((buildBinOpExpr<LLVM::URemOp, arith::RemSIOp, LLVM::SRemOp, arith::RemUIOp>(
+             op, &AffineExpr::operator%)));
+    RIS((buildBinOpExpr<LLVM::MulOp, arith::MulIOp>(
+             op, &AffineExpr::operator*)));
+    RIS((buildBinOpExpr<LLVM::UDivOp, LLVM::SDivOp, arith::DivUIOp, arith::DivSIOp>(
+             op, &AffineExpr::floorDiv)));
+    #undef RIS
+    // clang-format on
+    return failure();
+  }
+
+  FailureOr<AffineExpr> getExpr(llvm::PointerUnion<IntegerAttr, Value> index,
+                                MLIRContext *context) {
+    auto constIndex = dyn_cast<IntegerAttr>(index);
+    if (constIndex) {
+      return getAffineConstantExpr(constIndex.getInt(), context);
+    } else {
+      return buildExpr(cast<Value>(index));
+    }
   }
 };
 
@@ -80,6 +128,11 @@ struct AffineAccess {
   MemRefVal base;
   SmallVector<Value> inputs;
   AffineExpr expr;
+};
+
+struct DimOrSym {
+  Value val;
+  bool isDim;
 };
 
 /// See llvm/Support/Alignment.h
@@ -94,17 +147,21 @@ static std::optional<AffineExpr> getGepAffineExpr(const DataLayout &dataLayout,
   auto context = gep.getContext();
 
   Type currentType = gep.getElemType();
-  AffineExpr expr = valueToPos.getExpr(gep.getIndices()[0], context);
-  AffineExpr offset = expr * dataLayout.getTypeSize(currentType);
+  auto expr = valueToPos.getExpr(gep.getIndices()[0], context);
+  if (failed(expr))
+    return std::nullopt;
+  AffineExpr offset = (*expr) * dataLayout.getTypeSize(currentType);
 
   for (auto &&[i, index] :
        llvm::drop_begin(llvm::enumerate(gep.getIndices()))) {
     bool shouldCancel =
         TypeSwitch<Type, bool>(currentType)
             .Case([&](LLVM::LLVMArrayType arrayType) {
-              AffineExpr expr = valueToPos.getExpr(index, context);
-              offset = offset + expr * dataLayout.getTypeSize(
-                                           arrayType.getElementType());
+              auto expr = valueToPos.getExpr(gep.getIndices()[0], context);
+              if (failed(expr))
+                return true;
+              offset = offset + (*expr) * dataLayout.getTypeSize(
+                                              arrayType.getElementType());
               currentType = arrayType.getElementType();
               return false;
             })
@@ -234,13 +291,19 @@ struct LLVMToAffineAccessPass
       LLVM_DEBUG(llvm::dbgs()
                  << "Building affine access for " << store << "\n");
       ValueToPosMap map;
-      buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr, map);
+      auto aa =
+          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr, map);
+      if (failed(aa))
+        return;
+      // auto map = AffineMap::get(aa->expr);
+      // affine::canonicalizeMapAndOperands(map, operands);
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
       LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
       ValueToPosMap map;
-      buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr, map);
+      auto aa =
+          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr, map);
     });
   }
 };
