@@ -52,12 +52,34 @@ namespace mlir {
 using namespace mlir;
 
 using PtrVal = TypedValue<LLVM::LLVMPointerType>;
-using MemrefVal = TypedValue<MemRefType>;
+using MemRefVal = TypedValue<MemRefType>;
+
+struct ValueToPosMap {
+  DenseMap<Value, unsigned> map;
+  unsigned get(Value v) {
+    // TODO follow this through casts, exts, etc
+    auto it = map.find(v);
+    if (it != map.end())
+      return it->getSecond();
+    unsigned newPos = map.size();
+    map.insert({v, newPos});
+    return newPos;
+  }
+  AffineExpr getExpr(llvm::PointerUnion<mlir::IntegerAttr, mlir::Value> index,
+                     MLIRContext *context) {
+    AffineExpr expr;
+    auto constIndex = dyn_cast<IntegerAttr>(index);
+    if (constIndex)
+      return getAffineConstantExpr(constIndex.getInt(), context);
+    else
+      return getAffineDimExpr(get(cast<Value>(index)), context);
+  }
+};
 
 struct AffineAccess {
-  MemrefVal base;
+  MemRefVal base;
   SmallVector<Value> inputs;
-  AffineMap map;
+  AffineExpr expr;
 };
 
 /// See llvm/Support/Alignment.h
@@ -66,32 +88,21 @@ static AffineExpr alignTo(AffineExpr expr, uint64_t a) {
 }
 
 static std::optional<AffineExpr> getGepAffineExpr(const DataLayout &dataLayout,
-                                                  LLVM::GEPOp gep) {
+                                                  LLVM::GEPOp gep,
+                                                  ValueToPosMap &valueToPos) {
   // TODO what happens if we get a negative index
   auto context = gep.getContext();
 
   Type currentType = gep.getElemType();
-  AffineExpr expr;
-  auto constIndex = dyn_cast<IntegerAttr>(gep.getIndices()[0]);
-  if (constIndex)
-    expr = getAffineConstantExpr(constIndex.getInt(), context);
-  else
-    // We still have no way of knowing whether this will be a symbol or dim so
-    // make it a dim for now.
-    expr = getAffineDimExpr(0, context);
+  AffineExpr expr = valueToPos.getExpr(gep.getIndices()[0], context);
   AffineExpr offset = expr * dataLayout.getTypeSize(currentType);
 
   for (auto &&[i, index] :
        llvm::drop_begin(llvm::enumerate(gep.getIndices()))) {
-    auto constIndex = dyn_cast<IntegerAttr>(index);
-    AffineExpr expr;
-    if (constIndex)
-      expr = getAffineConstantExpr(constIndex.getInt(), context);
-    else
-      expr = getAffineDimExpr(i, context);
     bool shouldCancel =
         TypeSwitch<Type, bool>(currentType)
             .Case([&](LLVM::LLVMArrayType arrayType) {
+              AffineExpr expr = valueToPos.getExpr(index, context);
               offset = offset + expr * dataLayout.getTypeSize(
                                            arrayType.getElementType());
               currentType = arrayType.getElementType();
@@ -168,45 +179,46 @@ static BlockArgument scopeAddr(PtrVal addr) {
   return nullptr;
 }
 
-static Value convertToMemref(PtrVal addr) {
+static MemRefVal convertToMemref(PtrVal addr) {
   OpBuilder builder(addr.getContext());
   if (auto ba = dyn_cast<BlockArgument>(addr))
     builder.setInsertionPointToStart(ba.getOwner());
   else
     builder.setInsertionPointAfter(addr.getDefiningOp());
-  return builder.create<memref::AtAddrOp>(addr.getLoc(), addr);
+  return cast<MemRefVal>(
+      builder.create<memref::AtAddrOp>(addr.getLoc(), addr).getResult());
 }
 
 static FailureOr<AffineAccess> buildAffineAccess(const DataLayout &dataLayout,
-                                                 PtrVal addr) {
+                                                 PtrVal addr,
+                                                 ValueToPosMap &valueToPos) {
   if (auto gep = dyn_cast_or_null<LLVM::GEPOp>(addr.getDefiningOp())) {
     LLVM_DEBUG(llvm::dbgs() << "gep " << gep << "\n");
     auto base = cast<PtrVal>(gep.getBase());
-    auto expr = getGepAffineExpr(dataLayout, gep);
-    if (!expr)
+
+    auto gepExpr = getGepAffineExpr(dataLayout, gep, valueToPos);
+    if (!gepExpr)
       return failure();
 
-    auto aa = buildAffineAccess(dataLayout, base);
+    auto aa = buildAffineAccess(dataLayout, base, valueToPos);
     if (failed(aa))
       return failure();
 
-    AffineMap map = AffineMap::get(*expr);
-
     AffineAccess newAA;
     newAA.inputs = aa->inputs;
-    newAA.inputs.insert(newAA.inputs.begin(), gep->operand_begin(),
+    newAA.inputs.insert(newAA.inputs.end(), gep->operand_begin(),
                         gep->operand_end());
     newAA.base = aa->base;
-    newAA.map = aa->map.compose(map);
-
-    LLVM_DEBUG(llvm::dbgs() << "composed " << newAA.map << "\n");
+    newAA.expr = aa->expr + *gepExpr;
+    LLVM_DEBUG(llvm::dbgs() << "added " << newAA.expr << "\n");
+    return newAA;
   }
 
   AffineAccess aa;
   aa.base = convertToMemref(addr);
   aa.inputs = {};
-  aa.map = AffineMap::getConstantMap(0, addr.getContext());
-
+  aa.expr = getAffineConstantExpr(0, addr.getContext());
+  LLVM_DEBUG(llvm::dbgs() << "base " << aa.expr << "\n");
   return aa;
 }
 
@@ -221,12 +233,14 @@ struct LLVMToAffineAccessPass
       PtrVal addr = store.getAddr();
       LLVM_DEBUG(llvm::dbgs()
                  << "Building affine access for " << store << "\n");
-      buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr);
+      ValueToPosMap map;
+      buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr, map);
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
       LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
-      buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr);
+      ValueToPosMap map;
+      buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr, map);
     });
   }
 };
