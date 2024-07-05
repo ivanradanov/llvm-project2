@@ -9,6 +9,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
@@ -32,6 +33,7 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Error.h"
@@ -43,14 +45,17 @@
 #define DEBUG_TYPE "llvm-to-affine-access"
 
 namespace mlir {
-#define GEN_PASS_DEF_LLVMTOMEMREFPASS
+#define GEN_PASS_DEF_LLVMTOAFFINEACCESSPASS
 #include "mlir/Conversion/Passes.h.inc"
 } // namespace mlir
 
 using namespace mlir;
 
+using PtrVal = TypedValue<LLVM::LLVMPointerType>;
+using MemrefVal = TypedValue<MemRefType>;
+
 struct AffineAccess {
-  Value base;
+  MemrefVal base;
   SmallVector<Value> inputs;
   AffineMap map;
 };
@@ -126,69 +131,106 @@ static std::optional<AffineExpr> getGepAffineExpr(const DataLayout &dataLayout,
       return std::nullopt;
   }
 
+  LLVM_DEBUG(llvm::dbgs() << "offset " << offset << "\n");
+
   return offset;
 }
 
-static bool isValidBlockArgument(Value v) {
-  if (auto ba = dyn_cast<BlockArgument>(v))
-    return isa<affine::AffineForOp, affine::AffineParallelOp, func::FuncOp>(
-        ba.getOwner()->getParentOp());
-  return false;
+// TODO collect scopes before instantiating them and only instantiate the
+// innermost ones
+static BlockArgument scopeAddr(PtrVal addr) {
+  IRRewriter rewriter(addr.getContext());
+  if (auto ba = dyn_cast<BlockArgument>(addr)) {
+    Block *block = ba.getOwner();
+    SmallVector<Location> locs = llvm::map_to_vector(
+        block->getArguments(), [](BlockArgument a) { return a.getLoc(); });
+    Block *newBlock =
+        rewriter.createBlock(block, block->getArgumentTypes(), locs);
+    auto scope = rewriter.create<affine::AffineScopeOp>(
+        ba.getLoc(), block->getTerminator()->getOperandTypes(), ValueRange(ba));
+    Block *innerBlock = rewriter.createBlock(
+        &scope.getRegion(), {}, TypeRange(ba.getType()), {ba.getLoc()});
+    rewriter.replaceAllUsesWith(block, newBlock);
+    rewriter.inlineBlockBefore(block, innerBlock, innerBlock->begin(),
+                               innerBlock->getArguments());
+    rewriter.setInsertionPointToEnd(innerBlock);
+    Operation *terminator = innerBlock->getTerminator();
+    auto yieldOp = rewriter.create<affine::AffineYieldOp>(
+        terminator->getLoc(), terminator->getOperands());
+    IRMapping mapping;
+    mapping.map(ValueRange(terminator->getOperands()),
+                ValueRange(scope->getOpResults()));
+    rewriter.setInsertionPointAfter(scope);
+    rewriter.clone(*terminator, mapping);
+    rewriter.eraseOp(terminator);
+    return innerBlock->getArgument(0);
+  }
+  return nullptr;
 }
 
-static FailureOr<AffineMap> buildAffineMap(MLIRContext *ctx,
-                                           const DataLayout &dataLayout,
-                                           SmallVector<Value> indices) {
-  auto map = AffineMap::get(ctx);
-  for (Value v : indices) {
-    if (isValidBlockArgument(v))
-      return failure();
-  }
-  return failure();
+static Value convertToMemref(PtrVal addr) {
+  OpBuilder builder(addr.getContext());
+  if (auto ba = dyn_cast<BlockArgument>(addr))
+    builder.setInsertionPointToStart(ba.getOwner());
+  else
+    builder.setInsertionPointAfter(addr.getDefiningOp());
+  return builder.create<memref::AtAddrOp>(addr.getLoc(), addr);
 }
 
 static FailureOr<AffineAccess> buildAffineAccess(const DataLayout &dataLayout,
-                                                 Value addr) {
-  LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << addr << "\n");
-  if (auto ba = dyn_cast<BlockArgument>(addr))
-    if (isa<affine::AffineForOp, affine::AffineParallelOp, func::FuncOp>(
-            ba.getOwner()->getParentOp()))
-      return AffineAccess{.base = addr,
-                          .inputs = {},
-                          .map =
-                              AffineMap::getConstantMap(0, addr.getContext())};
+                                                 PtrVal addr) {
   if (auto gep = dyn_cast_or_null<LLVM::GEPOp>(addr.getDefiningOp())) {
     LLVM_DEBUG(llvm::dbgs() << "gep " << gep << "\n");
-    auto base = gep.getBase();
-    buildAffineAccess(dataLayout, base);
-    auto maybeExpr = getGepAffineExpr(dataLayout, gep);
-    LLVM_DEBUG({
-      if (maybeExpr)
-        llvm::dbgs() << "expr " << *maybeExpr << "\n";
-      else
-        llvm::dbgs() << "none\n";
-    });
+    auto base = cast<PtrVal>(gep.getBase());
+    auto expr = getGepAffineExpr(dataLayout, gep);
+    if (!expr)
+      return failure();
+
+    auto aa = buildAffineAccess(dataLayout, base);
+    if (failed(aa))
+      return failure();
+
+    AffineMap map = AffineMap::get(*expr);
+
+    AffineAccess newAA;
+    newAA.inputs = aa->inputs;
+    newAA.inputs.insert(newAA.inputs.begin(), gep->operand_begin(),
+                        gep->operand_end());
+    newAA.base = aa->base;
+    newAA.map = aa->map.compose(map);
+
+    LLVM_DEBUG(llvm::dbgs() << "composed " << newAA.map << "\n");
   }
-  return failure();
+
+  AffineAccess aa;
+  aa.base = convertToMemref(addr);
+  aa.inputs = {};
+  aa.map = AffineMap::getConstantMap(0, addr.getContext());
+
+  return aa;
 }
 
-struct LLVMToAffineAccess
-    : public impl::LLVMToAffineAccessPassBase<LLVMToMemref> {
+struct LLVMToAffineAccessPass
+    : public impl::LLVMToAffineAccessPassBase<LLVMToAffineAccessPass> {
   using Base::Base;
   void runOnOperation() {
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
+    // TODO getting the layout analysis for every op seems bad :)
     op->walk([&](LLVM::StoreOp store) {
-      Value addr = store.getAddr();
+      PtrVal addr = store.getAddr();
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Building affine access for " << store << "\n");
       buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr);
     });
     op->walk([&](LLVM::LoadOp load) {
-      Value addr = load.getAddr();
+      PtrVal addr = load.getAddr();
+      LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
       buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr);
     });
   }
 };
 
 std::unique_ptr<Pass> mlir::createLLVMToAffineAccessPass() {
-  return std::make_unique<LLVMToAffineAccess>();
+  return std::make_unique<LLVMToAffineAccessPass>();
 }
