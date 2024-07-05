@@ -341,6 +341,14 @@ def PromoteScfWhilePass : Pass<"promote-scf-while", "ModuleOp"> {
   let constructor = "mlir::createPromoteScfWhilePass()";
 }
 
+def LLVMToAffineAccessPass : Pass<"llvm-to-affine-access", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createLLVMToAffineAccessPass()";
+}
 
 //===----------------------------------------------------------------------===//
 // LLVMToArith
