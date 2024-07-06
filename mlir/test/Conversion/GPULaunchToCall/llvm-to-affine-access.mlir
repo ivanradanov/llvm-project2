@@ -60,3 +60,39 @@ llvm.func @multi_level_direct_two_applications(%i1 : i32, %i2 : i32) -> i32 {
   %4 = llvm.load %3 : !llvm.ptr -> i32
   llvm.return %4 : i32
 }
+
+// -----
+
+llvm.func @ptr_store(%3 : !llvm.ptr, %s : !llvm.ptr) {
+  llvm.store %s, %3 : !llvm.ptr, !llvm.ptr
+  llvm.return
+}
+
+// -----
+
+llvm.func @ptr_load(%3 : !llvm.ptr) -> !llvm.ptr {
+  %4 = llvm.load %3 : !llvm.ptr -> !llvm.ptr
+  llvm.return %4 : !llvm.ptr
+}
+
+// -----
+
+llvm.func @vector_load(%3 : !llvm.ptr) -> vector<4xi32> {
+  %4 = llvm.load %3 : !llvm.ptr -> vector<4xi32>
+  llvm.return %4 : vector<4xi32>
+}
+
+// // -----
+//
+// llvm.func @nested_affine_scope(%cond : i1, %argptr : !llvm.ptr, %offset : i32) {
+//   scf.if %cond {
+//     %ub = llvm.load %argptr : !llvm.ptr -> i32
+//     %ubc = arith.index_cast %ub : i32 to index
+//     affine.for %i = 5 to %ubc {
+//       %ic = arith.index_cast %i : index to i32
+//       %ptr = llvm.getelementptr %argptr[%ic] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+//       %a = llvm.load %ptr : !llvm.ptr -> i32
+//     }
+//   }
+//   llvm.return
+// }
