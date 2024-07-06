@@ -119,6 +119,10 @@ struct MemrefConverter {
   }
 };
 
+// TODO To preserve correctness, we need to keep track of values for which
+// converting indexing to the index type preserves the semantics, i.e. no
+// overflows or underflows or trucation etc and insert a runtime guard against
+// that
 struct AffineAccessBuilder {
   DenseMap<Value, unsigned> valueToPos;
   SmallVector<Value> symbolOperands;
@@ -215,6 +219,7 @@ struct AffineAccessBuilder {
 #undef RIS
       // clang-format on
     } else {
+      [[maybe_unused]]
       auto ba = dyn_cast<BlockArgument>(v);
       assert(ba);
       // It is a block argument invalid for either dim or sym - we will scope it
@@ -254,9 +259,9 @@ getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
     return std::nullopt;
   AffineExpr offset = (*expr) * dataLayout.getTypeSize(currentType);
 
-  for (auto &&[_i, _index] :
-       llvm::drop_begin(llvm::enumerate(gep.getIndices()))) {
-    auto index = _index;
+  auto indices = SmallVector<LLVM::GEPIndicesAdaptor<ValueRange>::value_type>(
+      std::next(gep.getIndices().begin()), gep.getIndices().end());
+  for (auto index : indices) {
     bool shouldCancel =
         TypeSwitch<Type, bool>(currentType)
             .Case([&](LLVM::LLVMArrayType arrayType) {
@@ -309,6 +314,7 @@ getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
 
 // TODO collect scopes before instantiating them and only instantiate the
 // innermost ones
+[[maybe_unused]]
 static BlockArgument scopeAddr(PtrVal addr) {
   IRRewriter rewriter(addr.getContext());
   if (auto ba = dyn_cast<BlockArgument>(addr)) {
