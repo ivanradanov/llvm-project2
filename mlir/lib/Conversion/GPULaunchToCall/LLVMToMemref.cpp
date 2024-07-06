@@ -18,6 +18,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -55,24 +56,29 @@ using MemRefVal = TypedValue<MemRefType>;
 
 struct ValueToPosMap {
   DenseMap<Value, unsigned> map;
+  SmallVector<Value> symbolOperands;
+  SmallVector<Value> dimOperands;
   unsigned numDims = 0;
   unsigned numSymbols = 0;
 
-  unsigned get(Value v) {
+  unsigned get(Value v, unsigned &num, SmallVectorImpl<Value> &operands) {
     // TODO follow this through casts, exts, etc
     auto it = map.find(v);
     if (it != map.end())
       return it->getSecond();
     unsigned newPos = map.size();
     map.insert({v, newPos});
+    operands.push_back(v);
+    num++;
     return newPos;
   }
 
   template <typename... Ts>
   inline FailureOr<AffineExpr> buildPassthrough(Operation *op) {
-    assert(op->getNumOperands() == 1);
-    if (isa<Ts...>(op))
+    if (isa<Ts...>(op)) {
+      assert(op->getNumOperands() == 1);
       return buildExpr(op->getOperand(0));
+    }
     return failure();
   }
 
@@ -80,8 +86,8 @@ struct ValueToPosMap {
   inline FailureOr<AffineExpr>
   buildBinOpExpr(Operation *op,
                  AffineExpr (AffineExpr::*handler)(AffineExpr) const) {
-    assert(op->getNumOperands() == 2);
     if (isa<Ts...>(op)) {
+      assert(op->getNumOperands() == 2);
       auto lhs = buildExpr(op->getOperand(0));
       auto rhs = buildExpr(op->getOperand(1));
       if (failed(lhs) || failed(rhs))
@@ -99,11 +105,10 @@ struct ValueToPosMap {
     } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
       return getAffineConstantExpr(cst.value(), context);
     } else if (affine::isValidDim(v)) {
-      numDims++;
-      return getAffineDimExpr(get(v), v.getContext());
+      return getAffineDimExpr(get(v, numDims, dimOperands), v.getContext());
     } else if (affine::isValidSymbol(v)) {
-      numSymbols++;
-      return getAffineSymbolExpr(get(v), v.getContext());
+      return getAffineSymbolExpr(get(v, numSymbols, symbolOperands),
+                                 v.getContext());
     }
 
     if (op) {
@@ -131,8 +136,7 @@ struct ValueToPosMap {
       // later
       // TODO I think we may grab an affine op reduction block arg - we should
       // handle these separately
-      numSymbols++;
-      return getAffineSymbolExpr(get(v), context);
+      return getAffineSymbolExpr(get(v, numSymbols, symbolOperands), context);
     }
     return failure();
   }
@@ -150,7 +154,6 @@ struct ValueToPosMap {
 
 struct AffineAccess {
   MemRefVal base;
-  SmallVector<Value> inputs;
   AffineExpr expr;
 };
 
@@ -181,7 +184,7 @@ static std::optional<AffineExpr> getGepAffineExpr(const DataLayout &dataLayout,
     bool shouldCancel =
         TypeSwitch<Type, bool>(currentType)
             .Case([&](LLVM::LLVMArrayType arrayType) {
-              auto expr = valueToPos.getExpr(gep.getIndices()[0], context);
+              auto expr = valueToPos.getExpr(index, context);
               if (failed(expr))
                 return true;
               offset = offset + (*expr) * dataLayout.getTypeSize(
@@ -260,6 +263,17 @@ static BlockArgument scopeAddr(PtrVal addr) {
   return nullptr;
 }
 
+static Value convertToIndex(Value v) {
+  OpBuilder builder(v.getContext());
+  if (auto ba = dyn_cast<BlockArgument>(v))
+    builder.setInsertionPointToStart(ba.getOwner());
+  else
+    builder.setInsertionPointAfter(v.getDefiningOp());
+  return builder
+      .create<arith::IndexCastOp>(v.getLoc(), builder.getIndexType(), v)
+      .getResult();
+}
+
 static MemRefVal convertToMemref(PtrVal addr) {
   OpBuilder builder(addr.getContext());
   if (auto ba = dyn_cast<BlockArgument>(addr))
@@ -286,10 +300,6 @@ static FailureOr<AffineAccess> buildAffineAccess(const DataLayout &dataLayout,
       return failure();
 
     AffineAccess newAA;
-    newAA.inputs = aa->inputs;
-    // Skip over the address (operand 0) and grab the gep indices
-    newAA.inputs.insert(newAA.inputs.end(), std::next(gep->operand_begin()),
-                        gep->operand_end());
     newAA.base = aa->base;
     newAA.expr = aa->expr + *gepExpr;
     LLVM_DEBUG(llvm::dbgs() << "added " << newAA.expr << "\n");
@@ -298,7 +308,6 @@ static FailureOr<AffineAccess> buildAffineAccess(const DataLayout &dataLayout,
 
   AffineAccess aa;
   aa.base = convertToMemref(addr);
-  aa.inputs = {};
   aa.expr = getAffineConstantExpr(0, addr.getContext());
   LLVM_DEBUG(llvm::dbgs() << "base " << aa.expr << "\n");
   return aa;
@@ -319,18 +328,28 @@ struct LLVMToAffineAccessPass
       auto aa =
           buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(store), addr, v2p);
       auto map = AffineMap::get(v2p.numDims, v2p.numSymbols, aa->expr);
-      affine::canonicalizeMapAndOperands(&map, &aa->inputs);
-      LLVM_DEBUG(llvm::dbgs() << "Got map: "<< map << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "Got map: " << map << "\n");
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
       LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
       ValueToPosMap v2p;
-      auto aa =
-          buildAffineAccess(dataLayoutAnalysis.getAtOrAbove(load), addr, v2p);
+      auto dl = dataLayoutAnalysis.getAtOrAbove(load);
+      auto aa = buildAffineAccess(dl, addr, v2p);
       auto map = AffineMap::get(v2p.numDims, v2p.numSymbols, aa->expr);
-      affine::canonicalizeMapAndOperands(&map, &aa->inputs);
-      LLVM_DEBUG(llvm::dbgs() << "Got map: "<< map << "\n");
+      auto indexOperands = llvm::map_to_vector(
+          llvm::concat<Value>(v2p.dimOperands, v2p.symbolOperands),
+          [&](Value v) { return convertToIndex(v); });
+      affine::canonicalizeMapAndOperands(&map, &indexOperands);
+      LLVM_DEBUG(llvm::dbgs() << "Got map: " << map << "\n");
+
+      IRRewriter builder(load);
+      auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
+                                 builder.getI8Type());
+      auto vecLoad = builder.create<affine::AffineVectorLoadOp>(
+          load.getLoc(), vty, aa->base, map, indexOperands);
+      builder.replaceOpWithNewOp<LLVM::BitcastOp>(load, load.getType(),
+                                                  vecLoad);
     });
   }
 };
