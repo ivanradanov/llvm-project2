@@ -124,6 +124,9 @@ struct MemrefConverter {
 // overflows or underflows or trucation etc and insert a runtime guard against
 // that
 struct AffineAccessBuilder {
+  bool assumeSymbolLegal;
+  AffineAccessBuilder(bool assumeSymbolLegal = false) : assumeSymbolLegal(assumeSymbolLegal){}
+
   DenseMap<Value, unsigned> valueToPos;
   SmallVector<Value> symbolOperands;
   SmallVector<Value> dimOperands;
@@ -132,7 +135,8 @@ struct AffineAccessBuilder {
 
   AffineMap map;
   SmallVector<Value> operands;
-  PtrVal base;
+  SmallVector<Value> illegalSymbols;
+  PtrVal base = nullptr;
 
   LogicalResult build(const DataLayout &dataLayout, PtrVal addr) {
     auto aa = buildAffineAccess(dataLayout, addr, *this);
@@ -218,16 +222,16 @@ struct AffineAccessBuilder {
            arith::IndexCastOp, arith::IndexCastUIOp>(op)));
 #undef RIS
       // clang-format on
-    } else {
-      [[maybe_unused]]
-      auto ba = dyn_cast<BlockArgument>(v);
-      assert(ba);
-      // It is a block argument invalid for either dim or sym - we will scope it
-      // later
-      // TODO I think we may grab an affine op reduction block arg - we should
-      // handle these separately
+    }
+
+    // TODO We may find an affine op reduction block arg - we may be able to
+    // handle them
+
+    if (assumeSymbolLegal) {
+      illegalSymbols.push_back(v);
       return getAffineSymbolExpr(get(v, numSymbols, symbolOperands), context);
     }
+
     return failure();
   }
 
