@@ -55,7 +55,7 @@ using PtrVal = TypedValue<LLVM::LLVMPointerType>;
 using MemRefVal = MemrefValue;
 
 struct AffineAccess {
-  MemRefVal base;
+  PtrVal base;
   AffineExpr expr;
 };
 
@@ -82,6 +82,21 @@ static Value convertToIndex(Value v) {
       .getResult();
 }
 
+struct IndexConverter {
+  DenseMap<Value, Value> map;
+  Value operator()(Value p) {
+    auto it = map.find(p);
+    if (it != map.end())
+      return it->getSecond();
+    auto converted = convertToIndex(p);
+    map.insert({p, converted});
+    return converted;
+  }
+  SmallVector<Value> operator()(ValueRange range) {
+    return llvm::map_to_vector(range, [&](Value v) { return (*this)(v); });
+  }
+};
+
 static MemRefVal convertToMemref(PtrVal addr) {
   OpBuilder builder(addr.getContext());
   if (auto ba = dyn_cast<BlockArgument>(addr))
@@ -92,6 +107,18 @@ static MemRefVal convertToMemref(PtrVal addr) {
       builder.create<memref::AtAddrOp>(addr.getLoc(), addr).getResult());
 }
 
+struct MemrefConverter {
+  DenseMap<PtrVal, MemRefVal> map;
+  MemRefVal operator()(PtrVal p) {
+    auto it = map.find(p);
+    if (it != map.end())
+      return it->getSecond();
+    auto converted = convertToMemref(p);
+    map.insert({p, converted});
+    return converted;
+  }
+};
+
 struct AffineAccessBuilder {
   DenseMap<Value, unsigned> valueToPos;
   SmallVector<Value> symbolOperands;
@@ -101,7 +128,7 @@ struct AffineAccessBuilder {
 
   AffineMap map;
   SmallVector<Value> operands;
-  MemRefVal base;
+  PtrVal base;
 
   LogicalResult build(const DataLayout &dataLayout, PtrVal addr) {
     auto aa = buildAffineAccess(dataLayout, addr, *this);
@@ -109,9 +136,8 @@ struct AffineAccessBuilder {
       return failure();
     base = aa->base;
     map = AffineMap::get(numDims, numSymbols, aa->expr);
-    operands =
-        llvm::map_to_vector(llvm::concat<Value>(dimOperands, symbolOperands),
-                            [&](Value v) { return convertToIndex(v); });
+    auto concat = llvm::concat<Value>(dimOperands, symbolOperands);
+    operands = SmallVector<Value>(concat.begin(), concat.end());
     affine::canonicalizeMapAndOperands(&map, &operands);
     LLVM_DEBUG(llvm::dbgs() << "Built map: " << map << "\n");
     return success();
@@ -336,7 +362,7 @@ buildAffineAccess(const DataLayout &dataLayout, PtrVal addr,
   }
 
   AffineAccess aa;
-  aa.base = convertToMemref(addr);
+  aa.base = addr;
   aa.expr = getAffineConstantExpr(0, addr.getContext());
   LLVM_DEBUG(llvm::dbgs() << "base " << aa.expr << "\n");
   return aa;
@@ -348,6 +374,8 @@ struct LLVMToAffineAccessPass
   void runOnOperation() override {
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
+    MemrefConverter mc;
+    IndexConverter ic;
     // TODO getting the layout analysis for every op seems bad :)
     op->walk([&](LLVM::StoreOp store) {
       PtrVal addr = store.getAddr();
@@ -366,7 +394,7 @@ struct LLVMToAffineAccessPass
       auto bitcast = builder.create<LLVM::BitcastOp>(store.getLoc(), vty,
                                                      store.getValue());
       builder.replaceOpWithNewOp<affine::AffineVectorStoreOp>(
-          store, bitcast, aab.base, aab.map, aab.operands);
+          store, bitcast, mc(aab.base), aab.map, ic(aab.operands));
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
@@ -381,7 +409,7 @@ struct LLVMToAffineAccessPass
       auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
                                  builder.getI8Type());
       auto vecLoad = builder.create<affine::AffineVectorLoadOp>(
-          load.getLoc(), vty, aab.base, aab.map, aab.operands);
+          load.getLoc(), vty, mc(aab.base), aab.map, ic(aab.operands));
       builder.replaceOpWithNewOp<LLVM::BitcastOp>(load, load.getType(),
                                                   vecLoad);
     });
