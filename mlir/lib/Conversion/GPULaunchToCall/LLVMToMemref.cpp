@@ -391,10 +391,18 @@ struct LLVMToAffineAccessPass
       IRRewriter builder(store);
       auto vty =
           VectorType::get({(int64_t)dl.getTypeSize(ty)}, builder.getI8Type());
-      auto bitcast = builder.create<LLVM::BitcastOp>(store.getLoc(), vty,
-                                                     store.getValue());
+      Value cast;
+      if (isa<LLVM::LLVMPointerType>(ty)) {
+        Type intTy = builder.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
+        cast = builder.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
+                                                store.getValue());
+        cast = builder.create<LLVM::BitcastOp>(store.getLoc(), vty, cast);
+      } else {
+        cast = builder.create<LLVM::BitcastOp>(store.getLoc(), vty,
+                                               store.getValue());
+      }
       builder.replaceOpWithNewOp<affine::AffineVectorStoreOp>(
-          store, bitcast, mc(aab.base), aab.map, ic(aab.operands));
+          store, cast, mc(aab.base), aab.map, ic(aab.operands));
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
@@ -410,8 +418,17 @@ struct LLVMToAffineAccessPass
                                  builder.getI8Type());
       auto vecLoad = builder.create<affine::AffineVectorLoadOp>(
           load.getLoc(), vty, mc(aab.base), aab.map, ic(aab.operands));
-      builder.replaceOpWithNewOp<LLVM::BitcastOp>(load, load.getType(),
-                                                  vecLoad);
+      if (isa<LLVM::LLVMPointerType>(load.getType())) {
+        Type intTy =
+            builder.getIntegerType((int64_t)dl.getTypeSize(load.getType()) * 8);
+        auto cast =
+            builder.create<LLVM::BitcastOp>(load.getLoc(), intTy, vecLoad);
+        builder.replaceOpWithNewOp<LLVM::IntToPtrOp>(load, load.getType(),
+                                                     cast);
+      } else {
+        builder.replaceOpWithNewOp<LLVM::BitcastOp>(load, load.getType(),
+                                                    vecLoad);
+      }
     });
   }
 };
