@@ -141,7 +141,7 @@ class AllocLikeOp<string mnemonic,
 // AssumeAlignmentOp
 //===----------------------------------------------------------------------===//
 
-def AtAddrOp : MemRef_Op<"ataddr"> {
+def AtAddrOp : MemRef_Op<"ataddr", [Pure]> {
   let summary =
       "Construct a c-style memref at an addr";
   let description = [{
