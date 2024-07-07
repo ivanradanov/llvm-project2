@@ -124,8 +124,6 @@ struct AffineAccessBuilder {
   DenseMap<Value, unsigned> valueToPos;
   SmallVector<Value> symbolOperands;
   SmallVector<Value> dimOperands;
-  unsigned numDims = 0;
-  unsigned numSymbols = 0;
 
   AffineMap map;
   SmallVector<Value> operands;
@@ -137,7 +135,7 @@ struct AffineAccessBuilder {
     if (failed(aa))
       return failure();
     base = aa->base;
-    map = AffineMap::get(numDims, numSymbols, aa->expr);
+    map = AffineMap::get(dimOperands.size(), symbolOperands.size(), aa->expr);
     auto concat = llvm::concat<Value>(dimOperands, symbolOperands);
     operands = SmallVector<Value>(concat.begin(), concat.end());
     affine::canonicalizeMapAndOperands(&map, &operands);
@@ -145,15 +143,14 @@ struct AffineAccessBuilder {
     return success();
   }
 
-  unsigned get(Value v, unsigned &num, SmallVectorImpl<Value> &operands) {
+  unsigned get(Value v, SmallVectorImpl<Value> &operands) {
     // TODO follow this through casts, exts, etc
     auto it = valueToPos.find(v);
     if (it != valueToPos.end())
       return it->getSecond();
-    unsigned newPos = valueToPos.size();
+    unsigned newPos = operands.size();
     valueToPos.insert({v, newPos});
     operands.push_back(v);
-    num++;
     return newPos;
   }
 
@@ -189,10 +186,9 @@ struct AffineAccessBuilder {
     } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
       return getAffineConstantExpr(cst.value(), context);
     } else if (affine::isValidDim(v)) {
-      return getAffineDimExpr(get(v, numDims, dimOperands), v.getContext());
+      return getAffineDimExpr(get(v, dimOperands), v.getContext());
     } else if (affine::isValidSymbol(v)) {
-      return getAffineSymbolExpr(get(v, numSymbols, symbolOperands),
-                                 v.getContext());
+      return getAffineSymbolExpr(get(v, symbolOperands), v.getContext());
     }
 
     if (op) {
@@ -223,7 +219,7 @@ struct AffineAccessBuilder {
 
     if (assumeSymbolLegal) {
       illegalSymbols.push_back(v);
-      return getAffineSymbolExpr(get(v, numSymbols, symbolOperands), context);
+      return getAffineSymbolExpr(get(v, symbolOperands), context);
     }
 
     return failure();

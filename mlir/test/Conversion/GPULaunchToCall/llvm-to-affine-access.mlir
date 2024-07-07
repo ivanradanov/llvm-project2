@@ -265,3 +265,23 @@ llvm.func @nested_symbol_op(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.pt
   }
   llvm.return
 }
+
+// -----
+
+llvm.func @nested_symbol_op(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %offset : i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c10 = arith.constant 10 : index
+  affine.for %i = 5 to 100 {
+    %ic = arith.index_cast %i : index to i32
+    %sym = "test.test1"() : () -> i32
+    affine.for %j = 5 to 100 {
+      %jc = arith.index_cast %j : index to i32
+      %ptr1 = llvm.getelementptr %argptr[%ic] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+      %ptr2 = llvm.getelementptr %ptr1[%jc] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+      %ptr3 = llvm.getelementptr %ptr2[%sym] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+      %a = llvm.load %ptr3 : !llvm.ptr -> i32
+    }
+  }
+  llvm.return
+}
