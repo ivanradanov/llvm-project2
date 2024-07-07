@@ -159,7 +159,7 @@ def get_num_ssa_results(input_line):
 
 
 # Process a line of input that has been split at each SSA identifier '%'.
-def process_line(line_chunks, variable_namer):
+def process_line(line_chunks, variable_namer, is_check_same):
     output_line = ""
 
     # Process the rest that contained an SSA value name.
@@ -180,7 +180,12 @@ def process_line(line_chunks, variable_namer):
         else:
             # Otherwise, generate a new variable.
             variable = variable_namer.generate_name(ssa_name)
-            output_line += "%[[" + variable + ":.*]]"
+            if is_check_same:
+                end_char = chunk[len(ssa_name)]
+                output_line += "%[[" + variable + ":[^{}]*]]".format(end_char)
+            else:
+                output_line += "%[[" + variable + ":.*]]"
+
 
         # Append the non named group.
         output_line += chunk[len(ssa_name) :]
@@ -375,7 +380,7 @@ def main():
             output_line += ssa_split[0]
 
             # Process the rest of the input line.
-            output_line += process_line(ssa_split[1:], variable_namer)
+            output_line += process_line(ssa_split[1:], variable_namer, is_check_same=False)
 
         else:
             # Output the first line chunk that does not contain an SSA name for the
@@ -390,7 +395,7 @@ def main():
                 output_line += " " * len(ssa_split[0])
 
                 # Process the rest of the line.
-                output_line += process_line([argument], variable_namer)
+                output_line += process_line([argument], variable_namer, is_check_same=True)
 
         # Append the output line.
         output_segments[-1].append(output_line)
