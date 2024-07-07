@@ -82,21 +82,6 @@ static Value convertToIndex(Value v) {
       .getResult();
 }
 
-struct IndexConverter {
-  DenseMap<Value, Value> map;
-  Value operator()(Value p) {
-    auto it = map.find(p);
-    if (it != map.end())
-      return it->getSecond();
-    auto converted = convertToIndex(p);
-    map.insert({p, converted});
-    return converted;
-  }
-  SmallVector<Value> operator()(ValueRange range) {
-    return llvm::map_to_vector(range, [&](Value v) { return (*this)(v); });
-  }
-};
-
 static MemRefVal convertToMemref(PtrVal addr) {
   OpBuilder builder(addr.getContext());
   if (auto ba = dyn_cast<BlockArgument>(addr))
@@ -107,25 +92,34 @@ static MemRefVal convertToMemref(PtrVal addr) {
       builder.create<memref::AtAddrOp>(addr.getLoc(), addr).getResult());
 }
 
-struct MemrefConverter {
-  DenseMap<PtrVal, MemRefVal> map;
-  MemRefVal operator()(PtrVal p) {
+template <typename From, typename To, auto F>
+struct ConverterBase {
+  DenseMap<From, To> map;
+  To operator()(From p) {
     auto it = map.find(p);
     if (it != map.end())
       return it->getSecond();
-    auto converted = convertToMemref(p);
+    auto converted = F(p);
     map.insert({p, converted});
     return converted;
   }
+  SmallVector<To> operator()(ValueRange range) {
+    return llvm::map_to_vector(range, [&](From v) { return (*this)(v); });
+  }
 };
+
+using MemrefConverter = ConverterBase<PtrVal, MemRefVal, convertToMemref>;
+using IndexConverter = ConverterBase<Value, Value, convertToIndex>;
 
 // TODO To preserve correctness, we need to keep track of values for which
 // converting indexing to the index type preserves the semantics, i.e. no
 // overflows or underflows or trucation etc and insert a runtime guard against
 // that
 struct AffineAccessBuilder {
+  Operation *accessOp;
   bool assumeSymbolLegal;
-  AffineAccessBuilder(bool assumeSymbolLegal = false) : assumeSymbolLegal(assumeSymbolLegal){}
+  AffineAccessBuilder(Operation *accessOp, bool assumeSymbolLegal = false)
+      : accessOp(accessOp), assumeSymbolLegal(assumeSymbolLegal) {}
 
   DenseMap<Value, unsigned> valueToPos;
   SmallVector<Value> symbolOperands;
@@ -257,15 +251,17 @@ getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
   // TODO what happens if we get a negative index
   auto context = gep.getContext();
 
+  auto indicesRange = gep.getIndices();
+  auto indices = SmallVector<LLVM::GEPIndicesAdaptor<ValueRange>::value_type>(
+      indicesRange.begin(), indicesRange.end());
+  assert(indices.size() > 0);
   Type currentType = gep.getElemType();
-  auto expr = valueToPos.getExpr(gep.getIndices()[0], context);
+  auto expr = valueToPos.getExpr(indices[0], context);
   if (failed(expr))
     return std::nullopt;
   AffineExpr offset = (*expr) * dataLayout.getTypeSize(currentType);
 
-  auto indices = SmallVector<LLVM::GEPIndicesAdaptor<ValueRange>::value_type>(
-      std::next(gep.getIndices().begin()), gep.getIndices().end());
-  for (auto index : indices) {
+  for (auto index : llvm::drop_begin(indices)) {
     bool shouldCancel =
         TypeSwitch<Type, bool>(currentType)
             .Case([&](LLVM::LLVMArrayType arrayType) {
@@ -316,10 +312,7 @@ getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
   return offset;
 }
 
-// TODO collect scopes before instantiating them and only instantiate the
-// innermost ones
-[[maybe_unused]]
-static BlockArgument scopeAddr(PtrVal addr) {
+static BlockArgument insertAffineScope(PtrVal addr) {
   IRRewriter rewriter(addr.getContext());
   if (auto ba = dyn_cast<BlockArgument>(addr)) {
     Block *block = ba.getOwner();
@@ -384,62 +377,86 @@ struct LLVMToAffineAccessPass
   void runOnOperation() override {
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
+
+    IRMapping mapping;
     MemrefConverter mc;
     IndexConverter ic;
-    // TODO getting the layout analysis for every op seems bad :)
+
+    SmallVector<std::unique_ptr<AffineAccessBuilder>> aabs;
+    bool assumeSymbolLegal = true;
+
     op->walk([&](LLVM::StoreOp store) {
       PtrVal addr = store.getAddr();
       LLVM_DEBUG(llvm::dbgs()
                  << "Building affine access for " << store << "\n");
-      AffineAccessBuilder aab;
+      aabs.push_back(
+          std::make_unique<AffineAccessBuilder>(store, assumeSymbolLegal));
+      AffineAccessBuilder &aab = *aabs.back();
       auto dl = dataLayoutAnalysis.getAtOrAbove(store);
       auto res = aab.build(dl, addr);
       if (failed(res))
-        return;
-
-      Type ty = store.getValue().getType();
-      IRRewriter builder(store);
-      auto vty =
-          VectorType::get({(int64_t)dl.getTypeSize(ty)}, builder.getI8Type());
-      Value cast;
-      if (isa<LLVM::LLVMPointerType>(ty)) {
-        Type intTy = builder.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
-        cast = builder.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
-                                                store.getValue());
-        cast = builder.create<LLVM::BitcastOp>(store.getLoc(), vty, cast);
-      } else {
-        cast = builder.create<LLVM::BitcastOp>(store.getLoc(), vty,
-                                               store.getValue());
-      }
-      builder.replaceOpWithNewOp<affine::AffineVectorStoreOp>(
-          store, cast, mc(aab.base), aab.map, ic(aab.operands));
+        aabs.pop_back();
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
       LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
-      AffineAccessBuilder aab;
+      aabs.push_back(
+          std::make_unique<AffineAccessBuilder>(load, assumeSymbolLegal));
+      AffineAccessBuilder &aab = *aabs.back();
       auto dl = dataLayoutAnalysis.getAtOrAbove(load);
       auto res = aab.build(dl, addr);
       if (failed(res))
-        return;
-
-      IRRewriter builder(load);
-      auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
-                                 builder.getI8Type());
-      auto vecLoad = builder.create<affine::AffineVectorLoadOp>(
-          load.getLoc(), vty, mc(aab.base), aab.map, ic(aab.operands));
-      if (isa<LLVM::LLVMPointerType>(load.getType())) {
-        Type intTy =
-            builder.getIntegerType((int64_t)dl.getTypeSize(load.getType()) * 8);
-        auto cast =
-            builder.create<LLVM::BitcastOp>(load.getLoc(), intTy, vecLoad);
-        builder.replaceOpWithNewOp<LLVM::IntToPtrOp>(load, load.getType(),
-                                                     cast);
-      } else {
-        builder.replaceOpWithNewOp<LLVM::BitcastOp>(load, load.getType(),
-                                                    vecLoad);
-      }
+        aabs.pop_back();
     });
+    for (auto &aabp : aabs) {
+      AffineAccessBuilder &aab = *aabp;
+      auto dl = dataLayoutAnalysis.getAtOrAbove(aab.accessOp);
+      if (auto load = dyn_cast<LLVM::LoadOp>(aab.accessOp)) {
+        IRRewriter rewriter(load);
+        auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
+                                   rewriter.getI8Type());
+        auto vecLoad = rewriter.create<affine::AffineVectorLoadOp>(
+            load.getLoc(), vty, mc(aab.base), aab.map, ic(aab.operands));
+        Operation *newLoad;
+        if (isa<LLVM::LLVMPointerType>(load.getType())) {
+          Type intTy = rewriter.getIntegerType(
+              (int64_t)dl.getTypeSize(load.getType()) * 8);
+          auto cast =
+              rewriter.create<LLVM::BitcastOp>(load.getLoc(), intTy, vecLoad);
+          newLoad = rewriter.create<LLVM::IntToPtrOp>(load.getLoc(),
+                                                      load.getType(), cast);
+        } else {
+          newLoad = rewriter.create<LLVM::BitcastOp>(load.getLoc(),
+                                                     load.getType(), vecLoad);
+        }
+        mapping.map(load, newLoad);
+      } else if (auto store = dyn_cast<LLVM::StoreOp>(aab.accessOp)) {
+        Type ty = store.getValue().getType();
+        IRRewriter rewriter(store);
+        auto vty = VectorType::get({(int64_t)dl.getTypeSize(ty)},
+                                   rewriter.getI8Type());
+        Value cast;
+        if (isa<LLVM::LLVMPointerType>(ty)) {
+          Type intTy = rewriter.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
+          cast = rewriter.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
+                                                   store.getValue());
+          cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty, cast);
+        } else {
+          cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty,
+                                                  store.getValue());
+        }
+        Operation *newStore = rewriter.create<affine::AffineVectorStoreOp>(
+            store.getLoc(), cast, mc(aab.base), aab.map, ic(aab.operands));
+        mapping.map(store.getOperation(), newStore);
+      } else {
+        llvm_unreachable("");
+      }
+    }
+
+    IRRewriter rewriter(op->getContext());
+    for (auto &&[oldOp, newOp] : mapping.getOperationMap()) {
+      rewriter.replaceOp(oldOp, newOp);
+    }
   }
 };
 
