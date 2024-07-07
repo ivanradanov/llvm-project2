@@ -312,34 +312,24 @@ getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
   return offset;
 }
 
-static BlockArgument insertAffineScope(PtrVal addr) {
-  IRRewriter rewriter(addr.getContext());
-  if (auto ba = dyn_cast<BlockArgument>(addr)) {
-    Block *block = ba.getOwner();
-    SmallVector<Location> locs = llvm::map_to_vector(
-        block->getArguments(), [](BlockArgument a) { return a.getLoc(); });
-    Block *newBlock =
-        rewriter.createBlock(block, block->getArgumentTypes(), locs);
-    auto scope = rewriter.create<affine::AffineScopeOp>(
-        ba.getLoc(), block->getTerminator()->getOperandTypes(), ValueRange(ba));
-    Block *innerBlock = rewriter.createBlock(
-        &scope.getRegion(), {}, TypeRange(ba.getType()), {ba.getLoc()});
-    rewriter.replaceAllUsesWith(block, newBlock);
-    rewriter.inlineBlockBefore(block, innerBlock, innerBlock->begin(),
-                               innerBlock->getArguments());
-    rewriter.setInsertionPointToEnd(innerBlock);
-    Operation *terminator = innerBlock->getTerminator();
-    rewriter.create<affine::AffineYieldOp>(terminator->getLoc(),
-                                           terminator->getOperands());
-    IRMapping mapping;
-    mapping.map(ValueRange(terminator->getOperands()),
-                ValueRange(scope->getOpResults()));
-    rewriter.setInsertionPointAfter(scope);
-    rewriter.clone(*terminator, mapping);
-    rewriter.eraseOp(terminator);
-    return innerBlock->getArgument(0);
-  }
-  return nullptr;
+// TODO this works for single-block regions where SSA values are not used across
+// blocks but will fail when a value defined in `block` is used in another
+// block.
+static void insertAffineScope(Block *block) {
+  assert(block->getParent()->getBlocks().size() == 1);
+  IRRewriter rewriter(block->getParentOp()->getContext());
+  rewriter.setInsertionPointToStart(block);
+  auto scope = rewriter.create<affine::AffineScopeOp>(
+      block->getParentOp()->getLoc(), block->getTerminator()->getOperandTypes(),
+      ValueRange());
+  Block *innerBlock = rewriter.createBlock(&scope.getRegion());
+  while (scope->getNextNode() != &block->back())
+    rewriter.moveOpBefore(scope->getNextNode(), innerBlock, innerBlock->end());
+  rewriter.setInsertionPointToEnd(innerBlock);
+  Operation *terminator = block->getTerminator();
+  rewriter.create<affine::AffineYieldOp>(terminator->getLoc(),
+                                         terminator->getOperands());
+  terminator->setOperands(scope->getResults());
 }
 
 static FailureOr<AffineAccess>
@@ -385,29 +375,50 @@ struct LLVMToAffineAccessPass
     SmallVector<std::unique_ptr<AffineAccessBuilder>> aabs;
     bool assumeSymbolLegal = true;
 
-    op->walk([&](LLVM::StoreOp store) {
-      PtrVal addr = store.getAddr();
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Building affine access for " << store << "\n");
+    auto handleOp = [&](Operation *op, PtrVal addr) {
+      LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << op
+                              << " for address " << addr << "\n");
       aabs.push_back(
-          std::make_unique<AffineAccessBuilder>(store, assumeSymbolLegal));
+          std::make_unique<AffineAccessBuilder>(op, assumeSymbolLegal));
       AffineAccessBuilder &aab = *aabs.back();
-      auto dl = dataLayoutAnalysis.getAtOrAbove(store);
+      auto dl = dataLayoutAnalysis.getAtOrAbove(op);
       auto res = aab.build(dl, addr);
       if (failed(res))
         aabs.pop_back();
+    };
+
+    op->walk([&](LLVM::StoreOp store) {
+      PtrVal addr = store.getAddr();
+      handleOp(store, addr);
     });
     op->walk([&](LLVM::LoadOp load) {
       PtrVal addr = load.getAddr();
-      LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << load << "\n");
-      aabs.push_back(
-          std::make_unique<AffineAccessBuilder>(load, assumeSymbolLegal));
-      AffineAccessBuilder &aab = *aabs.back();
-      auto dl = dataLayoutAnalysis.getAtOrAbove(load);
-      auto res = aab.build(dl, addr);
-      if (failed(res))
-        aabs.pop_back();
+      handleOp(load, addr);
     });
+
+    SmallVector<Block *> blocksToScope;
+    for (auto &aabp : aabs)
+      for (auto illegalSym : aabp->illegalSymbols)
+        blocksToScope.push_back(illegalSym.getParentBlock());
+    SmallPtrSet<Block *, 8> innermostBlocks;
+    for (Block *b : blocksToScope) {
+      SmallVector<Block *> toRemove;
+      bool isInnermost = true;
+      for (Block *existing : innermostBlocks) {
+        if (existing->getParent()->isProperAncestor(b->getParent()))
+          toRemove.push_back(existing);
+        if (b->getParent()->isAncestor(existing->getParent()))
+          isInnermost = false;
+      }
+      for (Block *r : toRemove)
+        innermostBlocks.erase(r);
+      if (isInnermost)
+        innermostBlocks.insert(b);
+    }
+
+    for (Block *b : innermostBlocks)
+      insertAffineScope(b);
+
     for (auto &aabp : aabs) {
       AffineAccessBuilder &aab = *aabp;
       auto dl = dataLayoutAnalysis.getAtOrAbove(aab.accessOp);

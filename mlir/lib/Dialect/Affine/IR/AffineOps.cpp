@@ -4303,8 +4303,9 @@ LogicalResult AffineYieldOp::verify() {
   auto results = parentOp->getResults();
   auto operands = getOperands();
 
-  if (!isa<AffineParallelOp, AffineIfOp, AffineForOp>(parentOp))
-    return emitOpError() << "only terminates affine.if/for/parallel regions";
+  if (!isa<AffineParallelOp, AffineIfOp, AffineForOp, AffineScopeOp>(parentOp))
+    return emitOpError()
+           << "only terminates affine.if/for/parallel/scope regions";
   if (parentOp->getNumResults() != getNumOperands())
     return emitOpError() << "parent of yield must have same number of "
                             "results as the yield operands";
