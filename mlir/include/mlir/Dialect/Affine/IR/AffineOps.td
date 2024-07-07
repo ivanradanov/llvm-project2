@@ -37,6 +37,7 @@ def ImplicitAffineTerminator
 
 def AffineScopeOp : Affine_Op<"scope", [
       AffineScope,
+      ImplicitAffineTerminator,
       AutomaticAllocationScope,
       RecursiveMemoryEffects,
     ]>,
