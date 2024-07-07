@@ -33,6 +33,7 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Instructions.h"
@@ -111,23 +112,30 @@ struct ConverterBase {
 using MemrefConverter = ConverterBase<PtrVal, MemRefVal, convertToMemref>;
 using IndexConverter = ConverterBase<Value, Value, convertToIndex>;
 
+BlockArgument getScopeRemap(affine::AffineScopeOp scope, Value v) {
+  for (unsigned i = 0; i < scope->getNumOperands(); i++)
+    if (scope->getOperand(i) == v)
+      return scope.getRegion().begin()->getArgument(i);
+  return nullptr;
+}
+
 // TODO To preserve correctness, we need to keep track of values for which
 // converting indexing to the index type preserves the semantics, i.e. no
 // overflows or underflows or trucation etc and insert a runtime guard against
 // that
 struct AffineAccessBuilder {
   Operation *accessOp;
-  bool assumeSymbolLegal;
-  AffineAccessBuilder(Operation *accessOp, bool assumeSymbolLegal = false)
-      : accessOp(accessOp), assumeSymbolLegal(assumeSymbolLegal) {}
+  bool legalizeSymbols;
+  AffineAccessBuilder(Operation *accessOp, bool legalizeSymbols = false)
+      : accessOp(accessOp), legalizeSymbols(legalizeSymbols) {}
 
   DenseMap<Value, unsigned> valueToPos;
   SmallVector<Value> symbolOperands;
   SmallVector<Value> dimOperands;
+  SmallPtrSet<Value, 4> illegalSymbols;
 
   AffineMap map;
   SmallVector<Value> operands;
-  SmallVector<Value> illegalSymbols;
   PtrVal base = nullptr;
 
   LogicalResult build(const DataLayout &dataLayout, PtrVal addr) {
@@ -143,13 +151,81 @@ struct AffineAccessBuilder {
     return success();
   }
 
-  unsigned get(Value v, SmallVectorImpl<Value> &operands) {
+  SmallVector<Value> symbolsForScope;
+  bool legalized = false;
+
+  bool isLegal() { return illegalSymbols.size() == 0 || legalized; }
+
+  void collectSymbolsForScope(Region *region, SmallPtrSetImpl<Value> &symbols) {
+    assert(region->getBlocks().size() == 1);
+    SmallVector<AffineExpr> newExprs;
+    if (!region->isAncestor(accessOp->getParentRegion()))
+      return;
+    // An illegal symbol will be legalized either by defining in at the top
+    // level in a region, or by remapping it in the scope
+    for (auto sym : illegalSymbols) {
+      assert(region->isAncestor(sym.getParentRegion()));
+      if (sym.getParentRegion()->isProperAncestor(region)) {
+        symbols.insert(sym);
+      } else if (auto ba = dyn_cast<BlockArgument>(sym)) {
+        if (ba.getOwner()->getParent() == region) {
+          symbols.insert(sym);
+        }
+      }
+    }
+    if (!region->isProperAncestor(accessOp->getParentRegion()))
+      return;
+    // We redefine dims to be symbols in this scope
+    for (auto dim : dimOperands) {
+      if (dim.getParentRegion()->isProperAncestor(region)) {
+        symbols.insert(dim);
+        symbolsForScope.push_back(dim);
+      }
+    }
+  }
+
+  void rescope(affine::AffineScopeOp scope) {
+    SmallVector<AffineExpr> newExprs;
+    for (auto &expr : map.getResults()) {
+      auto newExpr = expr;
+      for (auto sym : symbolsForScope) {
+        unsigned dimPos = getPosition(sym, dimOperands);
+        assert(dimOperands[dimPos] == sym);
+        BlockArgument newSym = getScopeRemap(scope, sym);
+        assert(newSym);
+        unsigned newSymPos = getPosition(newSym, symbolOperands);
+        AffineExpr dimExpr = getAffineDimExpr(dimPos, accessOp->getContext());
+        AffineExpr newSymExpr =
+            getAffineDimExpr(newSymPos, accessOp->getContext());
+        newExpr = newExpr.replace(dimExpr, newSymExpr);
+      }
+      for (auto sym : illegalSymbols) {
+        if (sym.getParentRegion() == &scope.getRegion())
+          continue;
+        BlockArgument newSym = getScopeRemap(scope, sym);
+        assert(newSym);
+        auto it = llvm::find(symbolOperands, sym);
+        assert(it != symbolOperands.end());
+        *it = newSym;
+      }
+      newExprs.push_back(newExpr);
+    }
+    map = AffineMap::get(dimOperands.size(), symbolOperands.size(), newExprs,
+                         accessOp->getContext());
+    auto concat = llvm::concat<Value>(dimOperands, symbolOperands);
+    operands = SmallVector<Value>(concat.begin(), concat.end());
+    affine::canonicalizeMapAndOperands(&map, &operands);
+    legalized = true;
+  }
+
+  unsigned getPosition(Value v, SmallVectorImpl<Value> &operands) {
     // TODO follow this through casts, exts, etc
     auto it = valueToPos.find(v);
     if (it != valueToPos.end())
       return it->getSecond();
     unsigned newPos = operands.size();
     valueToPos.insert({v, newPos});
+
     operands.push_back(v);
     return newPos;
   }
@@ -185,10 +261,11 @@ struct AffineAccessBuilder {
       return getAffineConstantExpr(cst.value(), context);
     } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
       return getAffineConstantExpr(cst.value(), context);
-    } else if (affine::isValidDim(v)) {
-      return getAffineDimExpr(get(v, dimOperands), v.getContext());
     } else if (affine::isValidSymbol(v)) {
-      return getAffineSymbolExpr(get(v, symbolOperands), v.getContext());
+      return getAffineSymbolExpr(getPosition(v, symbolOperands),
+                                 v.getContext());
+    } else if (affine::isValidDim(v)) {
+      return getAffineDimExpr(getPosition(v, dimOperands), v.getContext());
     }
 
     if (op) {
@@ -217,9 +294,9 @@ struct AffineAccessBuilder {
     // TODO We may find an affine op reduction block arg - we may be able to
     // handle them
 
-    if (assumeSymbolLegal) {
-      illegalSymbols.push_back(v);
-      return getAffineSymbolExpr(get(v, symbolOperands), context);
+    if (legalizeSymbols) {
+      illegalSymbols.insert(v);
+      return getAffineSymbolExpr(getPosition(v, symbolOperands), context);
     }
 
     return failure();
@@ -311,14 +388,17 @@ getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
 // TODO this works for single-block regions where SSA values are not used across
 // blocks but will fail when a value defined in `block` is used in another
 // block.
-static void insertAffineScope(Block *block) {
+static affine::AffineScopeOp insertAffineScope(Block *block,
+                                               ValueRange operands) {
   assert(block->getParent()->getBlocks().size() == 1);
   IRRewriter rewriter(block->getParentOp()->getContext());
   rewriter.setInsertionPointToStart(block);
   auto scope = rewriter.create<affine::AffineScopeOp>(
       block->getParentOp()->getLoc(), block->getTerminator()->getOperandTypes(),
-      ValueRange());
-  Block *innerBlock = rewriter.createBlock(&scope.getRegion());
+      operands);
+  Block *innerBlock = rewriter.createBlock(
+      &scope.getRegion(), {}, operands.getTypes(),
+      llvm::map_to_vector(operands, [](Value v) { return v.getLoc(); }));
   while (scope->getNextNode() != &block->back())
     rewriter.moveOpBefore(scope->getNextNode(), innerBlock, innerBlock->end());
   rewriter.setInsertionPointToEnd(innerBlock);
@@ -326,6 +406,7 @@ static void insertAffineScope(Block *block) {
   rewriter.create<affine::AffineYieldOp>(terminator->getLoc(),
                                          terminator->getOperands());
   terminator->setOperands(scope->getResults());
+  return scope;
 }
 
 static FailureOr<AffineAccess>
@@ -364,18 +445,17 @@ struct LLVMToAffineAccessPass
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
 
-    IRMapping mapping;
     MemrefConverter mc;
     IndexConverter ic;
 
     SmallVector<std::unique_ptr<AffineAccessBuilder>> aabs;
-    bool assumeSymbolLegal = true;
+    bool legalizeSymbols = true;
 
     auto handleOp = [&](Operation *op, PtrVal addr) {
       LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << op
                               << " for address " << addr << "\n");
       aabs.push_back(
-          std::make_unique<AffineAccessBuilder>(op, assumeSymbolLegal));
+          std::make_unique<AffineAccessBuilder>(op, legalizeSymbols));
       AffineAccessBuilder &aab = *aabs.back();
       auto dl = dataLayoutAnalysis.getAtOrAbove(op);
       auto res = aab.build(dl, addr);
@@ -391,32 +471,50 @@ struct LLVMToAffineAccessPass
       PtrVal addr = load.getAddr();
       handleOp(load, addr);
     });
+    // TODO should also gather other mem operations such as memory intrinsics
+    // TODO should we shrink the scope to where no other memory operations
+    // exist?
 
-    SmallVector<Block *> blocksToScope;
-    for (auto &aabp : aabs)
-      for (auto illegalSym : aabp->illegalSymbols)
-        blocksToScope.push_back(illegalSym.getParentBlock());
-    SmallPtrSet<Block *, 8> innermostBlocks;
-    for (Block *b : blocksToScope) {
-      SmallVector<Block *> toRemove;
-      bool isInnermost = true;
-      for (Block *existing : innermostBlocks) {
-        if (existing->getParent()->isProperAncestor(b->getParent()))
-          toRemove.push_back(existing);
-        if (b->getParent()->isAncestor(existing->getParent()))
-          isInnermost = false;
+    if (legalizeSymbols) {
+      SmallVector<Block *> blocksToScope;
+      for (auto &aabp : aabs)
+        for (auto illegalSym : aabp->illegalSymbols)
+          blocksToScope.push_back(illegalSym.getParentBlock());
+      SmallPtrSet<Block *, 8> innermostBlocks;
+      for (Block *b : blocksToScope) {
+        SmallVector<Block *> toRemove;
+        bool isInnermost = true;
+        for (Block *existing : innermostBlocks) {
+          if (existing->getParent()->isProperAncestor(b->getParent()))
+            toRemove.push_back(existing);
+          if (b->getParent()->isAncestor(existing->getParent()))
+            isInnermost = false;
+        }
+        for (Block *r : toRemove)
+          innermostBlocks.erase(r);
+        if (isInnermost)
+          innermostBlocks.insert(b);
       }
-      for (Block *r : toRemove)
-        innermostBlocks.erase(r);
-      if (isInnermost)
-        innermostBlocks.insert(b);
+
+      for (Block *b : innermostBlocks) {
+        SmallPtrSet<Value, 6> symbols;
+        for (auto &aabp : aabs)
+          aabp->collectSymbolsForScope(b->getParent(), symbols);
+        SmallVector<Value, 6> symbolsVec(symbols.begin(), symbols.end());
+        auto scope = insertAffineScope(b, symbolsVec);
+        for (auto &aabp : aabs) {
+          aabp->rescope(scope);
+        }
+      }
     }
 
-    for (Block *b : innermostBlocks)
-      insertAffineScope(b);
-
+    IRMapping mapping;
     for (auto &aabp : aabs) {
       AffineAccessBuilder &aab = *aabp;
+      // TODO add a test where some operations are left illegal
+      if (!aab.isLegal())
+        continue;
+
       auto dl = dataLayoutAnalysis.getAtOrAbove(aab.accessOp);
       if (auto load = dyn_cast<LLVM::LoadOp>(aab.accessOp)) {
         IRRewriter rewriter(load);
