@@ -107,8 +107,8 @@ using AddIOpConversion =
                                 AttrConvertOverflowToArith>;
 using AndIOpConversion =
     VectorConvertToArithPattern<arith::AndIOp, LLVM::AndOp>;
-using BitcastOpConversion =
-    VectorConvertToArithPattern<arith::BitcastOp, LLVM::BitcastOp>;
+// using BitcastOpConversion =
+//     VectorConvertToArithPattern<arith::BitcastOp, LLVM::BitcastOp>;
 // using DivFOpConversion =
 //     VectorConvertToArithPattern<arith::DivFOp, LLVM::FDivOp,
 //                                arith::AttrConvertFastMathToLLVM>;
@@ -201,7 +201,7 @@ void mlir::arith::populateLLVMToArithConversionPatterns(
     AddIOpConversion,
     AndIOpConversion,
     //AddUIExtendedOpConversion,
-    BitcastOpConversion,
+    //BitcastOpConversion,
     //ConstantOpConversion,
     //CmpFOpConversion,
     CmpIOpConversion,
