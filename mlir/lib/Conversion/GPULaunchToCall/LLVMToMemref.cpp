@@ -152,9 +152,13 @@ struct AffineAccessBuilder {
   }
 
   SmallVector<Value> symbolsForScope;
-  bool legalized = false;
+  unsigned scopedIllegalSymbols = 0;
+  bool scoped = false;
 
-  bool isLegal() { return illegalSymbols.size() == 0 || legalized; }
+  bool isLegal() {
+    return illegalSymbols.size() == 0 ||
+           (illegalSymbols.size() == scopedIllegalSymbols && scoped);
+  }
 
   void collectSymbolsForScope(Region *region, SmallPtrSetImpl<Value> &symbols) {
     assert(region->getBlocks().size() == 1);
@@ -164,14 +168,18 @@ struct AffineAccessBuilder {
     // An illegal symbol will be legalized either by defining in at the top
     // level in a region, or by remapping it in the scope
     for (auto sym : illegalSymbols) {
-      assert(region->isAncestor(sym.getParentRegion()));
-      if (sym.getParentRegion()->isProperAncestor(region)) {
+      assert(sym.getParentRegion()->isAncestor(region));
+      bool isOutsideRegion = sym.getParentRegion()->isProperAncestor(region);
+      auto ba = dyn_cast<BlockArgument>(sym);
+      bool isTopLevelBlockArg = ba && ba.getOwner()->getParent() == region;
+      [[maybe_unused]] bool isTopLevelOp =
+          !ba && sym.getParentRegion() == region;
+      assert((unsigned)isOutsideRegion + (unsigned)isTopLevelBlockArg +
+                 (unsigned)isTopLevelOp ==
+             1);
+      scopedIllegalSymbols++;
+      if (isOutsideRegion || isTopLevelBlockArg)
         symbols.insert(sym);
-      } else if (auto ba = dyn_cast<BlockArgument>(sym)) {
-        if (ba.getOwner()->getParent() == region) {
-          symbols.insert(sym);
-        }
-      }
     }
     if (!region->isProperAncestor(accessOp->getParentRegion()))
       return;
@@ -182,6 +190,17 @@ struct AffineAccessBuilder {
         symbolsForScope.push_back(dim);
       }
     }
+    // TODO we may have a state like this:
+    //
+    // func.func () {
+    //   %sym = ...
+    //   region: {
+    //     ...
+    //   }
+    // }
+    //
+    // and `sym` was mot marked illegal because func.func is an affine scope.
+    // Should we rescope it to the new scope?
   }
 
   void rescope(affine::AffineScopeOp scope) {
@@ -215,7 +234,7 @@ struct AffineAccessBuilder {
     auto concat = llvm::concat<Value>(dimOperands, symbolOperands);
     operands = SmallVector<Value>(concat.begin(), concat.end());
     affine::canonicalizeMapAndOperands(&map, &operands);
-    legalized = true;
+    scoped = true;
   }
 
   unsigned getPosition(Value v, SmallVectorImpl<Value> &operands) {

@@ -353,3 +353,146 @@ llvm.func @use_outside_affine_scope(%cond : i1, %argptr : !llvm.ptr, %offset : i
   }
   llvm.return %y : i32
 }
+
+// -----
+
+// CHECK-LABEL:   llvm.func @outer__block_arg__inner__syms(
+// CHECK-SAME:                                             %[[VAL_0:[^:]*]]: i1,
+// CHECK-SAME:                                             %[[VAL_1:[^:]*]]: !llvm.ptr,
+// CHECK-SAME:                                             %[[VAL_2:[^:]*]]: !llvm.ptr,
+// CHECK-SAME:                                             %[[VAL_3:[^:]*]]: i32) {
+// CHECK:           %[[VAL_4:.*]] = "memref.ataddr"(%[[VAL_1]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:           %[[VAL_5:.*]] = "memref.ataddr"(%[[VAL_2]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:           %[[VAL_6:.*]] = arith.constant 0 : index
+// CHECK:           %[[VAL_7:.*]] = arith.constant 1 : index
+// CHECK:           %[[VAL_8:.*]] = arith.constant 1 : i32
+// CHECK:           %[[VAL_9:.*]] = arith.constant 10 : index
+// CHECK:           %[[VAL_10:.*]] = "test.test1"() : () -> i32
+// CHECK:           %[[VAL_11:.*]] = scf.for %[[VAL_12:.*]] = %[[VAL_6]] to %[[VAL_9]] step %[[VAL_7]] iter_args(%[[VAL_13:.*]] = %[[VAL_8]]) -> (i32) {
+// CHECK:             %[[VAL_14:.*]] = "affine.scope"(%[[VAL_10]], %[[VAL_13]]) ({
+// CHECK:             ^bb0(%[[VAL_15:.*]]: i32, %[[VAL_16:.*]]: i32):
+// CHECK:               %[[VAL_17:.*]] = arith.index_cast %[[VAL_16]] : i32 to index
+// CHECK:               %[[VAL_18:.*]] = arith.index_cast %[[VAL_15]] : i32 to index
+// CHECK:               %[[VAL_19:.*]] = "test.test1"() : () -> i32
+// CHECK:               %[[VAL_20:.*]] = arith.index_cast %[[VAL_19]] : i32 to index
+// CHECK:               %[[VAL_21:.*]] = affine.vector_load %[[VAL_4]][0] : memref<?xi8>, vector<4xi8>
+// CHECK:               %[[VAL_22:.*]] = llvm.bitcast %[[VAL_21]] : vector<4xi8> to i32
+// CHECK:               affine.for %[[VAL_23:.*]] = 5 to 100 {
+// CHECK:                 %[[VAL_24:.*]] = arith.index_cast %[[VAL_12]] : index to i32
+// CHECK:                 %[[VAL_25:.*]] = llvm.getelementptr %[[VAL_1]]{{\[}}%[[VAL_13]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                 %[[VAL_26:.*]] = llvm.getelementptr %[[VAL_2]]{{\[}}%[[VAL_10]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                 %[[VAL_27:.*]] = llvm.getelementptr %[[VAL_26]]{{\[}}%[[VAL_19]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                 %[[VAL_28:.*]] = affine.vector_load %[[VAL_4]][symbol(%[[VAL_17]]) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:                 %[[VAL_29:.*]] = llvm.bitcast %[[VAL_28]] : vector<4xi8> to i32
+// CHECK:                 %[[VAL_30:.*]] = llvm.bitcast %[[VAL_29]] : i32 to vector<4xi8>
+// CHECK:                 affine.vector_store %[[VAL_30]], %[[VAL_5]][symbol(%[[VAL_18]]) * 4 + symbol(%[[VAL_20]]) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:               }
+// CHECK:               %[[VAL_31:.*]] = arith.addi %[[VAL_13]], %[[VAL_8]] : i32
+// CHECK:               affine.yield %[[VAL_31]] : i32
+// CHECK:             }) : (i32, i32) -> i32
+// CHECK:             scf.yield %[[VAL_14]] : i32
+// CHECK:           }
+// CHECK:           llvm.return
+// CHECK:         }
+llvm.func @outer__block_arg__inner__syms(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %offset : i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c1i = arith.constant 1 : i32
+  %c10 = arith.constant 10 : index
+  %sym_outer = "test.test1"() : () -> i32
+  scf.for %k = %c0 to %c10 step %c1 iter_args (%sym_block_arg = %c1i) -> i32 {
+    %sym_inner = "test.test1"() : () -> i32
+    %ub = llvm.load %argptr : !llvm.ptr -> i32
+    affine.for %i = 5 to 100 {
+      %ic = arith.index_cast %k : index to i32
+      %ptr = llvm.getelementptr %argptr[%sym_block_arg] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+      %ptrs = llvm.getelementptr %argptrs[%sym_outer] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+      %ptrss = llvm.getelementptr %ptrs[%sym_inner] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+      %a = llvm.load %ptr : !llvm.ptr -> i32
+      llvm.store %a, %ptrss : i32, !llvm.ptr
+    }
+    %inc = arith.addi %sym_block_arg, %c1i : i32
+    scf.yield %inc : i32
+  }
+  llvm.return
+}
+
+// -----
+
+// CHECK-LABEL:   llvm.func @outer__block_arg__inner__syms_index(
+// CHECK-SAME:                                                   %[[VAL_0:[^:]*]]: i1,
+// CHECK-SAME:                                                   %[[VAL_1:[^:]*]]: !llvm.ptr,
+// CHECK-SAME:                                                   %[[VAL_2:[^:]*]]: !llvm.ptr,
+// CHECK-SAME:                                                   %[[VAL_3:[^:]*]]: i32) {
+// CHECK:           %[[VAL_4:.*]] = "memref.ataddr"(%[[VAL_1]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:           %[[VAL_5:.*]] = "memref.ataddr"(%[[VAL_2]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:           %[[VAL_6:.*]] = arith.constant 0 : index
+// CHECK:           %[[VAL_7:.*]] = arith.constant 1 : index
+// CHECK:           %[[VAL_8:.*]] = arith.constant 1 : i32
+// CHECK:           %[[VAL_9:.*]] = arith.constant 10 : index
+// CHECK:           %[[VAL_10:.*]] = "test.test1"() : () -> index
+// CHECK:           scf.execute_region {
+// CHECK:             %[[VAL_11:.*]] = "test.test2"() : () -> index
+// CHECK:             %[[VAL_12:.*]] = scf.for %[[VAL_13:.*]] = %[[VAL_6]] to %[[VAL_9]] step %[[VAL_7]] iter_args(%[[VAL_14:.*]] = %[[VAL_7]]) -> (index) {
+// CHECK:               %[[VAL_15:.*]] = "affine.scope"(%[[VAL_11]], %[[VAL_14]]) ({
+// CHECK:               ^bb0(%[[VAL_16:.*]]: index, %[[VAL_17:.*]]: index):
+// CHECK:                 %[[VAL_18:.*]] = "test.test3"() : () -> index
+// CHECK:                 %[[VAL_19:.*]] = affine.vector_load %[[VAL_4]][0] : memref<?xi8>, vector<4xi8>
+// CHECK:                 %[[VAL_20:.*]] = llvm.bitcast %[[VAL_19]] : vector<4xi8> to i32
+// CHECK:                 affine.for %[[VAL_21:.*]] = 5 to 100 {
+// CHECK:                   %[[VAL_22:.*]] = arith.index_cast %[[VAL_13]] : index to i32
+// CHECK:                   %[[VAL_23:.*]] = arith.index_cast %[[VAL_14]] : index to i32
+// CHECK:                   %[[VAL_24:.*]] = arith.index_cast %[[VAL_11]] : index to i32
+// CHECK:                   %[[VAL_25:.*]] = arith.index_cast %[[VAL_18]] : index to i32
+// CHECK:                   %[[VAL_26:.*]] = arith.index_cast %[[VAL_10]] : index to i32
+// CHECK:                   %[[VAL_27:.*]] = llvm.getelementptr %[[VAL_1]]{{\[}}%[[VAL_23]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                   %[[VAL_28:.*]] = llvm.getelementptr %[[VAL_27]]{{\[}}%[[VAL_26]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                   %[[VAL_29:.*]] = llvm.getelementptr %[[VAL_2]]{{\[}}%[[VAL_24]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                   %[[VAL_30:.*]] = llvm.getelementptr %[[VAL_29]]{{\[}}%[[VAL_25]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:                   %[[VAL_31:.*]] = affine.vector_load %[[VAL_4]][symbol(%[[VAL_17]]) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:                   %[[VAL_32:.*]] = llvm.bitcast %[[VAL_31]] : vector<4xi8> to i32
+// CHECK:                   %[[VAL_33:.*]] = llvm.bitcast %[[VAL_32]] : i32 to vector<4xi8>
+// CHECK:                   affine.vector_store %[[VAL_33]], %[[VAL_5]][symbol(%[[VAL_16]]) * 4 + symbol(%[[VAL_18]]) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:                 }
+// CHECK:                 %[[VAL_34:.*]] = arith.addi %[[VAL_14]], %[[VAL_7]] : index
+// CHECK:                 affine.yield %[[VAL_34]] : index
+// CHECK:               }) : (index, index) -> index
+// CHECK:               scf.yield %[[VAL_15]] : index
+// CHECK:             }
+// CHECK:             scf.yield
+// CHECK:           }
+// CHECK:           llvm.return
+// CHECK:         }
+llvm.func @outer__block_arg__inner__syms_index(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %offset : i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c1i = arith.constant 1 : i32
+  %c10 = arith.constant 10 : index
+  // A "fake" valid symbol - it does not get scoped to the inner affine.scope
+  // TODO should it?
+  %sym_func = "test.test1"() : () -> index
+  scf.execute_region {
+    %sym_outer = "test.test2"() : () -> index
+    scf.for %k = %c0 to %c10 step %c1 iter_args (%sym_block_arg = %c1) -> index {
+        %sym_inner = "test.test3"() : () -> index
+        %ub = llvm.load %argptr : !llvm.ptr -> i32
+        affine.for %i = 5 to 100 {
+        %ic = arith.index_cast %k : index to i32
+        %sym_block_arg_cast = arith.index_cast %sym_block_arg : index to i32
+        %sym_outer_cast = arith.index_cast %sym_outer : index to i32
+        %sym_inner_cast = arith.index_cast %sym_inner : index to i32
+        %sym_func_cast = arith.index_cast %sym_func : index to i32
+        %ptr = llvm.getelementptr %argptr[%sym_block_arg_cast] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+        %ptrr = llvm.getelementptr %ptr[%sym_func_cast] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+        %ptrs = llvm.getelementptr %argptrs[%sym_outer_cast] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+        %ptrss = llvm.getelementptr %ptrs[%sym_inner_cast] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+        %a = llvm.load %ptr : !llvm.ptr -> i32
+        llvm.store %a, %ptrss : i32, !llvm.ptr
+        }
+        %inc = arith.addi %sym_block_arg, %c1 : index
+        scf.yield %inc : index
+    }
+    scf.yield
+  }
+  llvm.return
+}
