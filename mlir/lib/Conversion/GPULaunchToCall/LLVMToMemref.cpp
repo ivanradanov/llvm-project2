@@ -66,9 +66,6 @@ struct DimOrSym {
 };
 
 struct AffineAccessBuilder;
-static FailureOr<AffineAccess>
-buildAffineAccess(const DataLayout &dataLayout, PtrVal addr,
-                  AffineAccessBuilder &valueToPos);
 
 static Value convertToIndex(Value v) {
   OpBuilder builder(v.getContext());
@@ -112,11 +109,16 @@ struct ConverterBase {
 using MemrefConverter = ConverterBase<PtrVal, MemRefVal, convertToMemref>;
 using IndexConverter = ConverterBase<Value, Value, convertToIndex>;
 
-BlockArgument getScopeRemap(affine::AffineScopeOp scope, Value v) {
+static BlockArgument getScopeRemap(affine::AffineScopeOp scope, Value v) {
   for (unsigned i = 0; i < scope->getNumOperands(); i++)
     if (scope->getOperand(i) == v)
       return scope.getRegion().begin()->getArgument(i);
   return nullptr;
+}
+
+/// See llvm/Support/Alignment.h
+static AffineExpr alignTo(AffineExpr expr, uint64_t a) {
+  return (expr + a - 1).floorDiv(a) * a;
 }
 
 // TODO To preserve correctness, we need to keep track of values for which
@@ -124,22 +126,16 @@ BlockArgument getScopeRemap(affine::AffineScopeOp scope, Value v) {
 // overflows or underflows or trucation etc and insert a runtime guard against
 // that
 struct AffineAccessBuilder {
-  Operation *accessOp;
-  bool legalizeSymbols;
+public:
   AffineAccessBuilder(Operation *accessOp, bool legalizeSymbols = false)
       : accessOp(accessOp), legalizeSymbols(legalizeSymbols) {}
 
-  DenseMap<Value, unsigned> valueToPos;
-  SmallVector<Value> symbolOperands;
-  SmallVector<Value> dimOperands;
-  SmallPtrSet<Value, 4> illegalSymbols;
-
+  Operation *accessOp;
   AffineMap map;
   SmallVector<Value> operands;
-  PtrVal base = nullptr;
 
   LogicalResult build(const DataLayout &dataLayout, PtrVal addr) {
-    auto aa = buildAffineAccess(dataLayout, addr, *this);
+    auto aa = buildAffineAccess(dataLayout, addr);
     if (failed(aa))
       return failure();
     base = aa->base;
@@ -150,10 +146,6 @@ struct AffineAccessBuilder {
     LLVM_DEBUG(llvm::dbgs() << "Built map: " << map << "\n");
     return success();
   }
-
-  SmallVector<Value> symbolsForScope;
-  unsigned scopedIllegalSymbols = 0;
-  bool scoped = false;
 
   bool isLegal() {
     return illegalSymbols.size() == 0 ||
@@ -204,6 +196,8 @@ struct AffineAccessBuilder {
   }
 
   void rescope(affine::AffineScopeOp scope) {
+    if (!scope->isAncestor(accessOp))
+      return;
     SmallVector<AffineExpr> newExprs;
     for (auto &expr : map.getResults()) {
       auto newExpr = expr;
@@ -234,8 +228,27 @@ struct AffineAccessBuilder {
     auto concat = llvm::concat<Value>(dimOperands, symbolOperands);
     operands = SmallVector<Value>(concat.begin(), concat.end());
     affine::canonicalizeMapAndOperands(&map, &operands);
+
+    // We should only do this once per access (until we decide to support nested
+    // affine scopes?)
+    assert(!scoped);
     scoped = true;
   }
+
+  SmallPtrSet<Value, 4> illegalSymbols;
+  PtrVal base = nullptr;
+
+private:
+  DenseMap<Value, unsigned> valueToPos;
+  SmallVector<Value> symbolOperands;
+  SmallVector<Value> dimOperands;
+
+  // Options
+  bool legalizeSymbols;
+
+  SmallVector<Value> symbolsForScope;
+  unsigned scopedIllegalSymbols = 0;
+  bool scoped = false;
 
   unsigned getPosition(Value v, SmallVectorImpl<Value> &operands) {
     // TODO follow this through casts, exts, etc
@@ -330,79 +343,101 @@ struct AffineAccessBuilder {
       return buildExpr(cast<Value>(index));
     }
   }
-};
 
-/// See llvm/Support/Alignment.h
-static AffineExpr alignTo(AffineExpr expr, uint64_t a) {
-  return (expr + a - 1).floorDiv(a) * a;
-}
+  std::optional<AffineExpr> getGepAffineExpr(const DataLayout &dataLayout,
+                                             LLVM::GEPOp gep) {
+    // TODO what happens if we get a negative index
+    auto context = gep.getContext();
 
-static std::optional<AffineExpr>
-getGepAffineExpr(const DataLayout &dataLayout, LLVM::GEPOp gep,
-                 AffineAccessBuilder &valueToPos) {
-  // TODO what happens if we get a negative index
-  auto context = gep.getContext();
-
-  auto indicesRange = gep.getIndices();
-  auto indices = SmallVector<LLVM::GEPIndicesAdaptor<ValueRange>::value_type>(
-      indicesRange.begin(), indicesRange.end());
-  assert(indices.size() > 0);
-  Type currentType = gep.getElemType();
-  auto expr = valueToPos.getExpr(indices[0], context);
-  if (failed(expr))
-    return std::nullopt;
-  AffineExpr offset = (*expr) * dataLayout.getTypeSize(currentType);
-
-  for (auto index : llvm::drop_begin(indices)) {
-    bool shouldCancel =
-        TypeSwitch<Type, bool>(currentType)
-            .Case([&](LLVM::LLVMArrayType arrayType) {
-              auto expr = valueToPos.getExpr(index, context);
-              if (failed(expr))
-                return true;
-              offset = offset + (*expr) * dataLayout.getTypeSize(
-                                              arrayType.getElementType());
-              currentType = arrayType.getElementType();
-              return false;
-            })
-            .Case([&](LLVM::LLVMStructType structType) {
-              ArrayRef<Type> body = structType.getBody();
-              int64_t indexInt;
-              auto constIndex = dyn_cast<IntegerAttr>(index);
-              if (constIndex)
-                indexInt = constIndex.getInt();
-              else
-                return true;
-
-              for (uint32_t i : llvm::seq(indexInt)) {
-                if (!structType.isPacked())
-                  offset =
-                      alignTo(offset, dataLayout.getTypeABIAlignment(body[i]));
-                offset = offset + dataLayout.getTypeSize(body[i]);
-              }
-
-              // Align for the current type as well.
-              if (!structType.isPacked())
-                offset = alignTo(
-                    offset, dataLayout.getTypeABIAlignment(body[indexInt]));
-              currentType = body[indexInt];
-              return false;
-            })
-            .Default([&](Type type) {
-              LLVM_DEBUG(llvm::dbgs()
-                         << "Unsupported type for offset computations" << type
-                         << "\n");
-              return true;
-            });
-
-    if (shouldCancel)
+    auto indicesRange = gep.getIndices();
+    auto indices = SmallVector<LLVM::GEPIndicesAdaptor<ValueRange>::value_type>(
+        indicesRange.begin(), indicesRange.end());
+    assert(indices.size() > 0);
+    Type currentType = gep.getElemType();
+    auto expr = getExpr(indices[0], context);
+    if (failed(expr))
       return std::nullopt;
+    AffineExpr offset = (*expr) * dataLayout.getTypeSize(currentType);
+
+    for (auto index : llvm::drop_begin(indices)) {
+      bool shouldCancel =
+          TypeSwitch<Type, bool>(currentType)
+              .Case([&](LLVM::LLVMArrayType arrayType) {
+                auto expr = getExpr(index, context);
+                if (failed(expr))
+                  return true;
+                offset = offset + (*expr) * dataLayout.getTypeSize(
+                                                arrayType.getElementType());
+                currentType = arrayType.getElementType();
+                return false;
+              })
+              .Case([&](LLVM::LLVMStructType structType) {
+                ArrayRef<Type> body = structType.getBody();
+                int64_t indexInt;
+                auto constIndex = dyn_cast<IntegerAttr>(index);
+                if (constIndex)
+                  indexInt = constIndex.getInt();
+                else
+                  return true;
+
+                for (uint32_t i : llvm::seq(indexInt)) {
+                  if (!structType.isPacked())
+                    offset = alignTo(offset,
+                                     dataLayout.getTypeABIAlignment(body[i]));
+                  offset = offset + dataLayout.getTypeSize(body[i]);
+                }
+
+                // Align for the current type as well.
+                if (!structType.isPacked())
+                  offset = alignTo(
+                      offset, dataLayout.getTypeABIAlignment(body[indexInt]));
+                currentType = body[indexInt];
+                return false;
+              })
+              .Default([&](Type type) {
+                LLVM_DEBUG(llvm::dbgs()
+                           << "Unsupported type for offset computations" << type
+                           << "\n");
+                return true;
+              });
+
+      if (shouldCancel)
+        return std::nullopt;
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "offset " << offset << "\n");
+
+    return offset;
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "offset " << offset << "\n");
+  FailureOr<AffineAccess> buildAffineAccess(const DataLayout &dataLayout,
+                                            PtrVal addr) {
+    if (auto gep = dyn_cast_or_null<LLVM::GEPOp>(addr.getDefiningOp())) {
+      LLVM_DEBUG(llvm::dbgs() << "gep " << gep << "\n");
+      auto base = cast<PtrVal>(gep.getBase());
 
-  return offset;
-}
+      auto gepExpr = getGepAffineExpr(dataLayout, gep);
+      if (!gepExpr)
+        return failure();
+
+      auto aa = buildAffineAccess(dataLayout, base);
+      if (failed(aa))
+        return failure();
+
+      AffineAccess newAA;
+      newAA.base = aa->base;
+      newAA.expr = aa->expr + *gepExpr;
+      LLVM_DEBUG(llvm::dbgs() << "added " << newAA.expr << "\n");
+      return newAA;
+    }
+
+    AffineAccess aa;
+    aa.base = addr;
+    aa.expr = getAffineConstantExpr(0, addr.getContext());
+    LLVM_DEBUG(llvm::dbgs() << "base " << aa.expr << "\n");
+    return aa;
+  }
+};
 
 // TODO this works for single-block regions where SSA values are not used across
 // blocks but will fail when a value defined in `block` is used in another
@@ -426,35 +461,6 @@ static affine::AffineScopeOp insertAffineScope(Block *block,
                                          terminator->getOperands());
   terminator->setOperands(scope->getResults());
   return scope;
-}
-
-static FailureOr<AffineAccess>
-buildAffineAccess(const DataLayout &dataLayout, PtrVal addr,
-                  AffineAccessBuilder &valueToPos) {
-  if (auto gep = dyn_cast_or_null<LLVM::GEPOp>(addr.getDefiningOp())) {
-    LLVM_DEBUG(llvm::dbgs() << "gep " << gep << "\n");
-    auto base = cast<PtrVal>(gep.getBase());
-
-    auto gepExpr = getGepAffineExpr(dataLayout, gep, valueToPos);
-    if (!gepExpr)
-      return failure();
-
-    auto aa = buildAffineAccess(dataLayout, base, valueToPos);
-    if (failed(aa))
-      return failure();
-
-    AffineAccess newAA;
-    newAA.base = aa->base;
-    newAA.expr = aa->expr + *gepExpr;
-    LLVM_DEBUG(llvm::dbgs() << "added " << newAA.expr << "\n");
-    return newAA;
-  }
-
-  AffineAccess aa;
-  aa.base = addr;
-  aa.expr = getAffineConstantExpr(0, addr.getContext());
-  LLVM_DEBUG(llvm::dbgs() << "base " << aa.expr << "\n");
-  return aa;
 }
 
 struct LLVMToAffineAccessPass
@@ -515,6 +521,7 @@ struct LLVMToAffineAccessPass
           innermostBlocks.insert(b);
       }
 
+      // TODO this looks terribly slow
       for (Block *b : innermostBlocks) {
         SmallPtrSet<Value, 6> symbols;
         for (auto &aabp : aabs)
