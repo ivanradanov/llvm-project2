@@ -33,6 +33,16 @@
 #include <memory>
 
 namespace mlir {
+#define GEN_PASS_DEF_GPULAUNCHTOPARALLELPASS
+#include "mlir/Conversion/Passes.h.inc"
+} // namespace mlir
+
+using namespace mlir;
+
+#define PASS_NAME "gpu-launch-to-parallel"
+#define DEBUG_TYPE PASS_NAME
+
+namespace mlir {
 // TODO needs stream support
 LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
                                              RewriterBase &rewriter) {
@@ -91,6 +101,7 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     assert(paramLocs.size() == newArgs && paramTypes.size() == newArgs &&
            paramAttrs.size() == newArgs);
 
+    // TODO we can use affine::AffineScopeOp
     auto newFty = FunctionType::get(context, paramTypes, TypeRange());
     func::FuncOp funcOp = rewriter.create<func::FuncOp>(
         funcLoc, llvmKernel.getSymName(), newFty,
@@ -102,12 +113,12 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     newEntryBlock =
         rewriter.createBlock(&funcOp.getBody(), {}, paramTypes, paramLocs);
     kernelRegion = &llvmKernel.getFunctionBody();
-  } else if (auto funcKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
+  } else {
     // TODO
     return failure();
   }
 
-  auto createPar = [&](unsigned argPos, unsigned argNum) {
+  auto createPar = [&](unsigned argPos, unsigned argNum, StringRef attrName) {
     SmallVector<AffineMap> idMaps, zeroMaps;
     SmallVector<Value> lbVs, ubVs;
     auto idMap = AffineMap::getMultiDimIdentityMap(1, launchOp.getContext());
@@ -122,19 +133,22 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     auto par = rewriter.create<affine::AffineParallelOp>(
         funcLoc, TypeRange(), ArrayRef<arith::AtomicRMWKind>(), zeroMaps,
         ValueRange(), idMaps, ubVs, steps);
+    par->setAttr(attrName, rewriter.getUnitAttr());
     rewriter.setInsertionPointToStart(par.getBody());
     return par;
   };
   // TODO combine them
+  StringRef attrName = "gpupar.grid";
   unsigned argPos = 0;
   unsigned argNum = 1;
-  [[maybe_unused]] auto gridParX = createPar(argPos++, argNum);
-  [[maybe_unused]] auto gridParY = createPar(argPos++, argNum);
-  [[maybe_unused]] auto gridParZ = createPar(argPos++, argNum);
+  [[maybe_unused]] auto gridParX = createPar(argPos++, argNum, attrName);
+  [[maybe_unused]] auto gridParY = createPar(argPos++, argNum, attrName);
+  [[maybe_unused]] auto gridParZ = createPar(argPos++, argNum, attrName);
   // TODO shared mem alloc
-  [[maybe_unused]] auto blockParX = createPar(argPos++, argNum);
-  [[maybe_unused]] auto blockParY = createPar(argPos++, argNum);
-  [[maybe_unused]] auto blockParZ = createPar(argPos++, argNum);
+  attrName = "gpupar.block";
+  [[maybe_unused]] auto blockParX = createPar(argPos++, argNum, attrName);
+  [[maybe_unused]] auto blockParY = createPar(argPos++, argNum, attrName);
+  [[maybe_unused]] auto blockParZ = createPar(argPos++, argNum, attrName);
 
   // TODO handle multi block regions would be better as I think there may be
   // cases where removing CFG may be impossible before having the parallel
@@ -162,3 +176,29 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
   return success();
 }
 } // namespace mlir
+
+namespace {
+struct GPULaunchToParallel : public OpRewritePattern<gpu::LaunchFuncOp> {
+  using OpRewritePattern<gpu::LaunchFuncOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(gpu::LaunchFuncOp launchOp,
+                                PatternRewriter &rewriter) const override {
+    return convertGPULaunchFuncToParallel(launchOp, rewriter);
+  }
+};
+} // namespace
+
+struct GPULaunchToParallelPass
+    : public impl::GPULaunchToParallelPassBase<GPULaunchToParallelPass> {
+  using Base::Base;
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<GPULaunchToParallel>(patterns.getContext());
+    if (failed(
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+      signalPassFailure();
+  }
+};
+std::unique_ptr<Pass> mlir::createGPULaunchToParallelPass() {
+  return std::make_unique<GPULaunchToParallelPass>();
+}
