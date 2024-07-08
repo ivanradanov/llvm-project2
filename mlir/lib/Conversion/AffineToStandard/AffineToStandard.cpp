@@ -22,6 +22,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -563,9 +564,23 @@ class LowerAffinePass
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
                            scf::SCFDialect, VectorDialect>();
+    target.addDynamicallyLegalDialect<AffineDialect>(
+        [&](Operation *op) { return isa<AffineScopeOp>(op); });
     if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
+                                      std::move(patterns)))) {
       signalPassFailure();
+      return;
+    }
+    // ScopeOp's needs to be preserved untill all other affine operations are
+    // lowered as their lowerings depend on the existence of the scope
+    getOperation()->walk([&](AffineScopeOp op) {
+      IRRewriter rewriter(op);
+      Block *body = op.getBody();
+      Operation *terminator = body->getTerminator();
+      rewriter.inlineBlockBefore(body, op, op->getOperands());
+      rewriter.replaceOp(op, terminator->getOperands());
+      rewriter.eraseOp(terminator);
+    });
   }
 };
 } // namespace
