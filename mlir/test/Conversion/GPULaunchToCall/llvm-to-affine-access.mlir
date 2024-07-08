@@ -496,3 +496,51 @@ llvm.func @outer__block_arg__inner__syms_index(%cond : i1, %argptr : !llvm.ptr, 
   }
   llvm.return
 }
+
+// -----
+
+// CHECK-LABEL:   llvm.func @outer__block_arg__inner__syms_index(
+// CHECK-SAME:                                                   %[[VAL_0:[^:]*]]: i1,
+// CHECK-SAME:                                                   %[[VAL_1:[^:]*]]: !llvm.ptr,
+// CHECK-SAME:                                                   %[[VAL_2:[^:]*]]: !llvm.ptr,
+// CHECK-SAME:                                                   %[[VAL_3:[^:]*]]: i32) {
+// CHECK:           %[[VAL_4:.*]] = "memref.ataddr"(%[[VAL_2]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:           scf.execute_region {
+// CHECK:             "affine.scope"() ({
+// CHECK:               %[[VAL_5:.*]] = "test.test1"() : () -> i32
+// CHECK:               %[[VAL_6:.*]] = arith.index_cast %[[VAL_5]] : i32 to index
+// CHECK:               %[[VAL_7:.*]] = llvm.getelementptr %[[VAL_2]]{{\[}}%[[VAL_5]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:               %[[VAL_8:.*]] = llvm.bitcast %[[VAL_3]] : i32 to vector<4xi8>
+// CHECK:               affine.vector_store %[[VAL_8]], %[[VAL_4]][symbol(%[[VAL_6]]) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:               affine.yield
+// CHECK:             }) : () -> ()
+// CHECK:             scf.yield
+// CHECK:           }
+// CHECK:           scf.execute_region {
+// CHECK:             "affine.scope"() ({
+// CHECK:               %[[VAL_9:.*]] = "test.test2"() : () -> i32
+// CHECK:               %[[VAL_10:.*]] = arith.index_cast %[[VAL_9]] : i32 to index
+// CHECK:               %[[VAL_11:.*]] = llvm.getelementptr %[[VAL_2]]{{\[}}%[[VAL_9]]] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+// CHECK:               %[[VAL_12:.*]] = llvm.bitcast %[[VAL_3]] : i32 to vector<4xi8>
+// CHECK:               affine.vector_store %[[VAL_12]], %[[VAL_4]][symbol(%[[VAL_10]]) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:               affine.yield
+// CHECK:             }) : () -> ()
+// CHECK:             scf.yield
+// CHECK:           }
+// CHECK:           llvm.return
+// CHECK:         }
+llvm.func @multi_scope(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %offset : i32) {
+  scf.execute_region {
+    %sym_outer = "test.test1"() : () -> i32
+    %ptrs = llvm.getelementptr %argptrs[%sym_outer] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+    llvm.store %offset, %ptrs : i32, !llvm.ptr
+    scf.yield
+  }
+  scf.execute_region {
+    %sym_outer = "test.test2"() : () -> i32
+    %ptrs = llvm.getelementptr %argptrs[%sym_outer] : (!llvm.ptr, i32) -> !llvm.ptr, i32
+    llvm.store %offset, %ptrs : i32, !llvm.ptr
+    scf.yield
+  }
+  llvm.return
+}
