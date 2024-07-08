@@ -7,6 +7,7 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
@@ -41,6 +42,23 @@ using namespace mlir;
 
 #define PASS_NAME "gpu-launch-to-parallel"
 #define DEBUG_TYPE PASS_NAME
+
+template <typename NVVMOp>
+static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  region->walk([&](NVVMOp op) {
+    Value newV, res = op.getResult();
+    if (res.getType() == v.getType()) {
+      newV = v;
+    } else {
+      rewriter.setInsertionPoint(op);
+      newV =
+          rewriter.create<arith::IndexCastOp>(res.getLoc(), res.getType(), v);
+    }
+    rewriter.replaceAllUsesWith(res, newV);
+    rewriter.eraseOp(op);
+  });
+}
 
 namespace mlir {
 // TODO needs stream support
@@ -101,7 +119,7 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     assert(paramLocs.size() == newArgs && paramTypes.size() == newArgs &&
            paramAttrs.size() == newArgs);
 
-    // TODO we can use affine::AffineScopeOp
+    // TODO we can use affine::AffineScopeOp in an llvm func
     auto newFty = FunctionType::get(context, paramTypes, TypeRange());
     func::FuncOp funcOp = rewriter.create<func::FuncOp>(
         funcLoc, llvmKernel.getSymName(), newFty,
@@ -118,6 +136,7 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     return failure();
   }
 
+  SmallVector<Value, 6> ivs;
   auto createPar = [&](unsigned argPos, unsigned argNum, StringRef attrName) {
     SmallVector<AffineMap> idMaps, zeroMaps;
     SmallVector<Value> lbVs, ubVs;
@@ -135,6 +154,7 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
         ValueRange(), idMaps, ubVs, steps);
     par->setAttr(attrName, rewriter.getUnitAttr());
     rewriter.setInsertionPointToStart(par.getBody());
+    ivs.insert(ivs.end(), par.getIVs().begin(), par.getIVs().end());
     return par;
   };
   // TODO combine them
@@ -170,6 +190,50 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
   assert(kernelRegion->front().back().getNumResults() == 0);
   rewriter.setInsertionPointToEnd(newEntryBlock);
   rewriter.create<func::ReturnOp>(funcLoc, ValueRange());
+
+  // clang-format off
+  unsigned dim = 0;
+  replaceIdDim<NVVM::GridDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::GridDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::GridDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::BlockDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::BlockDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::BlockDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+
+  dim = 0;
+  replaceIdDim<NVVM::BlockIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::BlockIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::BlockIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::ThreadIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::ThreadIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::ThreadIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  // clang-format on
+
+  // TODO unused currently but left here just in case
+  newEntryBlock->getParent()->walk([&](gpu::GridDimOp gridDim) {
+    auto dim = (unsigned)gridDim.getDimension();
+    assert(0 <= dim && dim < 3);
+    rewriter.replaceAllUsesWith(gridDim, newEntryBlock->getArgument(dim));
+    rewriter.eraseOp(gridDim);
+  });
+  newEntryBlock->getParent()->walk([&](gpu::BlockDimOp blockDim) {
+    auto dim = (unsigned)blockDim.getDimension();
+    assert(0 <= dim && dim < 3);
+    rewriter.replaceAllUsesWith(blockDim, newEntryBlock->getArgument(3 + dim));
+    rewriter.eraseOp(blockDim);
+  });
+  newEntryBlock->getParent()->walk([&](gpu::BlockIdOp blockId) {
+    auto dim = (unsigned)blockId.getDimension();
+    assert(0 <= dim && dim < 3);
+    rewriter.replaceAllUsesWith(blockId, ivs[dim]);
+    rewriter.eraseOp(blockId);
+  });
+  newEntryBlock->getParent()->walk([&](gpu::ThreadIdOp threadId) {
+    auto dim = (unsigned)threadId.getDimension();
+    assert(0 <= dim && dim < 3);
+    rewriter.replaceAllUsesWith(threadId, ivs[3 + dim]);
+    rewriter.eraseOp(threadId);
+  });
 
   rewriter.eraseOp(gpuKernelFunc);
 
