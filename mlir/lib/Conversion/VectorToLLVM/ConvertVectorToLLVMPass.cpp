@@ -82,6 +82,7 @@ void ConvertVectorToLLVMPass::runOnOperation() {
   // Convert to the LLVM IR dialect.
   LowerToLLVMOptions options(&getContext());
   LLVMTypeConverter converter(&getContext(), options);
+  options.useCStyleMemRef = useCStyleMemRef;
   RewritePatternSet patterns(&getContext());
   populateVectorMaskMaterializationPatterns(patterns, force32BitVectorIndices);
   populateVectorTransferLoweringPatterns(patterns);

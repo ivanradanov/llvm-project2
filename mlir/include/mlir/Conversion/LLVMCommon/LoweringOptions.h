@@ -34,6 +34,8 @@ public:
 
   bool useBarePtrCallConv = false;
 
+  bool useCStyleMemRef = false;
+
   enum class AllocLowering {
     /// Use malloc for heap allocations.
     Malloc,
