@@ -1,5 +1,5 @@
-#include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Analysis/CallGraph.h"
+#include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -253,8 +253,7 @@ static bool checkIndexType(mlir::arith::CmpIOp op) {
   if (mlir::isa<mlir::IndexType>(type))
     return true;
 
-  // TODO: check datalayout
-  if (type.isSignlessInteger(64))
+  if (type.isSignlessInteger())
     return true;
 
   return false;
@@ -736,7 +735,8 @@ struct PromoteWhileOp : public mlir::OpRewritePattern<mlir::scf::WhileOp> {
 
     using Pred = mlir::arith::CmpIPredicate;
     auto predicate = cmp.getPredicate();
-    if (predicate != Pred::slt && predicate != Pred::sgt)
+    if (predicate != Pred::slt && predicate != Pred::sgt &&
+        predicate != Pred::ult && predicate != Pred::ugt)
       return rewriter.notifyMatchFailure(loop, [&](mlir::Diagnostic &diag) {
         diag << "Expected 'slt' or 'sgt' predicate: " << *cmp;
       });
@@ -749,21 +749,26 @@ struct PromoteWhileOp : public mlir::OpRewritePattern<mlir::scf::WhileOp> {
     mlir::BlockArgument iterVar;
     mlir::Value end;
     mlir::DominanceInfo dom;
-    for (bool reverse : {false, true}) {
-      auto expectedPred = reverse ? Pred::sgt : Pred::slt;
-      if (cmp.getPredicate() != expectedPred)
-        continue;
+    for (auto &[gt, lt] : {std::make_pair(Pred::sgt, Pred::slt),
+                           std::make_pair(Pred::ugt, Pred::ult)}) {
+      for (bool reverse : {false, true}) {
+        auto expectedPred = reverse ? gt : lt;
+        if (cmp.getPredicate() != expectedPred)
+          continue;
 
-      auto arg1 = reverse ? cmp.getRhs() : cmp.getLhs();
-      auto arg2 = reverse ? cmp.getLhs() : cmp.getRhs();
-      if (!mlir::isa<mlir::BlockArgument>(arg1))
-        continue;
+        auto arg1 = reverse ? cmp.getRhs() : cmp.getLhs();
+        auto arg2 = reverse ? cmp.getLhs() : cmp.getRhs();
+        if (!mlir::isa<mlir::BlockArgument>(arg1))
+          continue;
 
-      if (!dom.properlyDominates(arg2, loop))
-        continue;
+        if (!dom.properlyDominates(arg2, loop))
+          continue;
 
-      iterVar = mlir::cast<mlir::BlockArgument>(arg1);
-      end = arg2;
+        iterVar = mlir::cast<mlir::BlockArgument>(arg1);
+        end = arg2;
+      }
+      if (iterVar)
+        break;
     }
 
     if (!iterVar)
@@ -809,15 +814,8 @@ struct PromoteWhileOp : public mlir::OpRewritePattern<mlir::scf::WhileOp> {
 
     auto loc = loop.getLoc();
     auto indexType = rewriter.getIndexType();
-    auto toIndex = [&](mlir::Value val) -> mlir::Value {
-      if (val.getType() != indexType)
-        return rewriter.create<mlir::arith::IndexCastOp>(loc, indexType, val);
-
-      return val;
-    };
-    begin = toIndex(begin);
-    end = toIndex(end);
-    step = toIndex(step);
+    assert(begin.getType() == end.getType() &&
+           begin.getType() == step.getType());
 
     llvm::SmallVector<mlir::Value> mapping;
     mapping.reserve(loop.getInits().size());
@@ -854,7 +852,7 @@ struct PromoteWhileOp : public mlir::OpRewritePattern<mlir::scf::WhileOp> {
       }
     }
 
-    rewriter.inlineBlockBefore(loop.getAfterBody(), newBody, newBody->begin(),
+    rewriter.inlineBlockBefore(loop.getAfterBody(), newBody, newBody->end(),
                                mapping);
 
     auto term = mlir::cast<mlir::scf::YieldOp>(newBody->getTerminator());
