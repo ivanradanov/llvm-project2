@@ -897,7 +897,11 @@ def FinalizeMemRefToLLVMConversionPass :
            "bool",
            /*default=*/"false",
            "Use generic allocation and deallocation functions instead of the "
-           "classic 'malloc', 'aligned_alloc' and 'free' functions">
+           "classic 'malloc', 'aligned_alloc' and 'free' functions">,
+    Option<"useCStyleMemRef", "use-c-style-memref",
+           "bool",
+           /*default=*/"false",
+           "Use c-style memref lowering">
   ];
 }
 
@@ -1456,7 +1460,11 @@ def ConvertVectorToLLVMPass : Pass<"convert-vector-to-llvm"> {
     Option<"x86Vector", "enable-x86vector",
            "bool", /*default=*/"false",
            "Enables the use of X86Vector dialect while lowering the vector "
-	   "dialect.">
+	   "dialect.">,
+    Option<"useCStyleMemRef", "use-c-style-memref",
+           "bool",
+           /*default=*/"false",
+           "Use c-style memref lowering">
   ];
 }
 

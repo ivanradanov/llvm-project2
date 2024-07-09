@@ -22,6 +22,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -1666,6 +1667,161 @@ public:
 
 } // namespace
 
+// C Style memref code is from Polygeist
+
+Type convertMemrefElementTypeForLLVMPointer(
+    MemRefType type, const LLVMTypeConverter &converter) {
+  Type converted = converter.convertType(type.getElementType());
+  if (!converted)
+    return Type();
+
+  if (type.getRank() == 0) {
+    return converted;
+  }
+
+  // Only the leading dimension can be dynamic.
+  if (llvm::any_of(type.getShape().drop_front(), ShapedType::isDynamic))
+    return Type();
+
+  // Only identity layout is supported.
+  // TODO: detect the strided layout that is equivalent to identity
+  // given the static part of the shape.
+  if (!type.getLayout().isIdentity())
+    return Type();
+
+  if (type.getRank() > 0) {
+    for (int64_t size : llvm::reverse(type.getShape().drop_front()))
+      converted = LLVM::LLVMArrayType::get(converted, size);
+  }
+  return converted;
+}
+
+/// Base class for patterns lowering memory access operations.
+template <typename OpTy>
+struct CLoadStoreOpLowering : public ConvertOpToLLVMPattern<OpTy> {
+protected:
+  using ConvertOpToLLVMPattern<OpTy>::ConvertOpToLLVMPattern;
+
+  /// Emits the IR that computes the address of the memory being accessed.
+  Value getAddress(OpTy op,
+                   typename ConvertOpToLLVMPattern<OpTy>::OpAdaptor adaptor,
+                   ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    MemRefType originalType = op.getMemRefType();
+    auto convertedType = dyn_cast_or_null<LLVM::LLVMPointerType>(
+        this->getTypeConverter()->convertType(originalType));
+    if (!convertedType) {
+      (void)rewriter.notifyMatchFailure(loc, "unsupported memref type");
+      return nullptr;
+    }
+
+    SmallVector<LLVM::GEPArg> args = llvm::to_vector(llvm::map_range(
+        adaptor.getIndices(), [](Value v) { return LLVM::GEPArg(v); }));
+    auto elTy = convertMemrefElementTypeForLLVMPointer(
+        originalType, *this->getTypeConverter());
+    if (!elTy) {
+      (void)rewriter.notifyMatchFailure(loc, "unsupported memref type");
+      return nullptr;
+    }
+    return rewriter.create<LLVM::GEPOp>(
+        loc,
+        LLVM::LLVMPointerType::get(op.getContext(),
+                                   originalType.getMemorySpaceAsInt()),
+        elTy, adaptor.getMemref(), args);
+  }
+};
+
+/// Pattern for lowering a memory load.
+struct CLoadOpLowering : public CLoadStoreOpLowering<memref::LoadOp> {
+public:
+  using CLoadStoreOpLowering<memref::LoadOp>::CLoadStoreOpLowering;
+
+  LogicalResult
+  matchAndRewrite(memref::LoadOp loadOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Value address = getAddress(loadOp, adaptor, rewriter);
+    if (!address)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(
+        loadOp,
+        typeConverter->convertType(loadOp.getMemRefType().getElementType()),
+        address);
+    return success();
+  }
+};
+
+struct CAtomicRMWOpLowering : public CLoadStoreOpLowering<memref::AtomicRMWOp> {
+  using CLoadStoreOpLowering<memref::AtomicRMWOp>::CLoadStoreOpLowering;
+
+  LogicalResult
+  matchAndRewrite(memref::AtomicRMWOp atomicOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto maybeKind = matchSimpleAtomicOp(atomicOp);
+    if (!maybeKind)
+      return failure();
+    auto dataPtr = getAddress(atomicOp, adaptor, rewriter);
+    if (!dataPtr)
+      return failure();
+    rewriter.replaceOpWithNewOp<LLVM::AtomicRMWOp>(
+        atomicOp, *maybeKind, dataPtr, adaptor.getValue(),
+        LLVM::AtomicOrdering::acq_rel);
+    return success();
+  }
+};
+
+/// Pattern for lowering a memory store.
+struct CStoreOpLowering : public CLoadStoreOpLowering<memref::StoreOp> {
+public:
+  using CLoadStoreOpLowering<memref::StoreOp>::CLoadStoreOpLowering;
+
+  LogicalResult
+  matchAndRewrite(memref::StoreOp storeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Value address = getAddress(storeOp, adaptor, rewriter);
+    if (!address)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<LLVM::StoreOp>(storeOp, adaptor.getValue(),
+                                               address);
+    return success();
+  }
+};
+
+class AtAddrOpLowering : public ConvertOpToLLVMPattern<memref::AtAddrOp> {
+public:
+  using ConvertOpToLLVMPattern<memref::AtAddrOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::AtAddrOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getAddr());
+    return success();
+  }
+};
+
+namespace mlir {
+void populateFinalizeCStyleMemRefToLLVMConversionPatterns(
+    LLVMTypeConverter &converter, RewritePatternSet &patterns);
+}
+
+void mlir::populateFinalizeCStyleMemRefToLLVMConversionPatterns(
+    LLVMTypeConverter &converter, RewritePatternSet &patterns) {
+  // clang-format off
+  patterns.add<
+      CLoadOpLowering,
+      CStoreOpLowering,
+      AtomicRMWOpLowering,
+      AtAddrOpLowering
+    >(converter);
+  // clang-format on
+  auto allocLowering = converter.getOptions().allocLowering;
+  if (allocLowering == LowerToLLVMOptions::AllocLowering::AlignedAlloc)
+    patterns.add<AlignedAllocOpLowering, DeallocOpLowering>(converter);
+  else if (allocLowering == LowerToLLVMOptions::AllocLowering::Malloc)
+    patterns.add<AllocOpLowering, DeallocOpLowering>(converter);
+}
+
 void mlir::populateFinalizeMemRefToLLVMConversionPatterns(
     LLVMTypeConverter &converter, RewritePatternSet &patterns) {
   // clang-format off
@@ -1720,15 +1876,22 @@ struct FinalizeMemRefToLLVMConversionPass
 
     options.useGenericFunctions = useGenericFunctions;
 
+    options.useCStyleMemRef = useCStyleMemRef;
+
     if (indexBitwidth != kDeriveIndexBitwidthFromDataLayout)
       options.overrideIndexBitwidth(indexBitwidth);
 
     LLVMTypeConverter typeConverter(&getContext(), options,
                                     &dataLayoutAnalysis);
-    RewritePatternSet patterns(&getContext());
-    populateFinalizeMemRefToLLVMConversionPatterns(typeConverter, patterns);
     LLVMConversionTarget target(getContext());
     target.addLegalOp<func::FuncOp>();
+    RewritePatternSet patterns(&getContext());
+    if (useCStyleMemRef) {
+      populateFinalizeCStyleMemRefToLLVMConversionPatterns(typeConverter,
+                                                           patterns);
+      target.addLegalOp<UnrealizedConversionCastOp>();
+    } else
+      populateFinalizeMemRefToLLVMConversionPatterns(typeConverter, patterns);
     if (failed(applyPartialConversion(op, target, std::move(patterns))))
       signalPassFailure();
   }
