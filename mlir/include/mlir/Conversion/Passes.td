@@ -350,7 +350,7 @@ def PromoteScfWhilePass : Pass<"promote-scf-while", "ModuleOp"> {
   let constructor = "mlir::createPromoteScfWhilePass()";
 }
 
-def LLVMToAffineAccessPass : Pass<"llvm-to-affine-access", "ModuleOp"> {
+def LLVMToAffineAccessPass : Pass<"llvm-to-affine-access"> {
   let summary = "";
   let dependentDialects = [
     "memref::MemRefDialect",
