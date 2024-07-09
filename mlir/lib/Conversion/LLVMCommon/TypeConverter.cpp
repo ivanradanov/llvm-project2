@@ -417,6 +417,12 @@ LLVMTypeConverter::getMemRefDescriptorSize(MemRefType type,
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) const {
   // When converting a MemRefType to a struct with descriptor fields, do not
   // unpack the `sizes` and `strides` arrays.
+  if (options.useCStyleMemRef) {
+    auto space = getMemRefAddressSpace(type);
+    if (failed(space))
+      return {};
+    return LLVM::LLVMPointerType::get(&getContext(), *space);
+  }
   SmallVector<Type, 5> types =
       getMemRefDescriptorFields(type, /*unpackAggregates=*/false);
   if (types.empty())
