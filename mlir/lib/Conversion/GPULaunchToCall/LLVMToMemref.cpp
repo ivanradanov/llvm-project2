@@ -370,9 +370,7 @@ public:
   AffineAccessBuilder(Operation *accessOp, bool legalizeSymbols)
       : AffineExprBuilder(accessOp, legalizeSymbols) {}
 
-  AffineMap map;
-
-  SmallVector<Value> operands;
+  PtrVal base = nullptr;
 
   LogicalResult build(const DataLayout &dataLayout, PtrVal addr) {
     auto aa = buildAffineAccess(dataLayout, addr);
@@ -380,23 +378,24 @@ public:
       return failure();
     expr = aa->expr;
     base = aa->base;
-    MapAndOperands mao = getMap();
-    map = mao.map;
-    operands = mao.operands;
 
-    LLVM_DEBUG(llvm::dbgs() << "Built map: " << map << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "Built expr: " << expr << "\n");
     return success();
   }
-  PtrVal base = nullptr;
+
+  AffineExprBuilder::MapAndOperands getMap() {
+    return AffineExprBuilder::getMap();
+  }
+
+  PtrVal getBase() {
+    assert(base);
+    return base;
+  }
 
   void rescope(affine::AffineScopeOp scope) {
     if (!scope->isAncestor(user))
       return;
     rescopeExpr(scope);
-    MapAndOperands mao = getMap();
-
-    map = mao.map;
-    operands = mao.operands;
   }
 
 private:
@@ -740,13 +739,15 @@ struct LLVMToAffineAccessPass
       if (!aab.isLegal())
         continue;
 
+      auto mao = aab.getMap();
+
       auto dl = dataLayoutAnalysis.getAtOrAbove(aab.user);
       if (auto load = dyn_cast<LLVM::LoadOp>(aab.user)) {
         IRRewriter rewriter(load);
         auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
                                    rewriter.getI8Type());
         auto vecLoad = rewriter.create<affine::AffineVectorLoadOp>(
-            load.getLoc(), vty, mc(aab.base), aab.map, ic(aab.operands));
+            load.getLoc(), vty, mc(aab.getBase()), mao.map, ic(mao.operands));
         Operation *newLoad;
         if (isa<LLVM::LLVMPointerType>(load.getType())) {
           Type intTy = rewriter.getIntegerType(
@@ -776,7 +777,7 @@ struct LLVMToAffineAccessPass
                                                   store.getValue());
         }
         Operation *newStore = rewriter.create<affine::AffineVectorStoreOp>(
-            store.getLoc(), cast, mc(aab.base), aab.map, ic(aab.operands));
+            store.getLoc(), cast, mc(aab.base), mao.map, ic(mao.operands));
         mapping.map(store.getOperation(), newStore);
       } else {
         llvm_unreachable("");
