@@ -544,3 +544,35 @@ llvm.func @multi_scope(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %o
   }
   llvm.return
 }
+
+// -----
+
+llvm.func @nested_for(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %offset : i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  scf.execute_region {
+    %sym = "test.test1"() : () -> index
+    scf.for %k = %c0 to %sym step %c1 {
+      "test.test2"(%k) : (index) -> ()
+      scf.yield
+    }
+    scf.yield
+  }
+  llvm.return
+}
+
+// -----
+
+llvm.func @nested_for_i32(%cond : i1, %argptr : !llvm.ptr, %argptrs : !llvm.ptr, %offset : i32) {
+  %c0 = arith.constant 0 : i32
+  %c1 = arith.constant 1 : i32
+  scf.execute_region {
+    %sym = "test.test1"() : () -> i32
+    scf.for %k = %c0 to %sym step %c1 : i32 {
+      "test.test2"(%k) : (i32) -> ()
+      scf.yield
+    }
+    scf.yield
+  }
+  llvm.return
+}
