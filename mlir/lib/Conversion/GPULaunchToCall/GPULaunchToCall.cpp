@@ -52,8 +52,14 @@ static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
       newV = v;
     } else {
       rewriter.setInsertionPoint(op);
-      newV =
-          rewriter.create<arith::IndexCastOp>(res.getLoc(), res.getType(), v);
+      if (res.getType().isIndex() || v.getType().isIndex())
+        newV =
+            rewriter.create<arith::IndexCastOp>(res.getLoc(), res.getType(), v);
+      else if (res.getType().getIntOrFloatBitWidth() <
+               v.getType().getIntOrFloatBitWidth())
+        newV = rewriter.create<arith::TruncIOp>(res.getLoc(), res.getType(), v);
+      else
+        newV = rewriter.create<arith::ExtUIOp>(res.getLoc(), res.getType(), v);
     }
     rewriter.replaceAllUsesWith(res, newV);
     rewriter.eraseOp(op);
@@ -62,40 +68,38 @@ static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
 
 namespace mlir {
 // TODO needs stream support
-LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
-                                             RewriterBase &rewriter) {
-  MLIRContext *context = launchOp->getContext();
-  auto st = SymbolTable::getNearestSymbolTable(launchOp);
-  if (!st)
-    return failure();
-
-  // TODO Only kernels with no dynamic mem for now
-  Value shMemSize = launchOp.getDynamicSharedMemorySize();
-  auto cst = dyn_cast_or_null<arith::ConstantIntOp>(shMemSize.getDefiningOp());
-  if (!(cst && cst.value() == 0)) {
-    // TODO put this back once we get rid of cudaPush/Pop calls which hide
-    // it
-
-    // return WalkResult::interrupt();
-  }
-
-  auto kernelSymbol = launchOp.getKernel();
-  auto gpuKernelFunc = SymbolTable::lookupSymbolIn(st, kernelSymbol);
-  auto callLoc = launchOp->getLoc();
+struct ConvertedKernel {
+  std::string name;
+  Operation *kernel;
+};
+FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
+                                                      Type shmemSizeType,
+                                                      RewriterBase &rewriter) {
+  MLIRContext *context = gpuKernelFunc->getContext();
   auto funcLoc = gpuKernelFunc->getLoc();
   rewriter.setInsertionPoint(gpuKernelFunc);
 
   // TODO assert all are the same
-  Type boundType = rewriter.getIndexType();
-  Type shmemSizeType = launchOp.getDynamicSharedMemorySize().getType();
+  // TODO get this from datalayout, should be same as index
+  Type boundType = rewriter.getI64Type();
 
   constexpr unsigned additionalArgs = 7;
 
   Block *newEntryBlock = nullptr;
+  Operation *newKernel;
   Region *kernelRegion = nullptr;
+  std::string newSymName;
   if (isa<gpu::GPUFuncOp>(gpuKernelFunc)) {
     return failure();
   } else if (auto llvmKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
+    newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
+    auto st = SymbolTable::getNearestSymbolTable(gpuKernelFunc);
+    if (!st)
+      return failure();
+    auto existing = SymbolTable::lookupSymbolIn(st, newSymName);
+    if (existing)
+      return ConvertedKernel{newSymName, existing};
+
     auto fty = llvmKernel.getFunctionType();
     assert(!fty.isVarArg());
     SmallVector<Type> paramTypes;
@@ -104,10 +108,10 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     paramTypes.insert(paramTypes.begin(), 6, boundType);
     paramAttrs.insert(paramAttrs.begin(), 6,
                       DictionaryAttr::getWithSorted(context, {}));
-    paramLocs.insert(paramLocs.begin(), 6, callLoc);
+    paramLocs.insert(paramLocs.begin(), 6, funcLoc);
     paramTypes.push_back(shmemSizeType);
     paramAttrs.push_back(DictionaryAttr::getWithSorted(context, {}));
-    paramLocs.push_back(callLoc);
+    paramLocs.push_back(funcLoc);
     paramTypes.insert(paramTypes.end(), fty.getParams().begin(),
                       fty.getParams().end());
     llvmKernel.getAllArgAttrs(paramAttrs);
@@ -120,14 +124,21 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
            paramAttrs.size() == newArgs);
 
     // TODO we can use affine::AffineScopeOp in an llvm func
-    auto newFty = FunctionType::get(context, paramTypes, TypeRange());
-    func::FuncOp funcOp = rewriter.create<func::FuncOp>(
-        funcLoc, llvmKernel.getSymName(), newFty,
+    auto newFty = LLVM::LLVMFunctionType::get(fty.getReturnType(), paramTypes,
+                                              fty.isVarArg());
+    LLVM::LLVMFuncOp funcOp;
+    newKernel = funcOp = rewriter.create<LLVM::LLVMFuncOp>(
+        funcLoc, newSymName.c_str(), newFty, llvmKernel.getLinkage(),
+        llvmKernel.getDsoLocal(), llvmKernel.getCConv(),
+        llvmKernel.getComdatAttr(),
         /* TODO attrs if we pass in llvmKernel->getAttrs() here we get an
-           error in the op builder */
-        ArrayRef<NamedAttribute>(), paramAttrs);
+           error in the op rewriter */
+        ArrayRef<NamedAttribute>(), paramAttrs,
+        llvmKernel.getFunctionEntryCount());
     // TODO temp until we get attrs working
     funcOp->setAttr("gpu.kernel", rewriter.getUnitAttr());
+    funcOp->setAttr("gpu.par.kernel", rewriter.getUnitAttr());
+
     newEntryBlock =
         rewriter.createBlock(&funcOp.getBody(), {}, paramTypes, paramLocs);
     kernelRegion = &llvmKernel.getFunctionBody();
@@ -136,17 +147,28 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     return failure();
   }
 
+  auto getArg = [&](unsigned i) -> Value {
+    Value v = newEntryBlock->getArgument(i);
+    if (v.getType() == rewriter.getIndexType())
+      return v;
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointToStart(newEntryBlock);
+    return rewriter
+        .create<arith::IndexCastOp>(v.getLoc(), rewriter.getIndexType(), v)
+        .getResult();
+  };
+
   SmallVector<Value, 6> ivs;
   auto createPar = [&](unsigned argPos, unsigned argNum, StringRef attrName) {
     SmallVector<AffineMap> idMaps, zeroMaps;
     SmallVector<Value> lbVs, ubVs;
-    auto idMap = AffineMap::getMultiDimIdentityMap(1, launchOp.getContext());
-    auto zeroMap = AffineMap::getConstantMap(0, launchOp.getContext());
+    auto idMap = AffineMap::getMultiDimIdentityMap(1, context);
+    auto zeroMap = AffineMap::getConstantMap(0, context);
     idMaps.insert(idMaps.begin(), argNum, idMap);
     zeroMaps.insert(zeroMaps.begin(), argNum, zeroMap);
 
     for (unsigned i = 0; i < argNum; i++)
-      ubVs.push_back(newEntryBlock->getArgument(argPos + i));
+      ubVs.push_back(getArg(argPos + i));
 
     SmallVector<int64_t> steps(argNum, 1);
     auto par = rewriter.create<affine::AffineParallelOp>(
@@ -187,9 +209,10 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     rewriter.clone(*it, mapping);
 
   // is return void
-  assert(kernelRegion->front().back().getNumResults() == 0);
+  Operation *term = &kernelRegion->front().back();
+  assert(term->getNumResults() == 0);
   rewriter.setInsertionPointToEnd(newEntryBlock);
-  rewriter.create<func::ReturnOp>(funcLoc, ValueRange());
+  rewriter.clone(*term, mapping);
 
   // clang-format off
   unsigned dim = 0;
@@ -235,32 +258,55 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     rewriter.eraseOp(threadId);
   });
 
-  rewriter.eraseOp(gpuKernelFunc);
+  return ConvertedKernel{newSymName, newKernel};
+}
+
+LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
+                                             RewriterBase &rewriter) {
+  MLIRContext *context = launchOp->getContext();
+  auto st = SymbolTable::getNearestSymbolTable(launchOp);
+  if (!st)
+    return failure();
+
+  // TODO Only kernels with no dynamic mem for now
+  Value shMemSize = launchOp.getDynamicSharedMemorySize();
+  auto cst = dyn_cast_or_null<arith::ConstantIntOp>(shMemSize.getDefiningOp());
+  if (!(cst && cst.value() == 0)) {
+    // TODO put this back once we get rid of cudaPush/Pop calls which hide
+    // it
+
+    // return WalkResult::interrupt();
+  }
+
+  auto kernelSymbol = launchOp.getKernel();
+  auto gpuKernelFunc = SymbolTable::lookupSymbolIn(st, kernelSymbol);
+  Type shmemSizeType = launchOp.getDynamicSharedMemorySize().getType();
+  auto converted =
+      convertGPUKernelToParallel(gpuKernelFunc, shmemSizeType, rewriter);
+  if (failed(converted))
+    return failure();
+
+  Operation *newKernelFunc = converted->kernel;
+  std::string newKernelName = converted->name;
+
+  auto kernelModule = newKernelFunc->getParentOfType<gpu::GPUModuleOp>();
+  auto newKernelSymbol = SymbolRefAttr::get(
+      kernelModule.getNameAttr(),
+      {SymbolRefAttr::get(StringAttr::get(context, newKernelName.c_str()))});
+  launchOp.setKernelAttr(newKernelSymbol);
 
   return success();
 }
 } // namespace mlir
 
-namespace {
-struct GPULaunchToParallel : public OpRewritePattern<gpu::LaunchFuncOp> {
-  using OpRewritePattern<gpu::LaunchFuncOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(gpu::LaunchFuncOp launchOp,
-                                PatternRewriter &rewriter) const override {
-    return convertGPULaunchFuncToParallel(launchOp, rewriter);
-  }
-};
-} // namespace
-
 struct GPULaunchToParallelPass
     : public impl::GPULaunchToParallelPassBase<GPULaunchToParallelPass> {
   using Base::Base;
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns.add<GPULaunchToParallel>(patterns.getContext());
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      signalPassFailure();
+    IRRewriter rewriter(&getContext());
+    getOperation()->walk([&](gpu::LaunchFuncOp launchOp) {
+      (void)convertGPULaunchFuncToParallel(launchOp, rewriter);
+    });
   }
 };
 std::unique_ptr<Pass> mlir::createGPULaunchToParallelPass() {
