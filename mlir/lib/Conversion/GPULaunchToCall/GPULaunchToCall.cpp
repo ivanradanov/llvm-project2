@@ -180,14 +180,14 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     return par;
   };
   // TODO combine them
-  StringRef attrName = "gpupar.grid";
+  StringRef attrName = "gpu.par.grid";
   unsigned argPos = 0;
   unsigned argNum = 1;
   [[maybe_unused]] auto gridParX = createPar(argPos++, argNum, attrName);
   [[maybe_unused]] auto gridParY = createPar(argPos++, argNum, attrName);
   [[maybe_unused]] auto gridParZ = createPar(argPos++, argNum, attrName);
   // TODO shared mem alloc
-  attrName = "gpupar.block";
+  attrName = "gpu.par.block";
   [[maybe_unused]] auto blockParX = createPar(argPos++, argNum, attrName);
   [[maybe_unused]] auto blockParY = createPar(argPos++, argNum, attrName);
   [[maybe_unused]] auto blockParZ = createPar(argPos++, argNum, attrName);
