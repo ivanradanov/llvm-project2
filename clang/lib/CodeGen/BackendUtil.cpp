@@ -87,8 +87,19 @@
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/JumpThreading.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Debugify.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllExtensions.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
+#include "mlir/Target/LLVMIR/Import.h"
+#include "mlir/Target/LLVMIR/ModuleImport.h"
+
 #include <memory>
 #include <optional>
 using namespace clang;
@@ -230,6 +241,8 @@ public:
   }
 
   std::unique_ptr<TargetMachine> TM;
+
+  void RunTransformer();
 
   // Emit output using the new pass manager for the optimization pipeline.
   void EmitAssembly(BackendAction Action, std::unique_ptr<raw_pwrite_stream> OS,
@@ -1229,6 +1242,18 @@ void EmitAssemblyHelper::RunCodegenPipeline(
   }
 }
 
+void EmitAssemblyHelper::RunTransformer() {
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::registerAllExtensions(registry);
+  mlir::registerAllToLLVMIRTranslations(registry);
+  mlir::registerAllFromLLVMIRTranslations(registry);
+  mlir::MLIRContext context(registry);
+  std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
+  auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
+  llvm::errs() << *MlirModule << "\n";
+}
+
 void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
                                       std::unique_ptr<raw_pwrite_stream> OS,
                                       BackendConsumer *BC) {
@@ -1250,6 +1275,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
   if (ClTransformerEnable) {
     llvm::errs() << "Enabling MLIR transformer\n";
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
+    RunTransformer();
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, false);
   } else {
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, false, false);
