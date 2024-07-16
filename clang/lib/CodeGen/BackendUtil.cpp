@@ -48,6 +48,7 @@
 #include "llvm/ProfileData/InstrProfCorrelator.h"
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Program.h"
@@ -120,6 +121,10 @@ static cl::opt<PGOOptions::ColdFuncOpt> ClPGOColdFuncAttr(
                clEnumValN(PGOOptions::ColdFuncOpt::OptNone, "optnone",
                           "Mark cold functions with optnone.")));
 
+static cl::opt<bool> ClTransformerEnable("transformer-enable", cl::init(false),
+                                         cl::Hidden,
+                                         cl::desc("Enable MLIR transformer"));
+
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
 } // namespace llvm
 
@@ -183,7 +188,8 @@ class EmitAssemblyHelper {
 
   void RunOptimizationPipeline(
       BackendAction Action, std::unique_ptr<raw_pwrite_stream> &OS,
-      std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC);
+      std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC,
+      bool TransformerEnabled, bool TransformerPreprocessing);
   void RunCodegenPipeline(BackendAction Action,
                           std::unique_ptr<raw_pwrite_stream> &OS,
                           std::unique_ptr<llvm::ToolOutputFile> &DwoOS);
@@ -806,7 +812,8 @@ static void addSanitizers(const Triple &TargetTriple,
 
 void EmitAssemblyHelper::RunOptimizationPipeline(
     BackendAction Action, std::unique_ptr<raw_pwrite_stream> &OS,
-    std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC) {
+    std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC,
+    bool TransformerEnabled, bool TransformerPreprocessing) {
   std::optional<PGOOptions> PGOOpt;
 
   if (CodeGenOpts.hasProfileIRInstr())
@@ -878,12 +885,13 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     TM->setPGOOption(PGOOpt);
 
   PipelineTuningOptions PTO;
-  PTO.LoopUnrolling = CodeGenOpts.UnrollLoops;
+  PTO.PreserveLoops = TransformerEnabled && TransformerPreprocessing;
+  PTO.LoopUnrolling = !PTO.PreserveLoops && CodeGenOpts.UnrollLoops;
   // For historical reasons, loop interleaving is set to mirror setting for loop
   // unrolling.
-  PTO.LoopInterleaving = CodeGenOpts.UnrollLoops;
-  PTO.LoopVectorization = CodeGenOpts.VectorizeLoop;
-  PTO.SLPVectorization = CodeGenOpts.VectorizeSLP;
+  PTO.LoopInterleaving = !PTO.PreserveLoops && CodeGenOpts.UnrollLoops;
+  PTO.LoopVectorization = !PTO.PreserveLoops && CodeGenOpts.VectorizeLoop;
+  PTO.SLPVectorization = !PTO.PreserveLoops && CodeGenOpts.VectorizeSLP;
   PTO.MergeFunctions = CodeGenOpts.MergeFunctions;
   // Only enable CGProfilePass when using integrated assembler, since
   // non-integrated assemblers don't recognize .cgprofile section.
@@ -907,29 +915,31 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   SI.registerCallbacks(PIC, &MAM);
   PassBuilder PB(TM.get(), PTO, PGOOpt, &PIC);
 
-  // Handle the assignment tracking feature options.
-  switch (CodeGenOpts.getAssignmentTrackingMode()) {
-  case CodeGenOptions::AssignmentTrackingOpts::Forced:
-    PB.registerPipelineStartEPCallback(
-        [&](ModulePassManager &MPM, OptimizationLevel Level) {
-          MPM.addPass(AssignmentTrackingPass());
-        });
-    break;
-  case CodeGenOptions::AssignmentTrackingOpts::Enabled:
-    // Disable assignment tracking in LTO builds for now as the performance
-    // cost is too high. Disable for LLDB tuning due to llvm.org/PR43126.
-    if (!CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.PrepareForLTO &&
-        CodeGenOpts.getDebuggerTuning() != llvm::DebuggerKind::LLDB) {
+  if (!TransformerEnabled || !TransformerPreprocessing) {
+    // Handle the assignment tracking feature options.
+    switch (CodeGenOpts.getAssignmentTrackingMode()) {
+    case CodeGenOptions::AssignmentTrackingOpts::Forced:
       PB.registerPipelineStartEPCallback(
           [&](ModulePassManager &MPM, OptimizationLevel Level) {
-            // Only use assignment tracking if optimisations are enabled.
-            if (Level != OptimizationLevel::O0)
-              MPM.addPass(AssignmentTrackingPass());
+            MPM.addPass(AssignmentTrackingPass());
           });
+      break;
+    case CodeGenOptions::AssignmentTrackingOpts::Enabled:
+      // Disable assignment tracking in LTO builds for now as the performance
+      // cost is too high. Disable for LLDB tuning due to llvm.org/PR43126.
+      if (!CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.PrepareForLTO &&
+          CodeGenOpts.getDebuggerTuning() != llvm::DebuggerKind::LLDB) {
+        PB.registerPipelineStartEPCallback(
+            [&](ModulePassManager &MPM, OptimizationLevel Level) {
+              // Only use assignment tracking if optimisations are enabled.
+              if (Level != OptimizationLevel::O0)
+                MPM.addPass(AssignmentTrackingPass());
+            });
+      }
+      break;
+    case CodeGenOptions::AssignmentTrackingOpts::Disabled:
+      break;
     }
-    break;
-  case CodeGenOptions::AssignmentTrackingOpts::Disabled:
-    break;
   }
 
   // Enable verify-debuginfo-preserve-each for new PM.
@@ -986,97 +996,114 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     const bool PrepareForThinLTO = CodeGenOpts.PrepareForThinLTO;
     const bool PrepareForLTO = CodeGenOpts.PrepareForLTO;
 
-    if (LangOpts.ObjCAutoRefCount) {
-      PB.registerPipelineStartEPCallback(
-          [](ModulePassManager &MPM, OptimizationLevel Level) {
-            if (Level != OptimizationLevel::O0)
-              MPM.addPass(
-                  createModuleToFunctionPassAdaptor(ObjCARCExpandPass()));
-          });
-      PB.registerPipelineEarlySimplificationEPCallback(
-          [](ModulePassManager &MPM, OptimizationLevel Level,
-             ThinOrFullLTOPhase) {
-            if (Level != OptimizationLevel::O0)
-              MPM.addPass(ObjCARCAPElimPass());
-          });
-      PB.registerScalarOptimizerLateEPCallback(
-          [](FunctionPassManager &FPM, OptimizationLevel Level) {
-            if (Level != OptimizationLevel::O0)
-              FPM.addPass(ObjCARCOptPass());
-          });
+    if (!TransformerEnabled || TransformerPreprocessing) {
+      if (LangOpts.ObjCAutoRefCount) {
+        PB.registerPipelineStartEPCallback(
+            [](ModulePassManager &MPM, OptimizationLevel Level) {
+              if (Level != OptimizationLevel::O0)
+                MPM.addPass(
+                    createModuleToFunctionPassAdaptor(ObjCARCExpandPass()));
+            });
+        PB.registerPipelineEarlySimplificationEPCallback(
+            [](ModulePassManager &MPM, OptimizationLevel Level,
+              ThinOrFullLTOPhase) {
+              if (Level != OptimizationLevel::O0)
+                MPM.addPass(ObjCARCAPElimPass());
+            });
+        PB.registerScalarOptimizerLateEPCallback(
+            [](FunctionPassManager &FPM, OptimizationLevel Level) {
+              if (Level != OptimizationLevel::O0)
+                FPM.addPass(ObjCARCOptPass());
+            });
+      }
+
+      // If we reached here with a non-empty index file name, then the index
+      // file was empty and we are not performing ThinLTO backend compilation
+      // (used in testing in a distributed build environment).
+      bool IsThinLTOPostLink = !CodeGenOpts.ThinLTOIndexFile.empty();
+      // If so drop any the type test assume sequences inserted for whole program
+      // vtables so that codegen doesn't complain.
+      if (IsThinLTOPostLink)
+        PB.registerPipelineStartEPCallback(
+            [](ModulePassManager &MPM, OptimizationLevel Level) {
+              MPM.addPass(LowerTypeTestsPass(
+                  /*ExportSummary=*/nullptr,
+                  /*ImportSummary=*/nullptr,
+                  /*DropTypeTests=*/lowertypetests::DropTestKind::Assume));
+            });
+
+      // Register callbacks to schedule sanitizer passes at the appropriate part
+      // of the pipeline.
+      if (LangOpts.Sanitize.has(SanitizerKind::LocalBounds))
+        PB.registerScalarOptimizerLateEPCallback(
+            [](FunctionPassManager &FPM, OptimizationLevel Level) {
+              FPM.addPass(BoundsCheckingPass());
+            });
+
+      if (LangOpts.Sanitize.has(SanitizerKind::Realtime))
+        PB.registerScalarOptimizerLateEPCallback(
+            [](FunctionPassManager &FPM, OptimizationLevel Level) {
+              RealtimeSanitizerOptions Opts;
+              FPM.addPass(RealtimeSanitizerPass(Opts));
+            });
+
+      // Don't add sanitizers if we are here from ThinLTO PostLink. That already
+      // done on PreLink stage.
+      if (!IsThinLTOPostLink) {
+        addSanitizers(TargetTriple, CodeGenOpts, LangOpts, PB);
+        addKCFIPass(TargetTriple, LangOpts, PB);
+      }
+
+      if (std::optional<GCOVOptions> Options =
+              getGCOVOptions(CodeGenOpts, LangOpts))
+        PB.registerPipelineStartEPCallback(
+            [Options](ModulePassManager &MPM, OptimizationLevel Level) {
+              MPM.addPass(GCOVProfilerPass(*Options));
+            });
+      if (std::optional<InstrProfOptions> Options =
+              getInstrProfOptions(CodeGenOpts, LangOpts))
+        PB.registerPipelineStartEPCallback(
+            [Options](ModulePassManager &MPM, OptimizationLevel Level) {
+              MPM.addPass(InstrProfilingLoweringPass(*Options, false));
+            });
+
+      // TODO: Consider passing the MemoryProfileOutput to the pass builder via
+      // the PGOOptions, and set this up there.
+      if (!CodeGenOpts.MemoryProfileOutput.empty()) {
+        PB.registerOptimizerLastEPCallback([](ModulePassManager &MPM,
+                                              OptimizationLevel Level,
+                                              ThinOrFullLTOPhase) {
+          MPM.addPass(createModuleToFunctionPassAdaptor(MemProfilerPass()));
+          MPM.addPass(ModuleMemProfilerPass());
+        });
+      }
     }
 
-    // If we reached here with a non-empty index file name, then the index
-    // file was empty and we are not performing ThinLTO backend compilation
-    // (used in testing in a distributed build environment).
-    bool IsThinLTOPostLink = !CodeGenOpts.ThinLTOIndexFile.empty();
-    // If so drop any the type test assume sequences inserted for whole program
-    // vtables so that codegen doesn't complain.
-    if (IsThinLTOPostLink)
-      PB.registerPipelineStartEPCallback(
-          [](ModulePassManager &MPM, OptimizationLevel Level) {
-            MPM.addPass(LowerTypeTestsPass(
-                /*ExportSummary=*/nullptr,
-                /*ImportSummary=*/nullptr,
-                /*DropTypeTests=*/lowertypetests::DropTestKind::Assume));
-          });
-
-    // Register callbacks to schedule sanitizer passes at the appropriate part
-    // of the pipeline.
-    if (LangOpts.Sanitize.has(SanitizerKind::LocalBounds))
-      PB.registerScalarOptimizerLateEPCallback(
-          [](FunctionPassManager &FPM, OptimizationLevel Level) {
-            FPM.addPass(BoundsCheckingPass());
-          });
-
-    if (LangOpts.Sanitize.has(SanitizerKind::Realtime))
-      PB.registerScalarOptimizerLateEPCallback(
-          [](FunctionPassManager &FPM, OptimizationLevel Level) {
-            RealtimeSanitizerOptions Opts;
-            FPM.addPass(RealtimeSanitizerPass(Opts));
-          });
-
-    // Don't add sanitizers if we are here from ThinLTO PostLink. That already
-    // done on PreLink stage.
-    if (!IsThinLTOPostLink) {
-      addSanitizers(TargetTriple, CodeGenOpts, LangOpts, PB);
-      addKCFIPass(TargetTriple, LangOpts, PB);
+    if (TransformerEnabled && TransformerPreprocessing) {
+      if (CodeGenOpts.FatLTO) {
+        llvm_unreachable("TODO");
+      } else if (PrepareForThinLTO) {
+        llvm_unreachable("TODO");
+      } else if (PrepareForLTO) {
+        llvm_unreachable("TODO");
+      } else {
+        MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
+      }
     }
 
-    if (std::optional<GCOVOptions> Options =
-            getGCOVOptions(CodeGenOpts, LangOpts))
-      PB.registerPipelineStartEPCallback(
-          [Options](ModulePassManager &MPM, OptimizationLevel Level) {
-            MPM.addPass(GCOVProfilerPass(*Options));
-          });
-    if (std::optional<InstrProfOptions> Options =
-            getInstrProfOptions(CodeGenOpts, LangOpts))
-      PB.registerPipelineStartEPCallback(
-          [Options](ModulePassManager &MPM, OptimizationLevel Level) {
-            MPM.addPass(InstrProfilingLoweringPass(*Options, false));
-          });
-
-    // TODO: Consider passing the MemoryProfileOutput to the pass builder via
-    // the PGOOptions, and set this up there.
-    if (!CodeGenOpts.MemoryProfileOutput.empty()) {
-      PB.registerOptimizerLastEPCallback([](ModulePassManager &MPM,
-                                            OptimizationLevel Level,
-                                            ThinOrFullLTOPhase) {
-        MPM.addPass(createModuleToFunctionPassAdaptor(MemProfilerPass()));
-        MPM.addPass(ModuleMemProfilerPass());
-      });
-    }
-
-    if (CodeGenOpts.FatLTO) {
-      MPM.addPass(PB.buildFatLTODefaultPipeline(
-          Level, PrepareForThinLTO,
-          PrepareForThinLTO || shouldEmitRegularLTOSummary()));
-    } else if (PrepareForThinLTO) {
-      MPM.addPass(PB.buildThinLTOPreLinkDefaultPipeline(Level));
-    } else if (PrepareForLTO) {
-      MPM.addPass(PB.buildLTOPreLinkDefaultPipeline(Level));
-    } else {
-      MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
+    if (!TransformerEnabled ||
+        (TransformerEnabled && !TransformerPreprocessing)) {
+      if (CodeGenOpts.FatLTO) {
+        MPM.addPass(PB.buildFatLTODefaultPipeline(
+            Level, PrepareForThinLTO,
+            PrepareForThinLTO || shouldEmitRegularLTOSummary()));
+      } else if (PrepareForThinLTO) {
+        MPM.addPass(PB.buildThinLTOPreLinkDefaultPipeline(Level));
+      } else if (PrepareForLTO) {
+        MPM.addPass(PB.buildLTOPreLinkDefaultPipeline(Level));
+      } else {
+        MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
+      }
     }
   }
 
@@ -1104,8 +1131,8 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
           if (!ThinLinkOS)
             return;
         }
-        MPM.addPass(ThinLTOBitcodeWriterPass(
-            *OS, ThinLinkOS ? &ThinLinkOS->os() : nullptr));
+        MPM.addPass(ThinLTOBitcodeWriterPass(*OS, ThinLinkOS ? &ThinLinkOS->os()
+                                                             : nullptr));
       } else if (Action == Backend_EmitLL) {
         MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                     /*EmitLTOSummary=*/true));
@@ -1220,7 +1247,13 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
   cl::PrintOptionValues();
 
   std::unique_ptr<llvm::ToolOutputFile> ThinLinkOS, DwoOS;
-  RunOptimizationPipeline(Action, OS, ThinLinkOS, BC);
+  if (ClTransformerEnable) {
+    llvm::errs() << "Enabling MLIR transformer\n";
+    RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
+    RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, false);
+  } else {
+    RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, false, false);
+  }
   RunCodegenPipeline(Action, OS, DwoOS);
 
   if (ThinLinkOS)
