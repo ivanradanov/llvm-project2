@@ -47,6 +47,8 @@ public:
   /// can be set in the PassBuilder when using a LLVM as a library.
   PipelineTuningOptions();
 
+  bool PreserveLoops;
+
   /// Tuning option to set loop interleaving on/off, set based on opt level.
   bool LoopInterleaving;
 

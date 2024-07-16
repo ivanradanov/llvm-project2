@@ -465,35 +465,42 @@ PassBuilder::buildO1FunctionSimplificationPipeline(OptimizationLevel Level,
   LPM1.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
                         /*AllowSpeculation=*/false));
 
-  LPM1.addPass(LoopRotatePass(/* Disable header duplication */ true,
-                              isLTOPreLink(Phase)));
+  if (!PTO.PreserveLoops)
+    LPM1.addPass(LoopRotatePass(/* Disable header duplication */ true,
+                                isLTOPreLink(Phase)));
   // TODO: Investigate promotion cap for O1.
   LPM1.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
                         /*AllowSpeculation=*/true));
-  LPM1.addPass(SimpleLoopUnswitchPass());
-  if (EnableLoopFlatten)
-    LPM1.addPass(LoopFlattenPass());
+  if (!PTO.PreserveLoops)
+    LPM1.addPass(SimpleLoopUnswitchPass());
+  if (!PTO.PreserveLoops)
+    if (EnableLoopFlatten)
+      LPM1.addPass(LoopFlattenPass());
 
-  LPM2.addPass(LoopIdiomRecognizePass());
+  if (!PTO.PreserveLoops)
+    LPM2.addPass(LoopIdiomRecognizePass());
   LPM2.addPass(IndVarSimplifyPass());
 
   invokeLateLoopOptimizationsEPCallbacks(LPM2, Level);
 
-  LPM2.addPass(LoopDeletionPass());
+  if (!PTO.PreserveLoops)
+    LPM2.addPass(LoopDeletionPass());
 
-  if (EnableLoopInterchange)
-    LPM2.addPass(LoopInterchangePass());
+  if (!PTO.PreserveLoops)
+    if (EnableLoopInterchange)
+      LPM2.addPass(LoopInterchangePass());
 
   // Do not enable unrolling in PreLinkThinLTO phase during sample PGO
   // because it changes IR to makes profile annotation in back compile
   // inaccurate. The normal unroller doesn't pay attention to forced full unroll
   // attributes so we need to make sure and allow the full unroll pass to pay
   // attention to it.
-  if (Phase != ThinOrFullLTOPhase::ThinLTOPreLink || !PGOOpt ||
-      PGOOpt->Action != PGOOptions::SampleUse)
-    LPM2.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
-                                    /* OnlyWhenForced= */ !PTO.LoopUnrolling,
-                                    PTO.ForgetAllSCEVInLoopUnroll));
+  if (!PTO.PreserveLoops)
+    if (Phase != ThinOrFullLTOPhase::ThinLTOPreLink || !PGOOpt ||
+        PGOOpt->Action != PGOOptions::SampleUse)
+      LPM2.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
+                                      /* OnlyWhenForced= */ !PTO.LoopUnrolling,
+                                      PTO.ForgetAllSCEVInLoopUnroll));
 
   invokeLoopOptimizerEndEPCallbacks(LPM2, Level);
 
@@ -647,9 +654,10 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
                         /*AllowSpeculation=*/false));
 
   // Disable header duplication in loop rotation at -Oz.
-  LPM1.addPass(LoopRotatePass(EnableLoopHeaderDuplication ||
-                                  Level != OptimizationLevel::Oz,
-                              isLTOPreLink(Phase)));
+  if (!PTO.PreserveLoops)
+    LPM1.addPass(LoopRotatePass(EnableLoopHeaderDuplication ||
+                                    Level != OptimizationLevel::Oz,
+                                isLTOPreLink(Phase)));
   // TODO: Investigate promotion cap for O1.
   LPM1.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
                         /*AllowSpeculation=*/true));
@@ -1489,14 +1497,16 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   LoopPassManager LPM;
   // First rotate loops that may have been un-rotated by prior passes.
   // Disable header duplication at -Oz.
-  LPM.addPass(LoopRotatePass(EnableLoopHeaderDuplication ||
-                                 Level != OptimizationLevel::Oz,
-                             LTOPreLink));
+  if (!PTO.PreserveLoops)
+    LPM.addPass(LoopRotatePass(EnableLoopHeaderDuplication ||
+                                   Level != OptimizationLevel::Oz,
+                               LTOPreLink));
   // Some loops may have become dead by now. Try to delete them.
   // FIXME: see discussion in https://reviews.llvm.org/D112851,
   //        this may need to be revisited once we run GVN before loop deletion
   //        in the simplification pipeline.
-  LPM.addPass(LoopDeletionPass());
+  if (!PTO.PreserveLoops)
+    LPM.addPass(LoopDeletionPass());
   OptimizePM.addPass(createFunctionToLoopPassAdaptor(
       std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/false));
 
@@ -1504,7 +1514,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // into separate loop that would otherwise inhibit vectorization.  This is
   // currently only performed for loops marked with the metadata
   // llvm.loop.distribute=true or when -enable-loop-distribute is specified.
-  OptimizePM.addPass(LoopDistributePass());
+  if (!PTO.PreserveLoops)
+    OptimizePM.addPass(LoopDistributePass());
 
   // Populates the VFABI attribute with the scalar-to-vector mappings
   // from the TargetLibraryInfo.
@@ -1516,7 +1527,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // canonicalization pass that enables other optimizations. As a result,
   // LoopSink pass needs to be a very late IR pass to avoid undoing LICM
   // result too early.
-  OptimizePM.addPass(LoopSinkPass());
+  if (!PTO.PreserveLoops)
+    OptimizePM.addPass(LoopSinkPass());
 
   // And finally clean up LCSSA form before generating code.
   OptimizePM.addPass(InstSimplifyPass());
@@ -2003,22 +2015,26 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   MainFPM.addPass(MergedLoadStoreMotionPass());
 
   LoopPassManager LPM;
-  if (EnableLoopFlatten && Level.getSpeedupLevel() > 1)
-    LPM.addPass(LoopFlattenPass());
+  if (!PTO.PreserveLoops)
+    if (EnableLoopFlatten && Level.getSpeedupLevel() > 1)
+      LPM.addPass(LoopFlattenPass());
   LPM.addPass(IndVarSimplifyPass());
-  LPM.addPass(LoopDeletionPass());
+  if (!PTO.PreserveLoops)
+    LPM.addPass(LoopDeletionPass());
   // FIXME: Add loop interchange.
 
   // Unroll small loops and perform peeling.
-  LPM.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
-                                 /* OnlyWhenForced= */ !PTO.LoopUnrolling,
-                                 PTO.ForgetAllSCEVInLoopUnroll));
+  if (!PTO.PreserveLoops)
+    LPM.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
+                                   /* OnlyWhenForced= */ !PTO.LoopUnrolling,
+                                   PTO.ForgetAllSCEVInLoopUnroll));
   // The loop passes in LPM (LoopFullUnrollPass) do not preserve MemorySSA.
   // *All* loop passes must preserve it, in order to be able to use it.
   MainFPM.addPass(createFunctionToLoopPassAdaptor(
       std::move(LPM), /*UseMemorySSA=*/false, /*UseBlockFrequencyInfo=*/true));
 
-  MainFPM.addPass(LoopDistributePass());
+  if (!PTO.PreserveLoops)
+    MainFPM.addPass(LoopDistributePass());
 
   addVectorPasses(Level, MainFPM, /* IsFullLTO */ true);
 
@@ -2051,7 +2067,8 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   // canonicalization pass that enables other optimizations. As a result,
   // LoopSink pass needs to be a very late IR pass to avoid undoing LICM
   // result too early.
-  LateFPM.addPass(LoopSinkPass());
+  if (!PTO.PreserveLoops)
+    LateFPM.addPass(LoopSinkPass());
 
   // This hoists/decomposes div/rem ops. It should run after other sink/hoist
   // passes to avoid re-sinking, but before SimplifyCFG because it can allow
