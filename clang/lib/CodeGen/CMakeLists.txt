@@ -1,3 +1,6 @@
+include_directories(${LLVM_MAIN_SRC_DIR}/../mlir/include)
+include_directories(${CMAKE_BINARY_DIR}/tools/mlir/include)
+
 set(LLVM_LINK_COMPONENTS
   AggressiveInstCombine
   Analysis
@@ -53,6 +56,11 @@ if(MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES Clang
     set_source_files_properties(CGBuiltin.cpp PROPERTIES COMPILE_OPTIONS "${opt_flags}")
   endif()
 endif()
+
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
 
 add_clang_library(clangCodeGen
   ABIInfo.cpp
@@ -156,4 +164,18 @@ add_clang_library(clangCodeGen
   clangFrontend
   clangLex
   clangSerialization
+  MLIRIR
+  MLIRParser
+  MLIRPass
+  MLIRSPIRVDialect
+  MLIRTranslateLib
+  MLIRSupport
+  MLIRTargetLLVMIRExport
+  MLIRToLLVMIRTranslationRegistration
+  MLIRTargetLLVMIRImport
+  MLIRFromLLVMIRTranslationRegistration
+  ${dialect_libs}
+  ${conversion_libs}
+  ${extension_libs}
+  ${translation_libs}
   )
