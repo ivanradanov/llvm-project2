@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
+#include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/PragmaKinds.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -31,6 +32,12 @@
 using namespace clang;
 
 namespace {
+
+struct PragmaTransformHandler : public PragmaHandler {
+  explicit PragmaTransformHandler() : PragmaHandler("transform") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
 
 struct PragmaAlignHandler : public PragmaHandler {
   explicit PragmaAlignHandler() : PragmaHandler("align") {}
@@ -432,6 +439,9 @@ void markAsReinjectedForRelexing(llvm::MutableArrayRef<clang::Token> Toks) {
 }  // end namespace
 
 void Parser::initializePragmaHandlers() {
+  TransformHandler = std::make_unique<PragmaTransformHandler>();
+  PP.AddPragmaHandler(TransformHandler.get());
+
   AlignHandler = std::make_unique<PragmaAlignHandler>();
   PP.AddPragmaHandler(AlignHandler.get());
 
@@ -775,6 +785,14 @@ void Parser::HandlePragmaMSStruct() {
       reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
   Actions.ActOnPragmaMSStruct(Kind);
   ConsumeAnnotationToken();
+}
+
+void Parser::HandlePragmaTransform() {
+  assert(Tok.is(tok::annot_pragma_transform_label));
+  llvm::errs() << NextToken().getIdentifierInfo()->getName();
+  ConsumeAnnotationToken();
+  ConsumeAnyToken();
+  ExpectAndConsume(tok::eod);
 }
 
 void Parser::HandlePragmaAlign() {
@@ -2437,6 +2455,38 @@ static void ParseAlignPragma(Preprocessor &PP, Token &FirstTok,
   Toks[0].setAnnotationEndLoc(EndLoc);
   Toks[0].setAnnotationValue(reinterpret_cast<void*>(
                              static_cast<uintptr_t>(Kind)));
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+}
+
+// #pragma transform label <label>
+void PragmaTransformHandler::HandlePragma(Preprocessor &PP,
+                                          PragmaIntroducer Introducer,
+                                          Token &TransformTok) {
+  SourceLocation TransformLoc = TransformTok.getLocation();
+  Token Tok;
+  PP.Lex(Tok);
+  if (!Tok.getIdentifierInfo()->isStr("label")) {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_string) << "label";
+    return;
+  }
+  Token Identifier;
+  PP.Lex(Identifier);
+
+  if (Tok.isNot(tok::identifier)) {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier)
+        << "label";
+    return;
+  }
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(2),
+                              2);
+  Token &pragmaUnusedTok = Toks[0];
+  pragmaUnusedTok.startToken();
+  pragmaUnusedTok.setKind(tok::annot_pragma_transform_label);
+  pragmaUnusedTok.setLocation(TransformLoc);
+  pragmaUnusedTok.setAnnotationEndLoc(TransformLoc);
+  Toks[1] = Identifier;
   PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
                       /*IsReinject=*/false);
 }

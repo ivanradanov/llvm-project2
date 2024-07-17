@@ -530,6 +530,10 @@ Retry:
     ProhibitAttributes(GNUAttrs);
     return ParsePragmaLoopHint(Stmts, StmtCtx, TrailingElseLoc, CXX11Attrs);
 
+  case tok::annot_pragma_transform_label:
+    HandlePragmaTransform();
+    return StmtEmpty();
+
   case tok::annot_pragma_dump:
     HandlePragmaDump();
     return StmtEmpty();
