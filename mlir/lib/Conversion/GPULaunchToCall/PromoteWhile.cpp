@@ -26,6 +26,7 @@
 #include "mlir/Support/LogicalResult.h"
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -334,6 +335,77 @@ struct WhileOpAlignBeforeArgs
     return mlir::success();
   }
 };
+
+bool isOppositeImpl(arith::CmpIOp c1, arith::CmpIOp c2) {
+  bool sameOperands = c1.getLhs() == c2.getLhs() && c1.getRhs() == c2.getRhs();
+  bool sameOperandsSwapped =
+      c1.getLhs() == c2.getRhs() && c1.getRhs() == c2.getLhs();
+  if (!(sameOperands || sameOperandsSwapped))
+    return false;
+
+  if (c1.getPredicate() == arith::CmpIPredicate::eq &&
+      c2.getPredicate() == arith::CmpIPredicate::ne)
+    return true;
+
+  return false;
+}
+
+bool isOpposite(arith::CmpIOp c1, arith::CmpIOp c2) {
+  return isOppositeImpl(c1, c2) || isOppositeImpl(c2, c1);
+}
+
+/// scf.while () {
+///   %cond1 = eq %1 %2
+///   %cond2 = ne %1 %2
+///   scf.if (%cond1) {A} else {B}
+///   scf.condition %cond2
+///
+/// ->
+///
+/// scf.while () {
+///   %cond1 = eq %1 %2
+///   %cond2 = ne %1 %2
+///   scf.if (%cond2) {B} else {A}
+///   scf.condition %cond2
+struct WhileOpPrepIf : public mlir::OpRewritePattern<mlir::scf::IfOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::scf::IfOp op,
+                  mlir::PatternRewriter &rewriter) const override {
+    auto loop = mlir::dyn_cast<mlir::scf::WhileOp>(op->getParentOp());
+    if (!loop || op->getBlock() != loop.getBeforeBody())
+      return mlir::failure();
+
+    mlir::Block *beforeBody = loop.getBeforeBody();
+    auto beforeTerm =
+        mlir::cast<mlir::scf::ConditionOp>(beforeBody->getTerminator());
+    if (op.getCondition() == beforeTerm.getCondition())
+      return mlir::failure();
+
+    auto c1 = mlir::dyn_cast_or_null<arith::CmpIOp>(
+        op.getCondition().getDefiningOp());
+    auto c2 = mlir::dyn_cast_or_null<arith::CmpIOp>(
+        beforeTerm.getCondition().getDefiningOp());
+
+    if (!c1 || !c2)
+      return mlir::failure();
+
+    if (!isOpposite(c1, c2))
+      return mlir::failure();
+
+    auto newIf = rewriter.create<scf::IfOp>(op.getLoc(), op->getResultTypes(),
+                                            beforeTerm.getCondition());
+    rewriter.inlineRegionBefore(op.getElseRegion(), newIf.getThenRegion(),
+                                newIf.getThenRegion().begin());
+    rewriter.inlineRegionBefore(op.getThenRegion(), newIf.getElseRegion(),
+                                newIf.getElseRegion().begin());
+    rewriter.replaceOp(op, newIf);
+
+    return success();
+  }
+};
+
 struct WhileOpMoveIfCond : public mlir::OpRewritePattern<mlir::scf::IfOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -736,9 +808,10 @@ struct PromoteWhileOp : public mlir::OpRewritePattern<mlir::scf::WhileOp> {
     using Pred = mlir::arith::CmpIPredicate;
     auto predicate = cmp.getPredicate();
     if (predicate != Pred::slt && predicate != Pred::sgt &&
-        predicate != Pred::ult && predicate != Pred::ugt)
+        predicate != Pred::ult && predicate != Pred::ugt &&
+        predicate != Pred::ne)
       return rewriter.notifyMatchFailure(loop, [&](mlir::Diagnostic &diag) {
-        diag << "Expected 'slt' or 'sgt' predicate: " << *cmp;
+        diag << "Expected 'lt', 'gt', or 'ne' predicate: " << *cmp;
       });
 
     if (!checkIndexType(cmp))
@@ -769,6 +842,23 @@ struct PromoteWhileOp : public mlir::OpRewritePattern<mlir::scf::WhileOp> {
       }
       if (iterVar)
         break;
+    }
+
+    if (!iterVar && cmp.getPredicate() == Pred::ne) {
+      auto lhs = cmp.getLhs();
+      auto rhs = cmp.getRhs();
+      auto blhs = mlir::dyn_cast<mlir::BlockArgument>(lhs);
+      auto brhs = mlir::dyn_cast<mlir::BlockArgument>(rhs);
+
+      if (blhs && blhs.getOwner() == beforeBody &&
+          dom.properlyDominates(rhs, loop)) {
+        iterVar = blhs;
+        end = rhs;
+      } else if (brhs && brhs.getOwner() == beforeBody &&
+                 dom.properlyDominates(lhs, loop)) {
+        iterVar = brhs;
+        end = lhs;
+      }
     }
 
     if (!iterVar)
@@ -1061,6 +1151,7 @@ struct MergeNestedForIntoParallel
 
 void populateLoopOptsPatterns(mlir::RewritePatternSet &patterns) {
   patterns.insert<CanonicalizeLoopMemrefIndex, MoveOpsFromBefore, WhileOpLICM,
+                  WhileOpPrepIf,
                   /*WhileOpExpandTuple,*/ WhileOpMoveIfCond,
                   WhileOpAlignBeforeArgs>(patterns.getContext());
 }
