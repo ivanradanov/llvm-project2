@@ -341,7 +341,7 @@ def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
   let constructor = "mlir::createOutlineGPUJitRegionsPass()";
 }
 
-def PromoteScfWhilePass : Pass<"promote-scf-while", "ModuleOp"> {
+def PromoteScfWhilePass : Pass<"promote-scf-while"> {
   let summary = "";
   let dependentDialects = [
     "func::FuncDialect",
@@ -363,7 +363,7 @@ def LLVMToAffineAccessPass : Pass<"llvm-to-affine-access"> {
 // LLVMToArith
 //===----------------------------------------------------------------------===//
 
-def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith", "ModuleOp"> {
+def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith"> {
   let summary = "Convert LLVM arith operations to the Arith dialect";
   let dependentDialects = ["arith::ArithDialect"];
   let constructor = "mlir::createConvertLLVMToArithPass()";
@@ -373,7 +373,7 @@ def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith", "ModuleOp"> {
 // LLVMToControlFlow
 //===----------------------------------------------------------------------===//
 
-def ConvertLLVMToControlFlowPass : Pass<"convert-llvm-to-cf", "ModuleOp"> {
+def ConvertLLVMToControlFlowPass : Pass<"convert-llvm-to-cf"> {
   let summary = "Convert LLVM cf operations to the ControlFlow dialect";
   let dependentDialects = ["cf::ControlFlowDialect"];
   let constructor = "mlir::createConvertLLVMToControlFlowPass()";

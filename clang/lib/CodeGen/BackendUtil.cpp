@@ -95,6 +95,7 @@
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Target/LLVMIR/Import.h"
 #include "mlir/Target/LLVMIR/ModuleImport.h"
@@ -134,6 +135,28 @@ static cl::opt<PGOOptions::ColdFuncOpt> ClPGOColdFuncAttr(
 static cl::opt<bool> ClTransformerEnable("transformer-enable", cl::init(false),
                                          cl::Hidden,
                                          cl::desc("Enable MLIR transformer"));
+
+// clang-format off
+static constexpr char DefaultMlirPipeline[] =
+    //"builtin.module("
+    //"llvm.func("
+    "convert-llvm-to-cf,"
+    "convert-llvm-to-arith,"
+    "canonicalize,"
+    "lift-cf-to-scf,"
+    "canonicalize,"
+    "promote-scf-while,"
+    "llvm-to-affine-access,"
+    "canonicalize"
+    //")"
+    //")"
+    ;
+// clang-format on
+
+static cl::opt<std::string> ClMlirPipeline("transformer-mlir-pipeline",
+                                           cl::init(DefaultMlirPipeline),
+                                           cl::Hidden,
+                                           cl::desc("Enable MLIR transformer"));
 
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
 } // namespace llvm
@@ -1200,15 +1223,27 @@ void EmitAssemblyHelper::RunCodegenPipeline(
 }
 
 void EmitAssemblyHelper::RunTransformer() {
+  llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n";
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
+  mlir::registerAllPasses();
   mlir::registerAllExtensions(registry);
   mlir::registerAllToLLVMIRTranslations(registry);
   mlir::registerAllFromLLVMIRTranslations(registry);
   mlir::MLIRContext context(registry);
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
-  llvm::errs() << *MlirModule << "\n";
+  llvm::errs() << "Pre-transform MLIR\n" << *MlirModule << "\n";
+  mlir::PassManager pm(&context);
+  if (mlir::failed(mlir::parsePassPipeline(ClMlirPipeline.c_str(), pm))) {
+    llvm::errs() << "Invalid pipeline";
+    abort();
+  }
+  if (mlir::failed(pm.run(MlirModule.get()))) {
+    llvm::errs() << "Mlir passes failed";
+    abort();
+  }
+  llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n";
 }
 
 void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
