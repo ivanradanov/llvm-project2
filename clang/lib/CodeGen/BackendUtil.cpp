@@ -1245,20 +1245,6 @@ void EmitAssemblyHelper::RunTransformer() {
     llvm::errs() << "Mlir passes failed";
     abort();
   }
-
-  constexpr char TransformSequence[] = R"RAWSTRING(
-transform.sequence %arg0: !transform.any_op {} {
-  transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
-  transform.yield
-}
-)RAWSTRING";
-
-  // auto Seq = mlir::parseSourceString(TransformSequence);
-  // llvm::errs() << Seq << "\n"
-  // MlirModule->walk([&](scf::ForOp forOp) {
-  //   mlir::transform::applyTransformSequence(forOp,MlirModule);
-  // });
-
   llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n";
 }
 
