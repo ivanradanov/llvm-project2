@@ -13,6 +13,7 @@
 #include "llvm/IRPrinter/IRPrintingPasses.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/ModuleSummaryAnalysis.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PrintPasses.h"
@@ -23,6 +24,9 @@
 using namespace llvm;
 
 extern cl::opt<bool> WriteNewDbgInfoFormat;
+
+static cl::opt<bool> EmitMLIR("emit-mlir", cl::Hidden, cl::init(false),
+                              cl::desc("Whether to emit mlir instead of llvm"));
 
 PrintModulePass::PrintModulePass() : OS(dbgs()) {}
 PrintModulePass::PrintModulePass(raw_ostream &OS, const std::string &Banner,
@@ -41,6 +45,17 @@ PreservedAnalyses PrintModulePass::run(Module &M, ModuleAnalysisManager &AM) {
   // update test output.
   if (WriteNewDbgInfoFormat)
     M.removeDebugIntrinsicDeclarations();
+
+  if (EmitMLIR) {
+    if (auto Arr = dyn_cast_or_null<ConstantDataSequential>(
+            dyn_cast_or_null<GlobalVariable>(
+                M.getNamedValue("__clang_mlir_output"))
+                ->getInitializer())) {
+      StringRef Str = Arr->getAsString();
+      OS.write(Str.data(), Arr->getAsString().size());
+      return PreservedAnalyses::all();
+    }
+  }
 
   if (llvm::isFunctionInPrintList("*")) {
     if (!Banner.empty())

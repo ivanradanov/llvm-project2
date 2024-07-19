@@ -169,6 +169,8 @@ add_clang_library(clangCodeGen
   MLIRIR
   MLIRParser
   MLIRPass
+  MLIROptLib
+  MLIRSupport
   MLIRSPIRVDialect
   MLIRTranslateLib
   MLIRSupport
