@@ -32,6 +32,7 @@
 #include "llvm/Frontend/Driver/CodeGenOptions.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSummaryIndex.h"
@@ -93,6 +94,7 @@
 #include "mlir/Dialect/Transform/Transforms/TransformInterpreterUtils.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
@@ -213,7 +215,7 @@ class EmitAssemblyHelper {
   std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef Path) {
     std::error_code EC;
     auto F = std::make_unique<llvm::ToolOutputFile>(Path, EC,
-                                                     llvm::sys::fs::OF_None);
+                                                    llvm::sys::fs::OF_None);
     if (EC) {
       Diags.Report(diag::err_fe_unable_to_open_output) << Path << EC.message();
       F.reset();
@@ -586,8 +588,7 @@ static void setCommandLineOpts(const CodeGenOptions &CodeGenOpts) {
   // FIXME: The command line parser below is not thread-safe and shares a global
   // state, so this call might crash or overwrite the options of another Clang
   // instance in the same process.
-  llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
-                                    BackendArgs.data());
+  llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1, BackendArgs.data());
 }
 
 void EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
@@ -1116,46 +1117,51 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   if (!actionRequiresCodeGen(Action) && CodeGenOpts.VerifyModule)
     MPM.addPass(VerifierPass());
 
-  if (Action == Backend_EmitBC || Action == Backend_EmitLL ||
-      CodeGenOpts.FatLTO) {
-    if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
-      if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
-        TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
-                                 CodeGenOpts.EnableSplitLTOUnit);
-      if (Action == Backend_EmitBC) {
-        if (!CodeGenOpts.ThinLinkBitcodeFile.empty()) {
-          ThinLinkOS = openOutputFile(CodeGenOpts.ThinLinkBitcodeFile);
-          if (!ThinLinkOS)
-            return;
-        }
-        MPM.addPass(ThinLTOBitcodeWriterPass(*OS, ThinLinkOS ? &ThinLinkOS->os()
-                                                             : nullptr));
-      } else if (Action == Backend_EmitLL) {
-        MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
-                                    /*EmitLTOSummary=*/true));
-      }
-    } else {
-      // Emit a module summary by default for Regular LTO except for ld64
-      // targets
-      bool EmitLTOSummary = shouldEmitRegularLTOSummary();
-      if (EmitLTOSummary) {
-        if (!TheModule->getModuleFlag("ThinLTO") && !CodeGenOpts.UnifiedLTO)
-          TheModule->addModuleFlag(llvm::Module::Error, "ThinLTO", uint32_t(0));
+  if (!TransformerEnabled ||
+      (TransformerEnabled && !TransformerPreprocessing)) {
+    if (Action == Backend_EmitBC || Action == Backend_EmitLL ||
+        CodeGenOpts.FatLTO) {
+      if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
         if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
           TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
-                                   uint32_t(1));
-      }
-      if (Action == Backend_EmitBC) {
-        MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
+                                   CodeGenOpts.EnableSplitLTOUnit);
+        if (Action == Backend_EmitBC) {
+          if (!CodeGenOpts.ThinLinkBitcodeFile.empty()) {
+            ThinLinkOS = openOutputFile(CodeGenOpts.ThinLinkBitcodeFile);
+            if (!ThinLinkOS)
+              return;
+          }
+          MPM.addPass(ThinLTOBitcodeWriterPass(
+              *OS, ThinLinkOS ? &ThinLinkOS->os() : nullptr));
+        } else if (Action == Backend_EmitLL) {
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                      /*EmitLTOSummary=*/true));
+        }
+      } else {
+        // Emit a module summary by default for Regular LTO except for ld64
+        // targets
+        bool EmitLTOSummary = shouldEmitRegularLTOSummary();
+        if (EmitLTOSummary) {
+          if (!TheModule->getModuleFlag("ThinLTO") && !CodeGenOpts.UnifiedLTO)
+            TheModule->addModuleFlag(llvm::Module::Error, "ThinLTO",
+                                     uint32_t(0));
+          if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
+            TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
+                                     uint32_t(1));
+        }
+        if (Action == Backend_EmitBC) {
+          MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
+                                        EmitLTOSummary));
+        } else if (Action == Backend_EmitLL) {
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       EmitLTOSummary));
-      } else if (Action == Backend_EmitLL) {
-        MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
-                                    EmitLTOSummary));
+        }
       }
-    }
 
-    if (shouldEmitUnifiedLTOModueFlag())
-      TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO", uint32_t(1));
+      if (shouldEmitUnifiedLTOModueFlag())
+        TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO",
+                                 uint32_t(1));
+    }
   }
 
   // Print a textual, '-passes=' compatible, representation of pipeline if
@@ -1224,8 +1230,10 @@ void EmitAssemblyHelper::RunCodegenPipeline(
   }
 }
 
+#define DEBUG_TYPE "run-transformer"
+
 void EmitAssemblyHelper::RunTransformer() {
-  llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n";
+  LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::registerAllPasses();
@@ -1235,7 +1243,7 @@ void EmitAssemblyHelper::RunTransformer() {
   mlir::MLIRContext context(registry);
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
-  llvm::errs() << "Pre-transform MLIR\n" << *MlirModule << "\n";
+  LLVM_DEBUG(llvm::errs() << "Pre-transform MLIR\n" << *MlirModule << "\n");
   mlir::PassManager pm(&context);
   if (mlir::failed(mlir::parsePassPipeline(ClMlirPipeline.c_str(), pm))) {
     llvm::errs() << "Invalid pipeline";
@@ -1245,7 +1253,21 @@ void EmitAssemblyHelper::RunTransformer() {
     llvm::errs() << "Mlir passes failed";
     abort();
   }
-  llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n";
+  LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
+
+  std::string MlirString;
+  llvm::raw_string_ostream MlirStream(MlirString);
+  mlir::OpPrintingFlags Flags;
+  Flags.enableDebugInfo();
+  mlir::AsmState asmState(MlirModule.get(), Flags);
+  MlirModule->print(MlirStream, asmState);
+  MlirStream.flush();
+
+  llvm::IRBuilder<> B(TheModule->getContext());
+  auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
+                                 TheModule, true);
+  appendToUsed(*TheModule, {GV});
+  LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
 }
 
 void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
@@ -1267,7 +1289,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
 
   std::unique_ptr<llvm::ToolOutputFile> ThinLinkOS, DwoOS;
   if (ClTransformerEnable) {
-    llvm::errs() << "Enabling MLIR transformer\n";
+    LLVM_DEBUG(llvm::errs() << "Enabling MLIR transformer\n");
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
     RunTransformer();
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, false);
@@ -1282,13 +1304,14 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
     DwoOS->keep();
 }
 
-static void runThinLTOBackend(
-    DiagnosticsEngine &Diags, ModuleSummaryIndex *CombinedIndex,
-    llvm::Module *M, const HeaderSearchOptions &HeaderOpts,
-    const CodeGenOptions &CGOpts, const clang::TargetOptions &TOpts,
-    const LangOptions &LOpts, std::unique_ptr<raw_pwrite_stream> OS,
-    std::string SampleProfile, std::string ProfileRemapping,
-    BackendAction Action) {
+static void
+runThinLTOBackend(DiagnosticsEngine &Diags, ModuleSummaryIndex *CombinedIndex,
+                  llvm::Module *M, const HeaderSearchOptions &HeaderOpts,
+                  const CodeGenOptions &CGOpts,
+                  const clang::TargetOptions &TOpts, const LangOptions &LOpts,
+                  std::unique_ptr<raw_pwrite_stream> OS,
+                  std::string SampleProfile, std::string ProfileRemapping,
+                  BackendAction Action) {
   DenseMap<StringRef, DenseMap<GlobalValue::GUID, GlobalValueSummary *>>
       ModuleToDefinedGVSummaries;
   CombinedIndex->collectDefinedGVSummariesPerModule(ModuleToDefinedGVSummaries);
@@ -1408,7 +1431,7 @@ void clang::EmitBackendOutput(
                       .moveInto(CombinedIndex)) {
       logAllUnhandledErrors(std::move(E), errs(),
                             "Error loading index file '" +
-                            CGOpts.ThinLTOIndexFile + "': ");
+                                CGOpts.ThinLTOIndexFile + "': ");
       return;
     }
 
