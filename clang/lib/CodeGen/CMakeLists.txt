@@ -164,6 +164,7 @@ add_clang_library(clangCodeGen
   clangFrontend
   clangLex
   clangSerialization
+  LLVMIRPrinter
   MLIRIR
   MLIRParser
   MLIRPass

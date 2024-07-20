@@ -25,8 +25,8 @@ using namespace llvm;
 
 extern cl::opt<bool> WriteNewDbgInfoFormat;
 
-static cl::opt<bool> EmitMLIR("emit-mlir", cl::Hidden, cl::init(false),
-                              cl::desc("Whether to emit mlir instead of llvm"));
+cl::opt<bool> EmitMLIR("emit-mlir", cl::Hidden, cl::init(false),
+                       cl::desc("Whether to emit mlir instead of llvm"));
 
 PrintModulePass::PrintModulePass() : OS(dbgs()) {}
 PrintModulePass::PrintModulePass(raw_ostream &OS, const std::string &Banner,

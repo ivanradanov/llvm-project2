@@ -817,6 +817,8 @@ static void addSanitizers(const Triple &TargetTriple,
   }
 }
 
+extern cl::opt<bool> EmitMLIR;
+
 void EmitAssemblyHelper::RunOptimizationPipeline(
     BackendAction Action, std::unique_ptr<raw_pwrite_stream> &OS,
     std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC,
@@ -1120,7 +1122,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   if (!TransformerEnabled ||
       (TransformerEnabled && !TransformerPreprocessing)) {
     if (Action == Backend_EmitBC || Action == Backend_EmitLL ||
-        CodeGenOpts.FatLTO) {
+        CodeGenOpts.FatLTO || EmitMLIR) {
       if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
         if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
           TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
@@ -1134,6 +1136,10 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
           MPM.addPass(ThinLTOBitcodeWriterPass(
               *OS, ThinLinkOS ? &ThinLinkOS->os() : nullptr));
         } else if (Action == Backend_EmitLL) {
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                      /*EmitLTOSummary=*/true));
+        } else {
+          assert(EmitMLIR);
           MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       /*EmitLTOSummary=*/true));
         }
@@ -1155,6 +1161,10 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
         } else if (Action == Backend_EmitLL) {
           MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       EmitLTOSummary));
+        } else {
+          assert(EmitMLIR);
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                      /*EmitLTOSummary=*/true));
         }
       }
 
@@ -1200,6 +1210,8 @@ void EmitAssemblyHelper::RunCodegenPipeline(
   case Backend_EmitAssembly:
   case Backend_EmitMCNull:
   case Backend_EmitObj:
+    if (EmitMLIR)
+      return;
     CodeGenPasses.add(
         createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
     if (!CodeGenOpts.SplitDwarfOutput.empty()) {
