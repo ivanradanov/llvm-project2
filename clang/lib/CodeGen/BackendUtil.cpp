@@ -150,8 +150,9 @@ static constexpr char DefaultMlirPipeline[] =
     "lift-cf-to-scf,"
     "canonicalize,"
     "promote-scf-while,"
-    "llvm-to-affine-access,"
     "canonicalize"
+    //"llvm-to-affine-access,"
+    //"canonicalize"
     //")"
     //")"
     ;
