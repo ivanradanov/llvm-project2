@@ -91,10 +91,15 @@
 #include "llvm/Transforms/Utils/Debugify.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
+#include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
+#include "mlir/Dialect/Transform/IR/TransformOps.h"
+#include "mlir/Dialect/Transform/IR/TransformTypes.h"
+#include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/Transforms/TransformInterpreterUtils.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
@@ -1268,18 +1273,63 @@ void EmitAssemblyHelper::RunTransformer() {
   }
   LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
 
-  std::string MlirString;
-  llvm::raw_string_ostream MlirStream(MlirString);
-  mlir::OpPrintingFlags Flags;
-  Flags.enableDebugInfo();
-  mlir::AsmState asmState(MlirModule.get(), Flags);
-  MlirModule->print(MlirStream, asmState);
-  MlirStream.flush();
+  using namespace mlir;
 
-  llvm::IRBuilder<> B(TheModule->getContext());
-  auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
-                                 TheModule, true);
-  appendToUsed(*TheModule, {GV});
+  auto loc = MlirModule->getLoc();
+  //   static const char *TransformSequence = R"TRANSFORM(
+  // transform.sequence %arg0: !transform.any_op {} {
+  //   transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
+  //   transform.yield
+  // }
+  // )TRANSFORM";
+  //   auto TestSeq = mlir::parseSourceString(TransformSequence);
+
+
+  if (failed(mlir::verify(&**MlirModule)))
+      llvm::errs() << "Verification failed before transform\n";
+
+  auto anyOp = transform::AnyOpType::get(&context);
+  auto transformModule = ModuleOp::create(loc);
+  OpBuilder builder(&context);
+  transformModule->setAttr("transform.with_named_sequence", builder.getUnitAttr());
+  int i = 0;
+  MlirModule->walk([&](scf::ForOp forOp) {
+    builder.setInsertionPointToStart(&transformModule.getBodyRegion().front());
+    transform::NamedSequenceOp seq = builder.create<transform::NamedSequenceOp>(
+        loc, "transformer" + std::to_string(i++),
+        TypeAttr::get(mlir::FunctionType::get(&context, TypeRange{anyOp, anyOp},
+                                              TypeRange{})),
+        nullptr, nullptr, nullptr);
+    Block *block =
+        builder.createBlock(&seq.getBody(), {}, TypeRange({anyOp, anyOp}),
+                            SmallVector<Location>(2, loc));
+    builder.create<transform::LoopUnrollOp>(loc, block->getArgument(1), 3);
+    builder.create<transform::YieldOp>(loc, ValueRange());
+
+    RaggedArray<transform::MappedValue> extraMapping;
+    extraMapping.push_back(SmallVector<Operation *>({forOp}));
+    if (failed(transform::applyTransforms(*MlirModule, seq, extraMapping, transform::TransformOptions(), false))) {
+      llvm::errs() << "Transformation failed after transform\n";
+    }
+  });
+
+  if (failed(mlir::verify(&**MlirModule)))
+      llvm::errs() << "Verification failed\n";
+
+  if (EmitMLIR) {
+    std::string MlirString;
+    llvm::raw_string_ostream MlirStream(MlirString);
+    mlir::OpPrintingFlags Flags;
+    Flags.enableDebugInfo();
+    mlir::AsmState asmState(MlirModule.get(), Flags);
+    MlirModule->print(MlirStream, asmState);
+    MlirStream.flush();
+
+    llvm::IRBuilder<> B(TheModule->getContext());
+    auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
+                                   TheModule, true);
+    appendToUsed(*TheModule, {GV});
+  }
   LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
 }
 
