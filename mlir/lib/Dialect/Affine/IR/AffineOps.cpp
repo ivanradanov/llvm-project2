@@ -268,6 +268,13 @@ Region *mlir::affine::getAffineScope(Operation *op) {
   return nullptr;
 }
 
+Region *mlir::affine::getAffineScope(Block *block) {
+  auto parentOp = block->getParentOp();
+  if (parentOp->hasTrait<OpTrait::AffineScope>())
+    return block->getParent();
+  return getAffineScope(parentOp);
+}
+
 // A Value can be used as a dimension id iff it meets one of the following
 // conditions:
 // *) It is valid as a symbol.

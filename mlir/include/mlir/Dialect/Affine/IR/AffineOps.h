@@ -46,6 +46,10 @@ bool isTopLevelValue(Value value, Region *region);
 /// trait `AffineScope`; `nullptr` if there is no such region.
 Region *getAffineScope(Operation *op);
 
+/// Returns the closest region enclosing `block` that is held by an operation
+/// with trait `AffineScope`; `nullptr` if there is no such region.
+Region *getAffineScope(Block *block);
+
 /// AffineDmaStartOp starts a non-blocking DMA operation that transfers data
 /// from a source memref to a destination memref. The source and destination
 /// memref need not be of the same dimensionality, but need to have the same
