@@ -129,13 +129,8 @@ LogicalResult mlir::affine::promoteIfSingleIteration(AffineForOp forOp) {
   auto *parentBlock = forOp->getBlock();
   if (!iv.use_empty()) {
     if (forOp.hasConstantLowerBound()) {
-      auto func = forOp->getParentOfType<FunctionOpInterface>();
-      OpBuilder builder(forOp->getContext());
-      if (func)
-        builder.setInsertionPointToStart(&func.getFunctionBody().front());
-      else
-        builder.setInsertionPoint(forOp);
-      auto constOp = builder.create<arith::ConstantIndexOp>(
+      OpBuilder topBuilder(getAffineScope(forOp));
+      auto constOp = topBuilder.create<arith::ConstantIndexOp>(
           forOp.getLoc(), forOp.getConstantLowerBound());
       iv.replaceAllUsesWith(constOp);
     } else {
@@ -1942,9 +1937,10 @@ static LogicalResult generateCopy(
   *nBegin = begin;
   *nEnd = end;
 
-  auto f = begin->getParentOfType<FunctionOpInterface>();
-  OpBuilder topBuilder(f.getFunctionBody());
-  Value zeroIndex = topBuilder.create<arith::ConstantIndexOp>(f.getLoc(), 0);
+  Region *scope = getAffineScope(&*begin);
+  OpBuilder topBuilder(scope);
+  Value zeroIndex = topBuilder.create<arith::ConstantIndexOp>(
+      scope->getParentOp()->getLoc(), 0);
 
   *sizeInBytes = 0;
 
@@ -1962,9 +1958,7 @@ static LogicalResult generateCopy(
   OpBuilder &b = region.isWrite() ? epilogue : prologue;
 
   // Builder to create constants at the top level.
-  auto func =
-      copyPlacementBlock->getParent()->getParentOfType<FunctionOpInterface>();
-  OpBuilder top(func.getFunctionBody());
+  OpBuilder top(getAffineScope(copyPlacementBlock));
 
   auto loc = region.loc;
   auto memref = region.memref;
