@@ -3,19 +3,19 @@
 
 void foo(float *a, float *b, int n) {
 
-#pragma transform label for1
+  #pragma transform label for1
   for (int i = 0; i < n; i++) {
     a[i] = b[i] * 2;
   }
 
-#pragma transform import
-R"TRANSFORM(
-transform.named_sequence @transform1(%arg0: !transform.any_op) {
-  transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
-  transform.yield
-}
-)TRANSFORM";
+  #pragma transform import
+  R"TRANSFORM(
+  transform.named_sequence @transform1(%arg0: !transform.any_op) {
+    transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
+    transform.yield
+  }
+  )TRANSFORM";
 
-#pragma transform apply transform1(for1)
+  #pragma transform apply transform1(for1)
 
 }
