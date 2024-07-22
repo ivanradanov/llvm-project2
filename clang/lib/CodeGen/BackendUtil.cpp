@@ -91,6 +91,7 @@
 #include "llvm/Transforms/Utils/Debugify.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
 #include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
@@ -155,9 +156,9 @@ static constexpr char DefaultMlirPipeline[] =
     "lift-cf-to-scf,"
     "canonicalize,"
     "promote-scf-while,"
+    "canonicalize,"
+    "llvm-to-affine-access,"
     "canonicalize"
-    //"llvm-to-affine-access,"
-    //"canonicalize"
     //")"
     //")"
     ;
@@ -1276,27 +1277,31 @@ void EmitAssemblyHelper::RunTransformer() {
   using namespace mlir;
 
   auto loc = MlirModule->getLoc();
-  //   static const char *TransformSequence = R"TRANSFORM(
-  // transform.sequence %arg0: !transform.any_op {} {
-  //   transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
-  //   transform.yield
-  // }
-  // )TRANSFORM";
-  //   auto TestSeq = mlir::parseSourceString(TransformSequence);
+  auto anyOp = transform::AnyOpType::get(&context);
+  auto transformModule = ModuleOp::create(loc);
+  OpBuilder builder(&context);
+  transformModule->setAttr("transform.with_named_sequence",
+                           builder.getUnitAttr());
 
+  static const char *TransformSequence = R"TRANSFORM(
+transform.named_sequence @t1(%arg0: !transform.any_op) {
+  transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
+  transform.yield
+}
+)TRANSFORM";
+
+  ParserConfig config(&context, /*verifyAfterParse=*/false);
+  auto TestSeq = mlir::parseSourceString(TransformSequence,
+                                         transformModule.getBody(), config);
 
   if (failed(mlir::verify(&**MlirModule)))
       llvm::errs() << "Verification failed before transform\n";
 
-  auto anyOp = transform::AnyOpType::get(&context);
-  auto transformModule = ModuleOp::create(loc);
-  OpBuilder builder(&context);
-  transformModule->setAttr("transform.with_named_sequence", builder.getUnitAttr());
   int i = 0;
-  MlirModule->walk([&](scf::ForOp forOp) {
+  MlirModule->walk([&](affine::AffineForOp forOp) {
     builder.setInsertionPointToStart(&transformModule.getBodyRegion().front());
     transform::NamedSequenceOp seq = builder.create<transform::NamedSequenceOp>(
-        loc, "transformer" + std::to_string(i++),
+        loc, "__mlir_transformer" + std::to_string(i++),
         TypeAttr::get(mlir::FunctionType::get(&context, TypeRange{anyOp, anyOp},
                                               TypeRange{})),
         nullptr, nullptr, nullptr);
