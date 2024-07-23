@@ -75,6 +75,11 @@ static Attr *handleSuppressAttr(Sema &S, Stmt *St, const ParsedAttr &A,
       S.Context, A, DiagnosticIdentifiers.data(), DiagnosticIdentifiers.size());
 }
 
+static Attr *handleTransformImport(Sema &S, Stmt *St, const ParsedAttr &A,
+                                   SourceRange) {
+  return ::new (S.Context) TransformImportAttr(S.Context, A);
+}
+
 static Attr *handleTransformLabel(Sema &S, Stmt *St, const ParsedAttr &A,
                                   SourceRange) {
   return ::new (S.Context)
@@ -689,6 +694,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return S.CreateAnnotationAttr(A);
   case ParsedAttr::AT_TransformLabel:
     return handleTransformLabel(S, St, A, Range);
+  case ParsedAttr::AT_TransformImport:
+    return handleTransformImport(S, St, A, Range);
   default:
     if (Attr *AT = nullptr; A.getInfo().handleStmtAttribute(S, St, A, AT) !=
                             ParsedAttrInfo::NotHandled) {
