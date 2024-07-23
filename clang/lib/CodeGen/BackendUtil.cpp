@@ -16,9 +16,11 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Lex/HeaderSearchOptions.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/GlobalsModRef.h"
@@ -31,6 +33,7 @@
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/Frontend/Driver/CodeGenOptions.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/IRBuilder.h"
@@ -112,8 +115,10 @@
 #include "mlir/Target/LLVMIR/Import.h"
 #include "mlir/Target/LLVMIR/ModuleImport.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <tuple>
 using namespace clang;
 using namespace llvm;
 
@@ -1253,6 +1258,48 @@ void EmitAssemblyHelper::RunCodegenPipeline(
 
 #define DEBUG_TYPE "run-transformer"
 
+static std::map<std::string, mlir::Operation *>
+buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
+  StringRef Name = "__clang_transformer_for_locs";
+  llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  auto *CA = cast<llvm::ConstantArray>(GV->getInitializer());
+  for (auto &Op : CA->operands()) {
+    llvm::ConstantStruct *CS = cast<llvm::ConstantStruct>(Op.get());
+    StringRef Label =
+        cast<llvm::ConstantDataSequential>(
+            cast<llvm::GlobalVariable>(CS->getOperand(0))->getInitializer())
+            ->getAsCString();
+    auto getLoc = [&](llvm::Value *V) {
+      StringRef LocStartFile =
+          cast<llvm::ConstantDataSequential>(
+              cast<llvm::GlobalVariable>(
+                  cast<llvm::ConstantStruct>(V)->getOperand(0))
+                  ->getInitializer())
+              ->getAsCString();
+      uint64_t LocLine =
+          cast<llvm::ConstantInt>(cast<llvm::ConstantStruct>(V)->getOperand(1))
+              ->getZExtValue();
+      uint64_t LocCol =
+          cast<llvm::ConstantInt>(cast<llvm::ConstantStruct>(V)->getOperand(2))
+              ->getZExtValue();
+      return std::make_tuple(LocStartFile, LocLine, LocCol);
+    };
+    auto LocStart = getLoc(CS->getOperand(1));
+    auto LocEnd = getLoc(CS->getOperand(2));
+    LLVM_DEBUG({
+      llvm::errs() << Label << " "
+                   << "\n";
+      llvm::errs() << std::get<0>(LocStart) << "\n";
+      llvm::errs() << std::get<1>(LocStart) << "\n";
+      llvm::errs() << std::get<2>(LocStart) << "\n";
+      llvm::errs() << std::get<0>(LocEnd) << "\n";
+      llvm::errs() << std::get<1>(LocEnd) << "\n";
+      llvm::errs() << std::get<2>(LocEnd) << "\n";
+    });
+  }
+  return {};
+}
+
 void EmitAssemblyHelper::RunTransformer() {
   LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
@@ -1275,6 +1322,8 @@ void EmitAssemblyHelper::RunTransformer() {
     abort();
   }
   LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
+
+  auto LabelToOp = buildLabelToOpMap(*TheModule, *MlirModule);
 
   using namespace mlir;
 
