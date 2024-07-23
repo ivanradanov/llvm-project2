@@ -871,6 +871,8 @@ ANNOTATION(decltype)     // annotation for a decltype expression,
 ANNOTATION(pack_indexing_type) // annotation for an indexed pack of type,
                               // e.g., "T...[expr]"
 
+PRAGMA_ANNOTATION(pragma_transform_apply)
+PRAGMA_ANNOTATION(pragma_transform_import)
 PRAGMA_ANNOTATION(pragma_transform_label)
 
 // Annotation for #pragma unused(...)

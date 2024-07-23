@@ -4119,6 +4119,16 @@ def InitSeg : Attr {
   }];
 }
 
+def TransformImport : Attr {
+  let Args = [];
+  let Spellings = [Pragma<"", "transform_import">];
+  let Documentation = [InternalOnly];
+  let AdditionalMembers = [{
+  void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {
+  }
+  }];
+}
+
 def TransformLabel : Attr {
   let Args = [StringArgument<"Label">];
   let Spellings = [Pragma<"", "transform_label">];

@@ -35,8 +35,20 @@ using namespace clang;
 
 namespace {
 
-struct PragmaTransformHandler : public PragmaHandler {
-  explicit PragmaTransformHandler() : PragmaHandler("transform_label") {}
+struct PragmaTransformApplyHandler : public PragmaHandler {
+  explicit PragmaTransformApplyHandler() : PragmaHandler("transform_apply") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaTransformImportHandler : public PragmaHandler {
+  explicit PragmaTransformImportHandler() : PragmaHandler("transform_import") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaTransformLabelHandler : public PragmaHandler {
+  explicit PragmaTransformLabelHandler() : PragmaHandler("transform_label") {}
   void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
                     Token &FirstToken) override;
 };
@@ -441,8 +453,14 @@ void markAsReinjectedForRelexing(llvm::MutableArrayRef<clang::Token> Toks) {
 }  // end namespace
 
 void Parser::initializePragmaHandlers() {
-  TransformHandler = std::make_unique<PragmaTransformHandler>();
-  PP.AddPragmaHandler(TransformHandler.get());
+  TransformImportHandler = std::make_unique<PragmaTransformImportHandler>();
+  PP.AddPragmaHandler(TransformImportHandler.get());
+
+  TransformApplyHandler = std::make_unique<PragmaTransformApplyHandler>();
+  PP.AddPragmaHandler(TransformApplyHandler.get());
+
+  TransformLabelHandler = std::make_unique<PragmaTransformLabelHandler>();
+  PP.AddPragmaHandler(TransformLabelHandler.get());
 
   AlignHandler = std::make_unique<PragmaAlignHandler>();
   PP.AddPragmaHandler(AlignHandler.get());
@@ -2461,10 +2479,48 @@ static void ParseAlignPragma(Preprocessor &PP, Token &FirstTok,
                       /*IsReinject=*/false);
 }
 
+// #pragma transform_apply <func>(<arg1>, <arg2>, ...)
+void PragmaTransformApplyHandler::HandlePragma(Preprocessor &PP,
+                                               PragmaIntroducer Introducer,
+                                               Token &TransformTok) {
+  Token Tok;
+  do {
+    PP.Lex(Tok);
+  } while (Tok.isNot(tok::eod));
+  return;
+}
+
+// #pragma transform_import
+void PragmaTransformImportHandler::HandlePragma(Preprocessor &PP,
+                                                PragmaIntroducer Introducer,
+                                                Token &TransformTok) {
+  Token Tok;
+  PP.Lex(Tok);
+  if (Tok.isNot(tok::eod))
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << "import";
+
+  SourceLocation TransformLoc = TransformTok.getLocation();
+
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaTransformLabelInfo;
+  Info->TransformLabel = TransformTok;
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Token &Tok0 = Toks[0];
+  Tok0.startToken();
+  Tok0.setKind(tok::annot_pragma_transform_import);
+  Tok0.setLocation(TransformLoc);
+  Tok0.setAnnotationEndLoc(TransformLoc);
+  Tok0.setAnnotationValue(Info);
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+}
+
 // #pragma transform_label <label>
-void PragmaTransformHandler::HandlePragma(Preprocessor &PP,
-                                          PragmaIntroducer Introducer,
-                                          Token &TransformTok) {
+void PragmaTransformLabelHandler::HandlePragma(Preprocessor &PP,
+                                               PragmaIntroducer Introducer,
+                                               Token &TransformTok) {
   SourceLocation TransformLoc = TransformTok.getLocation();
   Token Identifier;
   PP.Lex(Identifier);

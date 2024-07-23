@@ -535,6 +535,13 @@ Retry:
     return ParsePragmaTransformLabel(Stmts, StmtCtx, TrailingElseLoc,
                                      CXX11Attrs);
 
+  case tok::annot_pragma_transform_import:
+    return ParsePragmaTransformImport(Stmts, StmtCtx, TrailingElseLoc,
+                                      CXX11Attrs);
+
+  case tok::annot_pragma_transform_apply:
+    return StmtEmpty();
+
   case tok::annot_pragma_dump:
     HandlePragmaDump();
     return StmtEmpty();
@@ -2517,6 +2524,37 @@ StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts,
   // See PR46336.
   if (Attrs.Range.getBegin().isInvalid())
     Attrs.Range.setBegin(StartLoc);
+
+  return S;
+}
+
+StmtResult Parser::ParsePragmaTransformImport(StmtVector &Stmts,
+                                              ParsedStmtContext StmtCtx,
+                                              SourceLocation *TrailingElseLoc,
+                                              ParsedAttributes &Attrs) {
+  assert(Tok.is(tok::annot_pragma_transform_import));
+  ParsedAttributes TempAttrs(AttrFactory);
+
+  PragmaTransformLabelInfo &TLI =
+      *reinterpret_cast<PragmaTransformLabelInfo *>(Tok.getAnnotationValue());
+  ConsumeAnnotationToken();
+
+  MaybeParseCXX11Attributes(Attrs);
+
+  ArgsUnion Args[] = {};
+  unsigned NumArgs = 0;
+  SourceRange Range;
+  IdentifierInfo *ScopeName = nullptr;
+  SourceLocation ScopeLoc;
+
+  TempAttrs.addNew(TLI.TransformLabel.getIdentifierInfo(), Range, ScopeName,
+                   ScopeLoc, Args, NumArgs, ParsedAttr::Form::Pragma());
+
+  ParsedAttributes EmptyDeclSpecAttrs(AttrFactory);
+  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
+      Stmts, StmtCtx, TrailingElseLoc, Attrs, EmptyDeclSpecAttrs);
+
+  Attrs.takeAllFrom(TempAttrs);
 
   return S;
 }
