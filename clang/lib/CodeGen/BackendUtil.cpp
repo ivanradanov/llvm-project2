@@ -103,6 +103,7 @@
 #include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/Transforms/TransformInterpreterUtils.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
@@ -1258,18 +1259,33 @@ void EmitAssemblyHelper::RunCodegenPipeline(
 
 #define DEBUG_TYPE "run-transformer"
 
-static std::map<std::string, mlir::Operation *>
+namespace {
+
+struct LocInfo {
+  StringRef File;
+  uint64_t Line, Col;
+};
+
+struct ForLocInfo {
+  StringRef Label;
+  LocInfo Start, End;
+};
+
+using ForOpTy = mlir::affine::AffineForOp;
+
+std::map<std::string, mlir::Operation *>
 buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
   StringRef Name = "__clang_transformer_for_locs";
   llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
   auto *CA = cast<llvm::ConstantArray>(GV->getInitializer());
+  SmallVector<ForLocInfo> ForLocs;
   for (auto &Op : CA->operands()) {
     llvm::ConstantStruct *CS = cast<llvm::ConstantStruct>(Op.get());
     StringRef Label =
         cast<llvm::ConstantDataSequential>(
             cast<llvm::GlobalVariable>(CS->getOperand(0))->getInitializer())
             ->getAsCString();
-    auto getLoc = [&](llvm::Value *V) {
+    auto getLoc = [&](llvm::Value *V) -> LocInfo {
       StringRef LocStartFile =
           cast<llvm::ConstantDataSequential>(
               cast<llvm::GlobalVariable>(
@@ -1282,23 +1298,53 @@ buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
       uint64_t LocCol =
           cast<llvm::ConstantInt>(cast<llvm::ConstantStruct>(V)->getOperand(2))
               ->getZExtValue();
-      return std::make_tuple(LocStartFile, LocLine, LocCol);
+      return {LocStartFile, LocLine, LocCol};
     };
     auto LocStart = getLoc(CS->getOperand(1));
     auto LocEnd = getLoc(CS->getOperand(2));
     LLVM_DEBUG({
-      llvm::errs() << Label << " "
-                   << "\n";
-      llvm::errs() << std::get<0>(LocStart) << "\n";
-      llvm::errs() << std::get<1>(LocStart) << "\n";
-      llvm::errs() << std::get<2>(LocStart) << "\n";
-      llvm::errs() << std::get<0>(LocEnd) << "\n";
-      llvm::errs() << std::get<1>(LocEnd) << "\n";
-      llvm::errs() << std::get<2>(LocEnd) << "\n";
+      llvm::errs() << Label << "\n";
+      llvm::errs() << LocStart.File << "\n";
+      llvm::errs() << LocStart.Line << "\n";
+      llvm::errs() << LocStart.Col << "\n";
+      llvm::errs() << LocEnd.File << "\n";
+      llvm::errs() << LocEnd.Line << "\n";
+      llvm::errs() << LocEnd.Col << "\n";
     });
+    ForLocs.push_back({Label, LocStart, LocEnd});
   }
-  return {};
+
+  using namespace mlir;
+
+  std::map<std::string, mlir::Operation *> Map;
+  MlirModule->walk([&](ForOpTy forOp) {
+    LLVM_DEBUG(forOp->getLoc().dump());
+    Location loc = forOp->getLoc();
+    loc->walk([&](Location loc) {
+      if (FileLineColLoc flc = dyn_cast<FileLineColLoc>(loc)) {
+        LLVM_DEBUG({
+          llvm::errs() << "flc\n";
+          llvm::errs() << flc.getFilename() << "\n";
+          llvm::errs() << flc.getLine() << "\n";
+          llvm::errs() << flc.getColumn() << "\n";
+        });
+        for (auto Loc : ForLocs) {
+          // TODO we only get the filename from `pwd` here, whereas Loc.Start
+          // contains the absolute path, fix this
+          bool isSameFile = Loc.Start.File.ends_with(flc.getFilename());
+          if (isSameFile && Loc.Start.Line == flc.getLine() &&
+              Loc.Start.Col == flc.getColumn()) {
+            llvm::errs() << "Found match: " << Loc.Label << "\n";
+            Map[Loc.Label.str()] = forOp;
+          }
+        }
+      }
+      return WalkResult::advance();
+    });
+  });
+  return Map;
 }
+} // namespace
 
 void EmitAssemblyHelper::RunTransformer() {
   LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
