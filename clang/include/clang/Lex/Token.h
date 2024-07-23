@@ -345,6 +345,11 @@ struct PragmaLoopHintInfo {
   Token Option;
   ArrayRef<Token> Toks;
 };
+
+struct PragmaTransformLabelInfo {
+  Token TransformLabel;
+  Token Identfier;
+};
 } // end namespace clang
 
 #endif // LLVM_CLANG_LEX_TOKEN_H
