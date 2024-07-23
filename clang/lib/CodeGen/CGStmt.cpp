@@ -20,6 +20,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtVisitor.h"
+#include "clang/Basic/AttrKinds.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/PrettyStackTrace.h"
@@ -749,6 +750,31 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
     switch (A->getKind()) {
     default:
       break;
+    case attr::TransformImport: {
+      StringRef Mlir = cast<StringLiteral>(S.getSubStmt())->getString();
+      StringRef Name = "__clang_transformer_mlir";
+      llvm::GlobalVariable *GV = CGM.getModule().getGlobalVariable(Name);
+      SmallVector<llvm::Constant *> ForLocs;
+      if (GV) {
+        auto *CA = cast<llvm::ConstantArray>(GV->getInitializer());
+        for (auto &Op : CA->operands())
+          ForLocs.push_back(cast<llvm::Constant>(Op));
+        GV->eraseFromParent();
+      }
+      llvm::Constant *LabelStr =
+          CGM.GetAddrOfConstantCString(Mlir.str(), "mlir").getPointer();
+      ForLocs.push_back(LabelStr);
+      llvm::ArrayType *ATy =
+          llvm::ArrayType::get(LabelStr->getType(), ForLocs.size());
+      // TODO the module-wise mlirs here should be kept separate in their own
+      // sets, and we should append the sets as a whole so that we don't get
+      // conflicting transform dialect symbols from different translation units
+      GV = new llvm::GlobalVariable(
+          CGM.getModule(), ATy, false, llvm::GlobalValue::AppendingLinkage,
+          llvm::ConstantArray::get(ATy, ForLocs), Name);
+      GV->setSection("llvm.metadata");
+      return;
+    }
     case attr::NoMerge:
       nomerge = true;
       break;
