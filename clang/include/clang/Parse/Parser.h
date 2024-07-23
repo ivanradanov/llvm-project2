@@ -795,6 +795,10 @@ private:
   bool HandlePragmaMSOptimize(StringRef PragmaName,
                               SourceLocation PragmaLocation);
 
+  StmtResult ParsePragmaTransformApply(StmtVector &Stmts,
+                                       ParsedStmtContext StmtCtx,
+                                       ParsedAttributes &Attrs);
+
   StmtResult ParsePragmaTransformImport(StmtVector &Stmts,
                                         ParsedStmtContext StmtCtx,
                                         SourceLocation *TrailingElseLoc,

@@ -5,6 +5,7 @@ class StmtNode<StmtNode base, bit abstract = 0> : ASTNode, AttrSubject {
   bit Abstract = abstract;
 }
 
+
 // Statements
 def Stmt : StmtNode<?, 1>;
 def NullStmt : StmtNode<Stmt>;
