@@ -2541,7 +2541,7 @@ StmtResult Parser::ParsePragmaTransformImport(StmtVector &Stmts,
 
   MaybeParseCXX11Attributes(Attrs);
 
-  ArgsUnion Args[] = {};
+  ArgsUnion *Args = nullptr;
   unsigned NumArgs = 0;
   SourceRange Range;
   IdentifierInfo *ScopeName = nullptr;

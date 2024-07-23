@@ -15,6 +15,7 @@
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/PragmaKinds.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/TokenKinds.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Lex/Token.h"
@@ -2483,10 +2484,74 @@ static void ParseAlignPragma(Preprocessor &PP, Token &FirstTok,
 void PragmaTransformApplyHandler::HandlePragma(Preprocessor &PP,
                                                PragmaIntroducer Introducer,
                                                Token &TransformTok) {
+
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaTransformApplyInfo;
+  Info->TransformApply = TransformTok;
+
+  Token FuncName;
+  PP.Lex(FuncName);
+  if (FuncName.isNot(tok::identifier)) {
+    PP.Diag(FuncName.getLocation(), diag::warn_pragma_expected_identifier)
+        << "transform_apply";
+    return;
+  }
+  Info->Func = FuncName;
+
   Token Tok;
-  do {
+
+  PP.Lex(Tok);
+  if (Tok.isNot(tok::l_paren)) {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_lparen)
+        << "transform_apply";
+    return;
+  }
+
+  bool LastArg = false;
+  while (1) {
     PP.Lex(Tok);
-  } while (Tok.isNot(tok::eod));
+    if (Tok.is(tok::eod))
+      break;
+    if (Tok.is(tok::r_paren))
+      break;
+    if (LastArg) {
+      if (Tok.is(tok::comma)) {
+        LastArg = false;
+        continue;
+      } else {
+        PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_comma)
+            << "transform_apply";
+        return;
+      }
+    } else {
+      if (Tok.is(tok::identifier)) {
+        Info->Args.push_back(Tok);
+        LastArg = true;
+        continue;
+      } else {
+        PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier)
+            << "transform_apply";
+        return;
+      }
+    }
+  };
+
+  if (LastArg && Tok.isNot(tok::r_paren)) {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_rparen)
+        << "transform_apply";
+    return;
+  }
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Token &Tok0 = Toks[0];
+  Tok0.startToken();
+  Tok0.setKind(tok::annot_pragma_transform_apply);
+  Tok0.setLocation(TransformTok.getLocation());
+  Tok0.setAnnotationEndLoc(TransformTok.getLocation());
+  Tok0.setAnnotationValue(Info);
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+
   return;
 }
 
@@ -2498,7 +2563,7 @@ void PragmaTransformImportHandler::HandlePragma(Preprocessor &PP,
   PP.Lex(Tok);
   if (Tok.isNot(tok::eod))
     PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
-        << "import";
+        << "transform_import";
 
   SourceLocation TransformLoc = TransformTok.getLocation();
 
