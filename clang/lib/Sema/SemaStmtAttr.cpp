@@ -75,6 +75,11 @@ static Attr *handleSuppressAttr(Sema &S, Stmt *St, const ParsedAttr &A,
       S.Context, A, DiagnosticIdentifiers.data(), DiagnosticIdentifiers.size());
 }
 
+static Attr *handleTransformApply(Sema &S, Stmt *St, const ParsedAttr &A,
+                                  SourceRange) {
+  return ::new (S.Context) TransformApplyAttr(S.Context, A);
+}
+
 static Attr *handleTransformImport(Sema &S, Stmt *St, const ParsedAttr &A,
                                    SourceRange) {
   return ::new (S.Context) TransformImportAttr(S.Context, A);
@@ -694,6 +699,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleTransformLabel(S, St, A, Range);
   case ParsedAttr::AT_TransformImport:
     return handleTransformImport(S, St, A, Range);
+  case ParsedAttr::AT_TransformApply:
+    return handleTransformApply(S, St, A, Range);
   default:
     // N.B., ClangAttrEmitter.cpp emits a diagnostic helper that ensures a
     // declaration attribute is not written on a statement, but this code is

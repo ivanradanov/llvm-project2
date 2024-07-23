@@ -26,6 +26,7 @@
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Lex/Token.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
@@ -33,6 +34,7 @@
 #include "llvm/IR/Assumptions.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
@@ -750,9 +752,50 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
     switch (A->getKind()) {
     default:
       break;
+    case attr::TransformApply: {
+      StringRef Str = cast<StringLiteral>(S.getSubStmt())->getString();
+      const PragmaTransformApplyInfo &TAI =
+          *reinterpret_cast<const PragmaTransformApplyInfo *>(Str.data());
+
+      StringRef Name = "__clang_transformer_apply_array";
+      llvm::GlobalVariable *GV = CGM.getModule().getGlobalVariable(Name);
+      SmallVector<llvm::Constant *> Applies;
+      if (GV) {
+        auto *CA = cast<llvm::ConstantArray>(GV->getInitializer());
+        for (auto &Op : CA->operands())
+          Applies.push_back(cast<llvm::Constant>(Op));
+        GV->eraseFromParent();
+      }
+      llvm::Constant *FuncStr =
+          CGM.GetAddrOfConstantCString(
+                 TAI.Func.getIdentifierInfo()->getName().str(),
+                 "__clang_transformer_apply_func")
+              .getPointer();
+      Applies.push_back(FuncStr);
+      for (auto Arg : TAI.Args) {
+        llvm::Constant *ArgStr =
+            CGM.GetAddrOfConstantCString(
+                   Arg.getIdentifierInfo()->getName().str(),
+                   "__clang_transformer_apply_arg")
+                .getPointer();
+        Applies.push_back(ArgStr);
+      }
+      Applies.push_back(llvm::ConstantPointerNull::getNullValue(
+          llvm::PointerType::get(getLLVMContext(), 0)));
+      llvm::ArrayType *ATy =
+          llvm::ArrayType::get(FuncStr->getType(), Applies.size());
+      // TODO the module-wise mlirs here should be kept separate in their own
+      // sets, and we should append the sets as a whole so that we don't get
+      // conflicting transform dialect symbols from different translation units
+      GV = new llvm::GlobalVariable(
+          CGM.getModule(), ATy, false, llvm::GlobalValue::AppendingLinkage,
+          llvm::ConstantArray::get(ATy, Applies), Name);
+      GV->setSection("llvm.metadata");
+      return;
+    }
     case attr::TransformImport: {
       StringRef Mlir = cast<StringLiteral>(S.getSubStmt())->getString();
-      StringRef Name = "__clang_transformer_mlir";
+      StringRef Name = "__clang_transformer_import_array";
       llvm::GlobalVariable *GV = CGM.getModule().getGlobalVariable(Name);
       SmallVector<llvm::Constant *> ForLocs;
       if (GV) {
@@ -762,7 +805,8 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
         GV->eraseFromParent();
       }
       llvm::Constant *LabelStr =
-          CGM.GetAddrOfConstantCString(Mlir.str(), "mlir").getPointer();
+          CGM.GetAddrOfConstantCString(Mlir.str(), "__clang_transformer_import")
+              .getPointer();
       ForLocs.push_back(LabelStr);
       llvm::ArrayType *ATy =
           llvm::ArrayType::get(LabelStr->getType(), ForLocs.size());
@@ -1253,7 +1297,8 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S,
     llvm::Constant *SLocBegin = EmitCheckSourceLocation(S.getBeginLoc());
     llvm::Constant *SLocEnd = EmitCheckSourceLocation(S.getEndLoc());
     llvm::Constant *LabelStr =
-        CGM.GetAddrOfConstantCString(TLA->getLabel().str(), "for.label")
+        CGM.GetAddrOfConstantCString(TLA->getLabel().str(),
+                                     "__clang_transformer_for_label")
             .getPointer();
     auto *LocInfo = llvm::ConstantStruct::getAnon(
         getLLVMContext(), {LabelStr, SLocBegin, SLocEnd});
