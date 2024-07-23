@@ -1362,6 +1362,7 @@ transform.named_sequence @t1(%arg0: !transform.any_op {transform.consumed}) {
     llvm::IRBuilder<> B(TheModule->getContext());
     auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
                                    TheModule, true);
+    GV->setSection("llvm.metadata");
     appendToUsed(*TheModule, {GV});
   }
   LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
