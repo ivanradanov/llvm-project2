@@ -1273,7 +1273,7 @@ struct ForLocInfo {
 
 using ForOpTy = mlir::affine::AffineForOp;
 
-std::map<std::string, mlir::Operation *>
+std::map<std::string, SmallPtrSet<mlir::Operation *, 1>>
 buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
   StringRef Name = "__clang_transformer_for_locs";
   llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
@@ -1316,7 +1316,9 @@ buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
 
   using namespace mlir;
 
-  std::map<std::string, mlir::Operation *> Map;
+  std::map<std::string, SmallPtrSet<mlir::Operation *, 1>> Map;
+  for (auto Loc : ForLocs)
+    Map[Loc.Label.str()] = {};
   MlirModule->walk([&](ForOpTy forOp) {
     LLVM_DEBUG(forOp->getLoc().dump());
     Location loc = forOp->getLoc();
@@ -1334,14 +1336,21 @@ buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
           bool isSameFile = Loc.Start.File.ends_with(flc.getFilename());
           if (isSameFile && Loc.Start.Line == flc.getLine() &&
               Loc.Start.Col == flc.getColumn()) {
-            llvm::errs() << "Found match: " << Loc.Label << "\n";
-            Map[Loc.Label.str()] = forOp;
+            auto res = Map[Loc.Label.str()].insert(forOp);
+            if (res.second)
+              llvm::errs() << "info: found match for label " << Loc.Label
+                           << "\n";
           }
         }
       }
       return WalkResult::advance();
     });
   });
+
+  for (auto Loc : ForLocs)
+    if (Map[Loc.Label.str()].size() == 0)
+      llvm::errs() << "warning: unable to match label " << Loc.Label << "\n";
+
   return Map;
 }
 } // namespace
