@@ -16,6 +16,7 @@
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TokenKinds.h"
+#include "clang/Lex/Token.h"
 #include "clang/Parse/LoopHint.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
@@ -531,8 +532,8 @@ Retry:
     return ParsePragmaLoopHint(Stmts, StmtCtx, TrailingElseLoc, CXX11Attrs);
 
   case tok::annot_pragma_transform_label:
-    HandlePragmaTransform();
-    return StmtEmpty();
+    return ParsePragmaTransformLabel(Stmts, StmtCtx, TrailingElseLoc,
+                                     CXX11Attrs);
 
   case tok::annot_pragma_dump:
     HandlePragmaDump();
@@ -2516,6 +2517,40 @@ StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts,
   // See PR46336.
   if (Attrs.Range.getBegin().isInvalid())
     Attrs.Range.setBegin(StartLoc);
+
+  return S;
+}
+
+StmtResult Parser::ParsePragmaTransformLabel(StmtVector &Stmts,
+                                             ParsedStmtContext StmtCtx,
+                                             SourceLocation *TrailingElseLoc,
+                                             ParsedAttributes &Attrs) {
+  assert(Tok.is(tok::annot_pragma_transform_label));
+  ParsedAttributes TempAttrs(AttrFactory);
+
+  PragmaTransformLabelInfo &TLI =
+      *reinterpret_cast<PragmaTransformLabelInfo *>(Tok.getAnnotationValue());
+  ConsumeAnnotationToken();
+  ConsumeAnyToken();
+
+  MaybeParseCXX11Attributes(Attrs);
+
+  IdentifierLoc *Arg = IdentifierLoc::create(Actions.Context, Tok.getLocation(),
+                                             TLI.Identfier.getIdentifierInfo());
+  ArgsUnion Args[] = {Arg};
+  unsigned NumArgs = 1;
+  SourceRange Range;
+  IdentifierInfo *ScopeName = nullptr;
+  SourceLocation ScopeLoc;
+
+  TempAttrs.addNew(TLI.TransformLabel.getIdentifierInfo(), Range, ScopeName,
+                   ScopeLoc, Args, NumArgs, ParsedAttr::Form::Pragma());
+
+  ParsedAttributes EmptyDeclSpecAttrs(AttrFactory);
+  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
+      Stmts, StmtCtx, TrailingElseLoc, Attrs, EmptyDeclSpecAttrs);
+
+  Attrs.takeAllFrom(TempAttrs);
 
   return S;
 }

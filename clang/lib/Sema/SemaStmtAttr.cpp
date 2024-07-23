@@ -75,6 +75,11 @@ static Attr *handleSuppressAttr(Sema &S, Stmt *St, const ParsedAttr &A,
       S.Context, A, DiagnosticIdentifiers.data(), DiagnosticIdentifiers.size());
 }
 
+static Attr *handleTransformLabel(Sema &S, Stmt *St, const ParsedAttr &A,
+                                  SourceRange) {
+  return ::new (S.Context) TransformLabelAttr(S.Context, A, "for1");
+}
+
 static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
                                 SourceRange) {
   IdentifierLoc *PragmaNameLoc = A.getArgAsIdent(0);
@@ -679,6 +684,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleMSConstexprAttr(S, St, A, Range);
   case ParsedAttr::AT_NoConvergent:
     return handleNoConvergentAttr(S, St, A, Range);
+  case ParsedAttr::AT_TransformLabel:
+    return handleTransformLabel(S, St, A, Range);
   default:
     // N.B., ClangAttrEmitter.cpp emits a diagnostic helper that ensures a
     // declaration attribute is not written on a statement, but this code is

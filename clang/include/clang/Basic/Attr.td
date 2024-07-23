@@ -4119,6 +4119,17 @@ def InitSeg : Attr {
   }];
 }
 
+def TransformLabel : Attr {
+  let Args = [StringArgument<"Label">];
+  let Spellings = [Pragma<"", "transform_label">];
+  let Documentation = [InternalOnly];
+  let AdditionalMembers = [{
+  void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {
+    OS << " (" << getLabel() << ')';
+  }
+  }];
+}
+
 def LoopHint : Attr {
   /// #pragma clang loop <option> directive
   /// vectorize: vectorizes loop operations if State == Enable.

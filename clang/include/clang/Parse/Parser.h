@@ -794,7 +794,14 @@ private:
   bool HandlePragmaMSOptimize(StringRef PragmaName,
                               SourceLocation PragmaLocation);
 
-  void HandlePragmaTransform();
+  StmtResult ParsePragmaTransformLabel(StmtVector &Stmts,
+                                       ParsedStmtContext StmtCtx,
+                                       SourceLocation *TrailingElseLoc,
+                                       ParsedAttributes &Attrs);
+
+  /// Handle the annotation token produced for
+  /// #pragma align...
+  void HandlePragmaTransformLabel();
 
   /// Handle the annotation token produced for
   /// #pragma align...
