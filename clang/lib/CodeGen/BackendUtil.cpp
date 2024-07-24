@@ -1479,10 +1479,11 @@ void applyAll(
             [&](BlockArgument ba) -> mlir::Value { return ba; }));
     builder.create<transform::YieldOp>(loc, ValueRange());
 
+    llvm::errs() << "info: applying transformation " << sym << "\n";
     if (failed(transform::applyTransforms(MlirModule, seq, extraMapping,
                                           transform::TransformOptions(),
                                           false))) {
-      llvm::errs() << "Transformation failed after transform\n";
+      llvm::errs() << "error: application failed\n";
     }
   }
 }
