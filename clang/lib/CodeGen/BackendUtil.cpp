@@ -1400,8 +1400,8 @@ void importAllTransformerSequences(llvm::Module &M,
 
     ParserConfig config(transformModule.getContext(),
                         /*verifyAfterParse=*/false);
-    auto TestSeq =
-        mlir::parseSourceString(Str, transformModule.getBody(), config);
+    if (failed(mlir::parseSourceString(Str, transformModule.getBody(), config)))
+      llvm::errs() << "error: could not parse:\n" << Str << "\n";
   }
   transformModule->walk([&](transform::NamedSequenceOp seq) {
     seq.setVisibility(mlir::SymbolTable::Visibility::Private);
@@ -1467,8 +1467,8 @@ void applyAll(
         TypeAttr::get(mlir::FunctionType::get(&context, seqTypes, TypeRange{})),
         nullptr, nullptr, nullptr);
     seq.setVisibility(mlir::SymbolTable::Visibility::Private);
-    Block *block = builder.createBlock(&seq.getBody(), {}, seqTypes,
-                                       SmallVector<Location>(argNum + 1, loc));
+    builder.createBlock(&seq.getBody(), {}, seqTypes,
+                        SmallVector<Location>(argNum + 1, loc));
     builder.create<transform::IncludeOp>(
         loc, /* TODO should match the callee or we should just reject sequences
                 yielding any values (probably better to match) */
