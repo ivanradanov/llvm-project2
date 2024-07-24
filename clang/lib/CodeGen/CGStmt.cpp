@@ -754,8 +754,15 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
       break;
     case attr::TransformApply: {
       StringRef Str = cast<StringLiteral>(S.getSubStmt())->getString();
-      const PragmaTransformApplyInfo &TAI =
-          *reinterpret_cast<const PragmaTransformApplyInfo *>(Str.data());
+      StringRef FuncName = Str.take_while([&](char c) { return c != 0; });
+      Str = Str.drop_while([&](char c) { return c != 0; });
+      Str = Str.drop_front();
+      SmallVector<StringRef> Args;
+      while (Str.size() != 0) {
+        Args.push_back(Str.take_while([&](char c) { return c != 0; }));
+        Str = Str.drop_while([&](char c) { return c != 0; });
+        Str = Str.drop_front();
+      };
 
       StringRef Name = "__clang_transformer_apply_array";
       llvm::GlobalVariable *GV = CGM.getModule().getGlobalVariable(Name);
@@ -767,16 +774,14 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
         GV->eraseFromParent();
       }
       llvm::Constant *FuncStr =
-          CGM.GetAddrOfConstantCString(
-                 TAI.Func.getIdentifierInfo()->getName().str(),
-                 "__clang_transformer_apply_func")
+          CGM.GetAddrOfConstantCString(FuncName.str(),
+                                       "__clang_transformer_apply_func")
               .getPointer();
       Applies.push_back(FuncStr);
-      for (auto Arg : TAI.Args) {
+      for (auto Arg : Args) {
         llvm::Constant *ArgStr =
-            CGM.GetAddrOfConstantCString(
-                   Arg.getIdentifierInfo()->getName().str(),
-                   "__clang_transformer_apply_arg")
+            CGM.GetAddrOfConstantCString(Arg.str(),
+                                         "__clang_transformer_apply_arg")
                 .getPointer();
         Applies.push_back(ArgStr);
       }
