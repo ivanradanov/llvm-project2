@@ -32,6 +32,7 @@
 #include "clang/Sema/TypoCorrection.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include <optional>
 
 using namespace clang;
@@ -2580,7 +2581,12 @@ StmtResult Parser::ParsePragmaTransformApply(StmtVector &Stmts,
   assert(Tok.is(tok::annot_pragma_transform_apply));
   PragmaTransformApplyInfo &TAI =
       *reinterpret_cast<PragmaTransformApplyInfo *>(Tok.getAnnotationValue());
-  StringRef Str(reinterpret_cast<const char *>(&TAI), sizeof(TAI));
+  std::string Str;
+  llvm::raw_string_ostream OS(Str);
+  OS << TAI.Func.getIdentifierInfo()->getName() << '\0';
+  for (auto Arg : TAI.Args) {
+    OS << Arg.getIdentifierInfo()->getName() << '\0';
+  }
   ConsumeAnnotationToken();
   assert(Tok.is(tok::eod));
   ConsumeAnyToken();
