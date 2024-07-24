@@ -741,6 +741,30 @@ void CodeGenFunction::EmitLabelStmt(const LabelStmt &S) {
   EmitStmt(S.getSubStmt());
 }
 
+// Borrowed from CodeGenModule.cpp
+static llvm::GlobalVariable *
+GenerateStringLiteral(llvm::Constant *C, llvm::GlobalValue::LinkageTypes LT,
+                      CodeGenModule &CGM, StringRef GlobalName,
+                      CharUnits Alignment) {
+  unsigned AddrSpace = CGM.getContext().getTargetAddressSpace(
+      CGM.GetGlobalConstantAddressSpace());
+
+  llvm::Module &M = CGM.getModule();
+  // Create a global variable for this string
+  auto *GV = new llvm::GlobalVariable(
+      M, C->getType(), !CGM.getLangOpts().WritableStrings, LT, C, GlobalName,
+      nullptr, llvm::GlobalVariable::NotThreadLocal, AddrSpace);
+  GV->setAlignment(Alignment.getAsAlign());
+  GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+  if (GV->isWeakForLinker()) {
+    assert(CGM.supportsCOMDAT() && "Only COFF uses weak string literals");
+    GV->setComdat(M.getOrInsertComdat(GV->getName()));
+  }
+  CGM.setDSOLocal(GV);
+
+  return GV;
+}
+
 void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
   bool nomerge = false;
   bool noinline = false;
@@ -753,17 +777,6 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
     default:
       break;
     case attr::TransformApply: {
-      StringRef Str = cast<StringLiteral>(S.getSubStmt())->getString();
-      StringRef FuncName = Str.take_while([&](char c) { return c != 0; });
-      Str = Str.drop_while([&](char c) { return c != 0; });
-      Str = Str.drop_front();
-      SmallVector<StringRef> Args;
-      while (Str.size() != 0) {
-        Args.push_back(Str.take_while([&](char c) { return c != 0; }));
-        Str = Str.drop_while([&](char c) { return c != 0; });
-        Str = Str.drop_front();
-      };
-
       StringRef Name = "__clang_transformer_apply_array";
       llvm::GlobalVariable *GV = CGM.getModule().getGlobalVariable(Name);
       SmallVector<llvm::Constant *> Applies;
@@ -773,22 +786,18 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
           Applies.push_back(cast<llvm::Constant>(Op));
         GV->eraseFromParent();
       }
-      llvm::Constant *FuncStr =
-          CGM.GetAddrOfConstantCString(FuncName.str(),
-                                       "__clang_transformer_apply_func")
-              .getPointer();
-      Applies.push_back(FuncStr);
-      for (auto Arg : Args) {
-        llvm::Constant *ArgStr =
-            CGM.GetAddrOfConstantCString(Arg.str(),
-                                         "__clang_transformer_apply_arg")
-                .getPointer();
-        Applies.push_back(ArgStr);
-      }
-      Applies.push_back(llvm::ConstantPointerNull::getNullValue(
-          llvm::PointerType::get(getLLVMContext(), 0)));
+
+      StringRef Str = cast<StringLiteral>(S.getSubStmt())->getString();
+      llvm::Constant *ConstStr =
+          llvm::ConstantDataArray::getString(getLLVMContext(), Str, false);
+      CharUnits Alignment = getContext().getAlignOfGlobalVarInChars(
+          getContext().CharTy, /*VD=*/nullptr);
+      auto GVA =
+          GenerateStringLiteral(ConstStr, llvm::GlobalValue::PrivateLinkage,
+                                CGM, "__clang_transformer_apply", Alignment);
+      Applies.push_back(GVA);
       llvm::ArrayType *ATy =
-          llvm::ArrayType::get(FuncStr->getType(), Applies.size());
+          llvm::ArrayType::get(GVA->getType(), Applies.size());
       // TODO the module-wise mlirs here should be kept separate in their own
       // sets, and we should append the sets as a whole so that we don't get
       // conflicting transform dialect symbols from different translation units
