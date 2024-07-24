@@ -1320,6 +1320,8 @@ std::map<std::string, SmallPtrSet<mlir::Operation *, 1>>
 buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
   StringRef Name = "__clang_transformer_for_locs";
   llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  if (!GV)
+    return {};
   auto *CA = cast<llvm::ConstantArray>(GV->getInitializer());
   SmallVector<ForLocInfo> ForLocs;
   for (auto &Op : CA->operands()) {
@@ -1406,6 +1408,8 @@ SmallVector<ApplicationTy> collectApplications(llvm::Module &M) {
   SmallVector<ApplicationTy> Applications;
   StringRef Name = "__clang_transformer_apply_array";
   llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  if (!GV)
+    return {};
   auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
   for (auto &GVA : Array->operands()) {
     ApplicationTy Application;
@@ -1435,6 +1439,8 @@ void importAllTransformerSequences(llvm::Module &M,
 
   StringRef Name = "__clang_transformer_import_array";
   llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  if (!GV)
+    return;
   auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
   for (auto &GVA : Array->operands()) {
     StringRef Str = cast<llvm::ConstantDataSequential>(
