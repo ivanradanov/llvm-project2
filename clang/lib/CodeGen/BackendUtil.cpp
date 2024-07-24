@@ -1353,6 +1353,140 @@ buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
 
   return Map;
 }
+
+struct ApplicationTy {
+  StringRef FuncName;
+  SmallVector<StringRef> Args;
+};
+
+SmallVector<ApplicationTy> collectApplications(llvm::Module &M) {
+  SmallVector<ApplicationTy> Applications;
+  StringRef Name = "__clang_transformer_apply_array";
+  llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
+  for (auto &GVA : Array->operands()) {
+    ApplicationTy Application;
+    StringRef Str = cast<llvm::ConstantDataSequential>(
+                        cast<llvm::GlobalVariable>(GVA.get())->getInitializer())
+                        ->getAsString();
+    Application.FuncName = Str.take_while([&](char c) { return c != 0; });
+    Str = Str.drop_while([&](char c) { return c != 0; });
+    Str = Str.drop_front();
+    while (Str.size() != 0) {
+      Application.Args.push_back(
+          Str.take_while([&](char c) { return c != 0; }));
+      Str = Str.drop_while([&](char c) { return c != 0; });
+      Str = Str.drop_front();
+    };
+    Applications.push_back(Application);
+  }
+  return Applications;
+}
+
+void importAllTransformerSequences(llvm::Module &M,
+                                   mlir::ModuleOp transformModule) {
+  using namespace mlir;
+  OpBuilder builder(transformModule.getContext());
+  transformModule->setAttr("transform.with_named_sequence",
+                           builder.getUnitAttr());
+
+  StringRef Name = "__clang_transformer_import_array";
+  llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
+  for (auto &GVA : Array->operands()) {
+    StringRef Str = cast<llvm::ConstantDataSequential>(
+                        cast<llvm::GlobalVariable>(GVA.get())->getInitializer())
+                        ->getAsString();
+
+    ParserConfig config(transformModule.getContext(),
+                        /*verifyAfterParse=*/false);
+    auto TestSeq =
+        mlir::parseSourceString(Str, transformModule.getBody(), config);
+  }
+  transformModule->walk([&](transform::NamedSequenceOp seq) {
+    seq.setVisibility(mlir::SymbolTable::Visibility::Private);
+  });
+}
+
+void applyAll(
+    SmallVector<ApplicationTy> Applications,
+    std::map<std::string, SmallPtrSet<mlir::Operation *, 1>> LabelToOp,
+    mlir::ModuleOp MlirModule, mlir::ModuleOp transformModule) {
+  using namespace mlir;
+  auto loc = MlirModule->getLoc();
+  auto &context = *transformModule.getContext();
+  OpBuilder builder(transformModule.getContext());
+  auto anyOp = transform::AnyOpType::get(&context);
+
+  unsigned i = 0;
+  for (const auto &Application : Applications) {
+    StringRef sym = Application.FuncName;
+    auto toInclude = dyn_cast_or_null<transform::NamedSequenceOp>(
+        transformModule.lookupSymbol(sym));
+    if (!toInclude) {
+      llvm::errs() << "error in call to " << Application.FuncName
+                   << ": sequence not found\n";
+      continue;
+    }
+    auto argNum = toInclude.getNumArguments();
+    if (argNum != Application.Args.size()) {
+      llvm::errs() << "error in call to " << Application.FuncName
+                   << ": wrong number of arguments\n";
+      continue;
+    }
+
+    RaggedArray<transform::MappedValue> extraMapping;
+    for (auto Arg : Application.Args) {
+      auto ops = LabelToOp[Arg.str()];
+      if (ops.size() == 0) {
+        llvm::errs() << "error in call to " << sym << ": no for with the label "
+                     << Arg << " found\n";
+        break;
+      }
+      if (ops.size() != 1) {
+        llvm::errs() << "error in call to " << sym
+                     << ": multiple fors with the same label (" << Arg
+                     << ") unsupported\n";
+        break;
+      }
+      extraMapping.push_back(SmallVector<Operation *>({*ops.begin()}));
+    }
+    if (extraMapping.size() != argNum)
+      continue;
+
+    SmallVector<mlir::Type> seqTypes;
+    // For module op
+    seqTypes.push_back(anyOp);
+    // User provided ops
+    for (unsigned i = 0; i < argNum; i++)
+      seqTypes.push_back(toInclude.getArgument(i).getType());
+
+    builder.setInsertionPointToStart(&transformModule.getBodyRegion().front());
+    transform::NamedSequenceOp seq = builder.create<transform::NamedSequenceOp>(
+        loc, "__mlir_transformer" + std::to_string(i++),
+        TypeAttr::get(mlir::FunctionType::get(&context, seqTypes, TypeRange{})),
+        nullptr, nullptr, nullptr);
+    seq.setVisibility(mlir::SymbolTable::Visibility::Private);
+    Block *block = builder.createBlock(&seq.getBody(), {}, seqTypes,
+                                       SmallVector<Location>(argNum + 1, loc));
+    builder.create<transform::IncludeOp>(
+        loc, /* TODO should match the callee or we should just reject sequences
+                yielding any values (probably better to match) */
+        TypeRange(), SymbolRefAttr::get(toInclude.getSymNameAttr()),
+        transform::FailurePropagationMode::Propagate,
+        llvm::map_to_vector(
+            llvm::drop_begin(seq.getBody().getArguments()),
+            [&](BlockArgument ba) -> mlir::Value { return ba; }));
+    builder.create<transform::YieldOp>(loc, ValueRange());
+
+    if (failed(transform::applyTransforms(MlirModule, seq, extraMapping,
+                                          transform::TransformOptions(),
+                                          false))) {
+      llvm::errs() << "Transformation failed after transform\n";
+    }
+  }
+}
+
 } // namespace
 
 void EmitAssemblyHelper::RunTransformer() {
@@ -1366,7 +1500,7 @@ void EmitAssemblyHelper::RunTransformer() {
   mlir::MLIRContext context(registry);
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
-  LLVM_DEBUG(llvm::errs() << "Pre-transform MLIR\n" << *MlirModule << "\n");
+  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
   mlir::PassManager pm(&context);
   if (mlir::failed(mlir::parsePassPipeline(ClMlirPipeline.c_str(), pm))) {
     llvm::errs() << "Invalid pipeline";
@@ -1376,83 +1510,32 @@ void EmitAssemblyHelper::RunTransformer() {
     llvm::errs() << "Mlir passes failed";
     abort();
   }
-  LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
+  LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
 
   auto LabelToOp = buildLabelToOpMap(*TheModule, *MlirModule);
+  auto Applications = collectApplications(*TheModule);
 
   using namespace mlir;
 
   auto loc = MlirModule->getLoc();
-  auto anyOp = transform::AnyOpType::get(&context);
   auto transformModule = ModuleOp::create(loc);
-  OpBuilder builder(&context);
-  transformModule->setAttr("transform.with_named_sequence",
-                           builder.getUnitAttr());
 
-  static const char *TransformSequence = R"TRANSFORM(
-transform.named_sequence @t1(%arg0: !transform.any_op {transform.consumed}) {
-  transform.loop.unroll %arg0 { factor = 4 } : !transform.any_op
-  transform.yield
-}
-)TRANSFORM";
-
-  transformModule->walk([&](transform::NamedSequenceOp seq) {
-    seq.setVisibility(mlir::SymbolTable::Visibility::Private);
-  });
-
-  ParserConfig config(&context, /*verifyAfterParse=*/false);
-  auto TestSeq = mlir::parseSourceString(TransformSequence,
-                                         transformModule.getBody(), config);
+  importAllTransformerSequences(*TheModule, transformModule);
 
   if (failed(mlir::verify(&**MlirModule)))
     llvm::errs() << "Verification failed before transform\n";
-
-  int i = 0;
-  MlirModule->walk([&](affine::AffineForOp forOp) {
-    StringRef sym = "t1";
-    auto toInclude = dyn_cast_or_null<transform::NamedSequenceOp>(
-        transformModule.lookupSymbol(sym));
-    if (!toInclude)
-      return;
-    auto argNum = toInclude.getNumArguments();
-    SmallVector<mlir::Type> seqTypes;
-    // For module op
-    seqTypes.push_back(anyOp);
-    // User provided ops
-    for (unsigned i = 0; i < argNum; i++)
-      seqTypes.push_back(toInclude.getArgument(i).getType());
-
-    builder.setInsertionPointToStart(&transformModule.getBodyRegion().front());
-    transform::NamedSequenceOp seq = builder.create<transform::NamedSequenceOp>(
-        loc, "__mlir_transformer" + std::to_string(i++),
-        TypeAttr::get(mlir::FunctionType::get(&context, seqTypes, TypeRange{})),
-        nullptr, nullptr, nullptr);
-    Block *block = builder.createBlock(&seq.getBody(), {}, seqTypes,
-                                       SmallVector<Location>(2, loc));
-    builder.create<transform::IncludeOp>(
-        loc, /* TODO should match the callee or we should just reject sequences
-                yielding any values (probably better to match) */
-        TypeRange(), SymbolRefAttr::get(toInclude.getSymNameAttr()),
-        transform::FailurePropagationMode::Propagate,
-        llvm::map_to_vector(
-            llvm::drop_begin(seq.getBody().getArguments()),
-            [&](BlockArgument ba) -> mlir::Value { return ba; }));
-    builder.create<transform::YieldOp>(loc, ValueRange());
-
-    RaggedArray<transform::MappedValue> extraMapping;
-    extraMapping.push_back(SmallVector<Operation *>({forOp}));
-    if (failed(transform::applyTransforms(*MlirModule, seq, extraMapping,
-                                          transform::TransformOptions(),
-                                          false))) {
-      llvm::errs() << "Transformation failed after transform\n";
-    }
-  });
   if (failed(mlir::verify(transformModule)))
-    llvm::errs() << "Verification failed\n";
+    llvm::errs() << "Transform module verification failed before transform\n";
+
+  applyAll(Applications, LabelToOp, *MlirModule, transformModule);
+
+  if (failed(mlir::verify(transformModule)))
+    llvm::errs() << "Transform module verification failed after transform\n";
   LLVM_DEBUG(llvm::errs() << "Transform module:\n" << transformModule << "\n");
 
   if (failed(mlir::verify(&**MlirModule)))
     llvm::errs() << "Verification failed\n";
+  LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
 
   if (EmitMLIR) {
     std::string MlirString;
