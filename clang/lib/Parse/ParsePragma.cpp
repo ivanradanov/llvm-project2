@@ -623,6 +623,12 @@ void Parser::initializePragmaHandlers() {
 
 void Parser::resetPragmaHandlers() {
   // Remove the pragma handlers we installed.
+  PP.RemovePragmaHandler(TransformImportHandler.get());
+  TransformImportHandler.reset();
+  PP.RemovePragmaHandler(TransformApplyHandler.get());
+  TransformApplyHandler.reset();
+  PP.RemovePragmaHandler(TransformLabelHandler.get());
+  TransformLabelHandler.reset();
   PP.RemovePragmaHandler(AlignHandler.get());
   AlignHandler.reset();
   PP.RemovePragmaHandler("GCC", GCCVisibilityHandler.get());
