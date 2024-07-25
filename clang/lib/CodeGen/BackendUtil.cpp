@@ -32,6 +32,8 @@
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/Frontend/Driver/CodeGenOptions.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -1414,11 +1416,74 @@ void importAllTransformerSequences(llvm::Module &M,
   });
 }
 
+std::unique_ptr<llvm::Module>
+CloneModuleInOtherContext(llvm::Module &M, llvm::LLVMContext &NewCtx) {
+  std::string BC;
+  llvm::raw_string_ostream BCOS(BC);
+  WriteBitcodeToFile(M, BCOS);
+  return ExitOnError("LLVM Module round trip failed")(parseBitcodeFile(
+      MemoryBufferRef(StringRef(BC.data(), BC.size()), "<cloned-module>"),
+      NewCtx));
+}
+
 void applyAll(
-    SmallVector<ApplicationTy> Applications,
+    SmallVector<ApplicationTy> Applications, llvm::Module &M,
     std::map<std::string, SmallPtrSet<mlir::Operation *, 1>> LabelToOp,
     mlir::ModuleOp MlirModule, mlir::ModuleOp transformModule) {
+
+  auto JIT = ExitOnError("JIT builder failed")(orc::LLJITBuilder().create());
+  auto JITCtx = std::make_unique<LLVMContext>();
+  auto JITModule = CloneModuleInOtherContext(M, *JITCtx);
+  ExitOnError("JIT add module failed")(JIT->addIRModule(
+      llvm::orc::ThreadSafeModule(std::move(JITModule), std::move(JITCtx))));
+
   using namespace mlir;
+
+  auto tryJITCall = [&](StringRef SymName, SmallVector<Operation *> Args) {
+    SymName = "_ZZ3fooPfS_iiEN3$_08__invokeEN4mlir3scf5ForOpEPNS1_9OperationE";
+    auto EntrySym = JIT->lookup(SymName);
+    if (!EntrySym)
+      return failure();
+
+    // TODO temporary, we can actually generate a llvm ir function on the fly
+    // for this
+    //
+    // Currently (Operation *) and specific operation instances such as
+    // scf::ForOp are both `ptr`s in llvm ir. If this ever changes we are in
+    // trouble.
+    // TODO we can make sure we have ptr's in the arg list in EntrySym and make
+    // sure the number of arguments matches
+    // TODO we should also disallow functions that return values as that can
+    // break things
+    switch (Args.size()) {
+      // clang-format off
+    case 0: {
+      auto *Entry = EntrySym->toPtr<void()>();
+      Entry();
+      break;
+    }
+    case 1: {
+      auto *Entry = EntrySym->toPtr<void (*)(void *)>();
+      Entry(Args[0]);
+      break;
+    }
+    case 2: {
+      auto *Entry = EntrySym->toPtr<void (*)(void *, void *)>();
+      Entry(Args[0], Args[1]);
+      break;
+    }
+    case 3: {
+      auto *Entry = EntrySym->toPtr<void (*)(void *, void *, void *)>();
+      Entry(Args[0], Args[1], Args[2]);
+      break;
+    }
+    default:
+      llvm::report_fatal_error("exceeded max args");
+      // clang-format on
+    }
+    return success();
+  };
+
   auto loc = MlirModule->getLoc();
   auto &context = *transformModule.getContext();
   OpBuilder builder(transformModule.getContext());
@@ -1441,7 +1506,7 @@ void applyAll(
       continue;
     }
 
-    RaggedArray<transform::MappedValue> extraMapping;
+    SmallVector<Operation *> opArgs;
     for (auto Arg : Application.Args) {
       auto ops = LabelToOp[Arg.str()];
       if (ops.size() == 0) {
@@ -1455,10 +1520,22 @@ void applyAll(
                      << ") unsupported\n";
         break;
       }
-      extraMapping.push_back(SmallVector<Operation *>({*ops.begin()}));
+      opArgs.push_back(*ops.begin());
     }
-    if (extraMapping.size() != argNum)
+
+    // We could not collect all arguments
+    if (opArgs.size() != argNum)
       continue;
+
+    if (succeeded(tryJITCall(sym, opArgs)))
+      continue;
+
+    if (!transformModule.lookupSymbol(sym))
+      llvm::errs() << "error: no JIT function or transform sequence found for "
+                   << sym << "\n";
+
+    RaggedArray<transform::MappedValue> extraMapping;
+    extraMapping.push_back(opArgs);
 
     SmallVector<mlir::Type> seqTypes;
     // For module op
@@ -1534,7 +1611,7 @@ void EmitAssemblyHelper::RunTransformer() {
   if (failed(mlir::verify(transformModule)))
     llvm::errs() << "Transform module verification failed before transform\n";
 
-  applyAll(Applications, LabelToOp, *MlirModule, transformModule);
+  applyAll(Applications, *TheModule, LabelToOp, *MlirModule, transformModule);
 
   if (failed(mlir::verify(transformModule)))
     llvm::errs() << "Transform module verification failed after transform\n";
