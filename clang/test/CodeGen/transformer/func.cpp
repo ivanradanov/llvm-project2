@@ -2,12 +2,19 @@
 // COM: %clang_cc1 -mllvm -emit-mlir -mllvm --transformer-enable -triple x86_64-pc-linux-gnu %s -o - | FileCheck %s --check-prefix=CHKOUT
 // RUN: true
 
-#include <stdio.h>
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Operation.h"
 
-#pragma transform_import
-void transform2(void *op1, void *op2) {
-  printf("in lambda %p\n", op1);
-  printf("in lambda %p\n", op2);
+// TODO enable this test only for release build as including `mlir` is too slow
+// on debug builds
+
+// TODO Either automatically make this extern "C" (or with a pragma
+// transform_import or something) or mangle the use of it in transform_apply
+// below
+extern "C" void transform2(mlir::Operation *op1, mlir::Operation *op2) {
+  llvm::outs() << "We are now in the compiler and can transform IR\n";
+  llvm::outs() << "op1 is:\n" << *op1 << "\n";
+  llvm::outs() << "op2 is:\n" << *op2 << "\n";
 }
 
 void foo(float *a, float *b, int n, int k) {
