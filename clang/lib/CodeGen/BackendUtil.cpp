@@ -1440,11 +1440,8 @@ void applyAll(
   using namespace mlir;
 
   auto tryJITCall = [&](StringRef SymName, SmallVector<Operation *> Args) {
-    for (auto Arg :Args) {
-      llvm::errs() << "outside lambda " << Arg << "\n";
-    }
-
-    SymName = "_Z10transform2PvS_";
+    // TODO if we end up doing lambdas we need to make them `external` before
+    // jitting them as they are not accessible otherwise.
     auto EntrySym = JIT->lookup(SymName);
     if (!EntrySym) {
       llvm::errs() << toString(EntrySym.takeError()) << "\n";
