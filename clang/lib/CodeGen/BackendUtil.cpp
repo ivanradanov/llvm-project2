@@ -1483,10 +1483,16 @@ void applyAll(
   using namespace mlir;
 
   auto tryJITCall = [&](StringRef SymName, SmallVector<Operation *> Args) {
-    SymName = "_ZZ3fooPfS_iiEN3$_08__invokeEN4mlir3scf5ForOpEPNS1_9OperationE";
+    for (auto Arg :Args) {
+      llvm::errs() << "outside lambda " << Arg << "\n";
+    }
+
+    SymName = "_Z10transform2PvS_";
     auto EntrySym = JIT->lookup(SymName);
-    if (!EntrySym)
+    if (!EntrySym) {
+      llvm::errs() << toString(EntrySym.takeError()) << "\n";
       return failure();
+    }
 
     // TODO temporary, we can actually generate a llvm ir function on the fly
     // for this
@@ -1499,7 +1505,7 @@ void applyAll(
     // TODO we should also disallow functions that return values as that can
     // break things
     switch (Args.size()) {
-      // clang-format off
+    // clang-format off
     case 0: {
       auto *Entry = EntrySym->toPtr<void()>();
       Entry();
@@ -1522,7 +1528,7 @@ void applyAll(
     }
     default:
       llvm::report_fatal_error("exceeded max args");
-      // clang-format on
+    // clang-format on
     }
     return success();
   };
@@ -1535,19 +1541,7 @@ void applyAll(
   unsigned i = 0;
   for (const auto &Application : Applications) {
     StringRef sym = Application.FuncName;
-    auto toInclude = dyn_cast_or_null<transform::NamedSequenceOp>(
-        transformModule.lookupSymbol(sym));
-    if (!toInclude) {
-      llvm::errs() << "error in call to " << Application.FuncName
-                   << ": sequence not found\n";
-      continue;
-    }
-    auto argNum = toInclude.getNumArguments();
-    if (argNum != Application.Args.size()) {
-      llvm::errs() << "error in call to " << Application.FuncName
-                   << ": wrong number of arguments\n";
-      continue;
-    }
+    unsigned argNum = Application.Args.size();
 
     SmallVector<Operation *> opArgs;
     for (auto Arg : Application.Args) {
@@ -1573,9 +1567,19 @@ void applyAll(
     if (succeeded(tryJITCall(sym, opArgs)))
       continue;
 
-    if (!transformModule.lookupSymbol(sym))
-      llvm::errs() << "error: no JIT function or transform sequence found for "
-                   << sym << "\n";
+    auto toInclude = dyn_cast_or_null<transform::NamedSequenceOp>(
+        transformModule.lookupSymbol(sym));
+    if (!toInclude) {
+      llvm::errs() << "error in call to " << Application.FuncName
+                   << ": no JIT function or sequence found\n";
+      continue;
+    }
+
+    if (argNum != toInclude.getNumArguments()) {
+      llvm::errs() << "error in call to " << Application.FuncName
+                   << ": wrong number of arguments\n";
+      continue;
+    }
 
     RaggedArray<transform::MappedValue> extraMapping;
     extraMapping.push_back(opArgs);
