@@ -12,12 +12,16 @@
 #include "flang/Optimizer/Dialect/FIRType.h"
 #include "flang/Optimizer/OpenMP/Passes.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
+#include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/STLExtras.h"
 #include <llvm/ADT/iterator_range.h>
 #include <mlir/Dialect/OpenMP/OpenMPClauseOperands.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/OpDefinition.h>
 #include <mlir/IR/PatternMatch.h>
-#include "mlir/IR/IRMapping.h"
 
+#include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <variant>
 
 namespace flangomp {
@@ -35,8 +39,8 @@ struct SingleRegion {
   Block::iterator begin, end;
 };
 
-static bool isPtr(Type ty) {
-  return isa<fir::ReferenceType>(ty) || isa<LLVM::LLVMPointerType>(ty);
+static bool isSupportedByFirAlloca(Type ty) {
+  return !isa<fir::ReferenceType>(ty) && !isa<LLVM::LLVMPointerType>(ty);
 }
 
 static bool isSafeToParallelize(Operation *op) {
@@ -61,100 +65,118 @@ void lowerWorkshare(mlir::omp::WorkshareOp wsOp) {
 
   Location loc = wsOp->getLoc();
 
-  auto parallelOp = mlir::cast<mlir::omp::ParallelOp>(wsOp->getParentOp());
+  omp::ParallelOp parallelOp = wsOp->getParentOfType<omp::ParallelOp>();
+  if (!parallelOp) {
+    wsOp.emitWarning("cannot handle workshare, converting to single");
+    Operation *terminator = wsOp.getRegion().front().getTerminator();
+    wsOp->getBlock()->getOperations().splice(
+        wsOp->getIterator(), wsOp.getRegion().front().getOperations());
+    terminator->erase();
+    return;
+  }
+
   OpBuilder allocBuilder(parallelOp);
   OpBuilder rootBuilder(wsOp);
   IRMapping rootMapping;
 
   omp::SingleOp singleOp = nullptr;
 
-  auto mapReloadedValue = [&](Value v) {
+  auto mapReloadedValue = [&](Value v, OpBuilder singleBuilder,
+                              IRMapping singleMapping) {
     if (auto reloaded = rootMapping.lookupOrNull(v))
       return;
     Type llvmPtrTy = LLVM::LLVMPointerType::get(allocBuilder.getContext());
     Type ty = v.getType();
-    Value alloc;
-    if (isPtr(ty)) {
-      auto one =
-          allocBuilder.create<LLVM::ConstantOp>(loc, allocBuilder.getI32Type(), 1);
-      alloc = allocBuilder.create<LLVM::AllocaOp>(loc, llvmPtrTy, llvmPtrTy, one);
-    } else {
+    Value alloc, reloaded;
+    if (isSupportedByFirAlloca(ty)) {
       alloc = allocBuilder.create<fir::AllocaOp>(loc, ty);
+      singleBuilder.create<fir::StoreOp>(loc, singleMapping.lookup(v), alloc);
+      reloaded = rootBuilder.create<fir::LoadOp>(loc, ty, alloc);
+    } else {
+      auto one = allocBuilder.create<LLVM::ConstantOp>(
+          loc, allocBuilder.getI32Type(), 1);
+      alloc =
+          allocBuilder.create<LLVM::AllocaOp>(loc, llvmPtrTy, llvmPtrTy, one);
+      Value toStore = singleBuilder
+                          .create<UnrealizedConversionCastOp>(
+                              loc, llvmPtrTy, singleMapping.lookup(v))
+                          .getResult(0);
+      singleBuilder.create<LLVM::StoreOp>(loc, toStore, alloc);
+      reloaded = rootBuilder.create<LLVM::LoadOp>(loc, llvmPtrTy, alloc);
+      reloaded =
+          rootBuilder.create<UnrealizedConversionCastOp>(loc, ty, reloaded)
+              .getResult(0);
     }
-    auto reloaded = rootBuilder.create<fir::LoadOp>(loc, ty, alloc);
     rootMapping.map(v, reloaded);
   };
 
-  omp::SingleOperands singleOperands;
-
   auto moveToSingle = [&](SingleRegion sr, OpBuilder singleBuilder) {
-    IRMapping singleMapping;
+    IRMapping singleMapping = rootMapping;
 
-    // Prepare reloaded values for results of operations that cannot be safely
-    // parallelized and which are used after the region `sr`
     for (Operation &op : llvm::make_range(sr.begin, sr.end)) {
-      if (isSafeToParallelize(&op))
-        continue;
-      for (auto res : op.getResults()) {
-        for (auto &use : res.getUses()) {
-          Operation *user = use.getOwner();
-          while (user->getParentOp() != wsOp)
-            user = user->getParentOp();
-          if (!user->isBeforeInBlock(&*sr.end)) {
-            // We need to reload
-            mapReloadedValue(use.get());
+      singleBuilder.clone(op, singleMapping);
+      if (isSafeToParallelize(&op)) {
+        rootBuilder.clone(op, rootMapping);
+      } else {
+        // Prepare reloaded values for results of operations that cannot be
+        // safely parallelized and which are used after the region `sr`
+        for (auto res : op.getResults()) {
+          for (auto &use : res.getUses()) {
+            Operation *user = use.getOwner();
+            while (user->getParentOp() != wsOp)
+              user = user->getParentOp();
+            if (!user->isBeforeInBlock(&*sr.end)) {
+              // We need to reload
+              mapReloadedValue(use.get(), singleBuilder, singleMapping);
+            }
           }
         }
       }
     }
-
-    for (Operation &op : llvm::make_range(sr.begin, sr.end)) {
-      if (isSafeToParallelize(&op))
-        rootBuilder.clone(op, rootMapping);
-      singleBuilder.clone(op, singleMapping);
-    }
-
+    singleBuilder.create<omp::TerminatorOp>(loc);
   };
 
   Block *wsBlock = &wsOp.getRegion().front();
   assert(wsBlock->getTerminator()->getNumOperands() == 0);
   Operation *terminator = wsBlock->getTerminator();
 
-  SmallVector<std::variant<SingleRegion, omp::ParallelOp>> regions;
+  SmallVector<std::variant<SingleRegion, omp::WsloopOp>> regions;
 
   auto it = wsBlock->begin();
   auto getSingleRegion = [&]() {
     if (&*it == terminator)
       return false;
-    if (auto pop = dyn_cast<omp::ParallelOp>(&*it)) {
+    if (auto pop = dyn_cast<omp::WsloopOp>(&*it)) {
       regions.push_back(pop);
       it++;
       return true;
     }
     SingleRegion sr;
     sr.begin = it;
-    while (&*it != terminator && !isa<omp::ParallelOp>(&*it))
+    while (&*it != terminator && !isa<omp::WsloopOp>(&*it))
       it++;
     sr.end = it;
     assert(sr.begin != sr.end);
     regions.push_back(sr);
     return true;
   };
-  while(getSingleRegion());
+  while (getSingleRegion())
+    ;
 
-  for (auto loopOrSingle : regions) {
+  for (auto [i, loopOrSingle] : llvm::enumerate(regions)) {
+    bool isLast = i + 1 == regions.size();
     if (std::holds_alternative<SingleRegion>(loopOrSingle)) {
+      omp::SingleOperands singleOperands;
+      if (isLast)
+        singleOperands.nowait = rootBuilder.getUnitAttr();
       singleOp = rootBuilder.create<omp::SingleOp>(loc, singleOperands);
       OpBuilder singleBuilder(singleOp);
       singleBuilder.createBlock(&singleOp.getRegion());
       moveToSingle(std::get<SingleRegion>(loopOrSingle), singleBuilder);
     } else {
-      Region &popRegion = std::get<omp::ParallelOp>(loopOrSingle).getRegion();
-      assert(popRegion.hasOneBlock());
-      Block *popBlock = &popRegion.front();
-      assert(popBlock->getTerminator()->getNumOperands() == 0);
-      for (auto &op : popBlock->without_terminator())
-        rootBuilder.clone(op, rootMapping);
+      rootBuilder.clone(*std::get<omp::WsloopOp>(loopOrSingle), rootMapping);
+      if (!isLast)
+        rootBuilder.create<omp::BarrierOp>(loc);
     }
   }
 
@@ -170,9 +192,28 @@ class LowerWorksharePass
     : public flangomp::impl::LowerWorkshareBase<LowerWorksharePass> {
 public:
   void runOnOperation() override {
+    SmallPtrSet<Operation *, 8> parents;
     getOperation()->walk([&](mlir::omp::WorkshareOp wsOp) {
+      Operation *isolatedParent =
+          wsOp->getParentWithTrait<OpTrait::IsIsolatedFromAbove>();
+      parents.insert(isolatedParent);
+
       lowerWorkshare(wsOp);
     });
+
+    // Do folding
+    for (Operation *isolatedParent : parents) {
+      RewritePatternSet patterns(&getContext());
+      GreedyRewriteConfig config;
+      // prevent the pattern driver form merging blocks
+      config.enableRegionSimplification =
+          mlir::GreedySimplifyRegionLevel::Disabled;
+      if (failed(applyPatternsAndFoldGreedily(isolatedParent,
+                                              std::move(patterns), config))) {
+        emitError(isolatedParent->getLoc(), "error in lower workshare\n");
+        signalPassFailure();
+      }
+    }
   }
 };
 } // namespace

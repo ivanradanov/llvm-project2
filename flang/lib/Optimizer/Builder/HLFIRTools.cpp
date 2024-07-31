@@ -866,10 +866,8 @@ hlfir::LoopNest hlfir::genLoopNest(mlir::Location loc,
   auto one = builder.create<mlir::arith::ConstantIndexOp>(loc, 1);
   mlir::Type indexType = builder.getIndexType();
   if (emitWsLoop) {
-    auto parallelOp = builder.create<mlir::omp::ParallelOp>(loc);
-    builder.createBlock(&parallelOp.getRegion());
-    auto wsloop = builder.create<mlir::omp::WsloopOp>(loc, mlir::ArrayRef<mlir::NamedAttribute>());
-    builder.create<mlir::omp::TerminatorOp>(loc);
+    auto wsloop = builder.create<mlir::omp::WsloopOp>(
+        loc, mlir::ArrayRef<mlir::NamedAttribute>());
     loopNest.outerOp = wsloop;
     builder.createBlock(&wsloop.getRegion());
     mlir::omp::LoopNestOperands lnops;
@@ -887,12 +885,14 @@ hlfir::LoopNest hlfir::genLoopNest(mlir::Location loc,
     loopNest.body = block;
     builder.create<mlir::omp::YieldOp>(loc);
     for (unsigned dim = 0; dim < extents.size(); dim++)
-      loopNest.oneBasedIndices[extents.size() - dim - 1] = lnOp.getRegion().front().getArgument(dim);
+      loopNest.oneBasedIndices[extents.size() - dim - 1] =
+          lnOp.getRegion().front().getArgument(dim);
   } else {
     unsigned dim = extents.size() - 1;
     for (auto extent : llvm::reverse(extents)) {
       auto ub = builder.createConvert(loc, indexType, extent);
-      auto doLoop = builder.create<fir::DoLoopOp>(loc, one, ub, one, isUnordered);
+      auto doLoop =
+          builder.create<fir::DoLoopOp>(loc, one, ub, one, isUnordered);
       loopNest.body = doLoop.getBody();
       builder.setInsertionPointToStart(loopNest.body);
       // Reverse the indices so they are in column-major order.
