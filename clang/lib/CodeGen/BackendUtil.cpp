@@ -1344,7 +1344,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
   cl::PrintOptionValues();
 
   std::unique_ptr<llvm::ToolOutputFile> ThinLinkOS, DwoOS;
-  if (ClTransformerEnable) {
+  if (ClTransformerEnable || EmitMlir) {
     LLVM_DEBUG(llvm::errs() << "Enabling MLIR transformer\n");
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
     RunTransformer();
