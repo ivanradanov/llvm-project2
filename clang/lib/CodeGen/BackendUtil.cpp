@@ -1431,15 +1431,35 @@ void applyAll(
     std::map<std::string, SmallPtrSet<mlir::Operation *, 1>> LabelToOp,
     mlir::ModuleOp MlirModule, mlir::ModuleOp transformModule) {
 
-  auto JIT = ExitOnError("JIT builder failed")(orc::LLJITBuilder().create());
-  auto JITCtx = std::make_unique<LLVMContext>();
-  auto JITModule = CloneModuleInOtherContext(M, *JITCtx);
-  ExitOnError("JIT add module failed")(JIT->addIRModule(
-      llvm::orc::ThreadSafeModule(std::move(JITModule), std::move(JITCtx))));
+  llvm::Triple Triple(M.getTargetTriple());
+  // TODO need to compare against compiler host target triple and determine if
+  // it is executable
+  bool enableJit = Triple.isX86();
+
+  std::unique_ptr<orc::LLJIT> JIT;
+  if (enableJit) {
+    if (Error Err = orc::LLJITBuilder().create().moveInto(JIT)) {
+      logAllUnhandledErrors(std::move(Err), llvm::errs(),
+                            "JIT builder failed: ");
+      enableJit = false;
+    } else {
+      auto JITCtx = std::make_unique<LLVMContext>();
+      auto JITModule = CloneModuleInOtherContext(M, *JITCtx);
+      if (Error Err = JIT->addIRModule(llvm::orc::ThreadSafeModule(
+              std::move(JITModule), std::move(JITCtx)))) {
+        logAllUnhandledErrors(std::move(Err), llvm::errs(),
+                              "JIT add module failed: ");
+        enableJit = false;
+      }
+    }
+  }
 
   using namespace mlir;
 
   auto tryJITCall = [&](StringRef SymName, SmallVector<Operation *> Args) {
+    if (!enableJit)
+      return failure();
+
     // TODO if we end up doing lambdas we need to make them `external` before
     // jitting them as they are not accessible otherwise.
     auto EntrySym = JIT->lookup(SymName);
@@ -1459,7 +1479,7 @@ void applyAll(
     // TODO we should also disallow functions that return values as that can
     // break things
     switch (Args.size()) {
-    // clang-format off
+      // clang-format off
     case 0: {
       auto *Entry = EntrySym->toPtr<void()>();
       Entry();
@@ -1482,7 +1502,7 @@ void applyAll(
     }
     default:
       llvm::report_fatal_error("exceeded max args");
-    // clang-format on
+      // clang-format on
     }
     return success();
   };
