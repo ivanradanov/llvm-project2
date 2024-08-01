@@ -375,6 +375,8 @@ static DeviceDebugInfoLevel mustEmitDebugInfo(const ArgList &Args) {
   return willEmitRemarks(Args) ? DebugDirectivesOnly : DisableDebugInfo;
 }
 
+extern cl::opt<bool> EmitMLIR;
+
 void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
                                     const InputInfo &Output,
                                     const InputInfoList &Inputs,
@@ -488,8 +490,20 @@ void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
   if (Relocatable)
     CmdArgs.push_back("-c");
 
+  ArgStringList CpCmdArgs;
+  ArgStringList *TheCmdArgs = &CmdArgs;
   const char *Exec;
-  if (Arg *A = Args.getLastArg(options::OPT_ptxas_path_EQ))
+  if (EmitMlir) {
+    Exec = Args.MakeArgString("cp");
+    if (Inputs.size() != 1) {
+      llvm::errs() << "Multiple inputs to ptxas not supported\n";
+      abort();
+    }
+    for (const auto &II : Inputs)
+      CmdArgs.push_back(Args.MakeArgString(II.getFilename()));
+    CmdArgs.push_back(Args.MakeArgString(OutputFileName));
+    TheCmdArgs = &CpCmdArgs;
+  } else if (Arg *A = Args.getLastArg(options::OPT_ptxas_path_EQ))
     Exec = A->getValue();
   else
     Exec = Args.MakeArgString(TC.GetProgramPath("ptxas"));
@@ -497,7 +511,7 @@ void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
       JA, *this,
       ResponseFileSupport{ResponseFileSupport::RF_Full, llvm::sys::WEM_UTF8,
                           "--options-file"},
-      Exec, CmdArgs, Inputs, Output));
+      Exec, *TheCmdArgs, Inputs, Output));
 }
 
 static bool shouldIncludePTX(const ArgList &Args, StringRef InputArch) {
@@ -564,13 +578,16 @@ void NVPTX::FatBinary::ConstructJob(Compilation &C, const JobAction &JA,
   for (const auto &A : Args.getAllArgValues(options::OPT_Xcuda_fatbinary))
     CmdArgs.push_back(Args.MakeArgString(A));
 
-  const char *Exec = Args.MakeArgString(TC.GetProgramPath("fatbinary"));
-  C.addCommand(std::make_unique<Command>(
-      JA, *this,
-      ResponseFileSupport{ResponseFileSupport::RF_Full, llvm::sys::WEM_UTF8,
-                          "--options-file"},
-      Exec, CmdArgs, Inputs, Output));
-}
+  const char *Exec;
+  if (EmitMlir) {
+    Exec = Args.MakeArgString("cp");
+    Exec = Args.MakeArgString(TC.GetProgramPath("fatbinary"));
+    C.addCommand(std::make_unique<Command>(
+        JA, *this,
+        ResponseFileSupport{ResponseFileSupport::RF_Full, llvm::sys::WEM_UTF8,
+                            "--options-file"},
+        Exec, CmdArgs, Inputs, Output));
+  }
 
 void NVPTX::Linker::ConstructJob(Compilation &C, const JobAction &JA,
                                  const InputInfo &Output,
