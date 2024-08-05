@@ -316,6 +316,18 @@ struct AffineExprBuilder {
     // TODO We may find an affine op reduction block arg - we may be able to
     // handle them
 
+    for (auto &use : v.getUses()) {
+      if (auto affineScope = dyn_cast<affine::AffineScopeOp>(use.getOwner())) {
+        if (affineScope->isAncestor(user))
+          // TODO should we try to find the inner-most one?
+          return getAffineSymbolExpr(
+              getPosition(affineScope.getRegion().front().getArgument(
+                              use.getOperandNumber()),
+                          symbolOperands),
+              v.getContext());
+      }
+    }
+
     if (legalizeSymbols) {
       illegalSymbols.insert(v);
       return getAffineSymbolExpr(getPosition(v, symbolOperands), context);
