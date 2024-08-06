@@ -1273,6 +1273,12 @@ struct ForLocInfo {
   LocInfo Start, End;
 };
 
+static StringRef getGlobalString(llvm::Value *v) {
+  return cast<llvm::ConstantDataSequential>(
+             cast<llvm::GlobalVariable>(v)->getInitializer())
+      ->getAsString();
+}
+
 using ForOpTy = mlir::affine::AffineForOp;
 
 std::map<std::string, SmallPtrSet<mlir::Operation *, 1>>
@@ -1285,17 +1291,10 @@ buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
   SmallVector<ForLocInfo> ForLocs;
   for (auto &Op : CA->operands()) {
     llvm::ConstantStruct *CS = cast<llvm::ConstantStruct>(Op.get());
-    StringRef Label =
-        cast<llvm::ConstantDataSequential>(
-            cast<llvm::GlobalVariable>(CS->getOperand(0))->getInitializer())
-            ->getAsCString();
+    StringRef Label = getGlobalString(CS->getOperand(0));
     auto getLoc = [&](llvm::Value *V) -> LocInfo {
       StringRef LocStartFile =
-          cast<llvm::ConstantDataSequential>(
-              cast<llvm::GlobalVariable>(
-                  cast<llvm::ConstantStruct>(V)->getOperand(0))
-                  ->getInitializer())
-              ->getAsCString();
+          getGlobalString(cast<llvm::ConstantStruct>(V)->getOperand(0));
       uint64_t LocLine =
           cast<llvm::ConstantInt>(cast<llvm::ConstantStruct>(V)->getOperand(1))
               ->getZExtValue();
@@ -1372,9 +1371,7 @@ SmallVector<ApplicationTy> collectApplications(llvm::Module &M) {
   auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
   for (auto &GVA : Array->operands()) {
     ApplicationTy Application;
-    StringRef Str = cast<llvm::ConstantDataSequential>(
-                        cast<llvm::GlobalVariable>(GVA.get())->getInitializer())
-                        ->getAsString();
+    StringRef Str = getGlobalString(GVA.get());
     Application.FuncName = Str.take_while([&](char c) { return c != 0; });
     Str = Str.drop_while([&](char c) { return c != 0; });
     Str = Str.drop_front();
@@ -1402,10 +1399,7 @@ void importAllTransformerSequences(llvm::Module &M,
     return;
   auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
   for (auto &GVA : Array->operands()) {
-    StringRef Str = cast<llvm::ConstantDataSequential>(
-                        cast<llvm::GlobalVariable>(GVA.get())->getInitializer())
-                        ->getAsString();
-
+    StringRef Str = getGlobalString(GVA.get());
     ParserConfig config(transformModule.getContext(),
                         /*verifyAfterParse=*/false);
     if (failed(mlir::parseSourceString(Str, transformModule.getBody(), config)))
@@ -1592,6 +1586,163 @@ void applyAll(
   }
 }
 
+constexpr char gpuModuleName[] = "__mlir_gpu_module";
+constexpr char kernelPrefix[] = "__mlir_launch_kernel_";
+
+LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
+                                  mlir::ModuleOp deviceModule) {
+  using namespace mlir;
+  if (hostModule->walk([](gpu::GPUModuleOp) { return WalkResult::interrupt(); })
+          .wasInterrupted()) {
+    return failure();
+  }
+  llvm::SmallVector<LLVM::LLVMFuncOp> launchFuncs;
+  hostModule->walk([&](LLVM::LLVMFuncOp funcOp) {
+    auto symName = funcOp.getName();
+    if (symName.starts_with(kernelPrefix))
+      launchFuncs.push_back(funcOp);
+  });
+
+  auto ctx = hostModule.getContext();
+
+  auto moduleBuilder = OpBuilder::atBlockBegin(hostModule.getBody());
+  auto gpuModule = moduleBuilder.create<gpu::GPUModuleOp>(
+      deviceModule->getLoc(), gpuModuleName);
+  gpuModule.getRegion().takeBody(deviceModule.getRegion());
+  // TODO get these target attrs from somewhere
+  auto target = moduleBuilder.getAttr<NVVM::NVVMTargetAttr>(
+      /*optLevel=*/2, /*triple=*/"nvptx64-nvidia-cuda", "sm_80", "+ptx60",
+      /*flags=*/nullptr,
+      /*linkLibs=*/nullptr);
+  gpuModule.setTargetsAttr(moduleBuilder.getArrayAttr({target}));
+
+  auto gpuModuleBuilder = OpBuilder::atBlockEnd(gpuModule.getBody());
+  gpuModuleBuilder.create<gpu::ModuleEndOp>(gpuModule->getLoc());
+
+  for (auto launchFunc : launchFuncs) {
+    auto launchFuncUses = launchFunc.getSymbolUses(hostModule);
+    for (auto use : *launchFuncUses) {
+      if (auto callOp = dyn_cast<LLVM::CallOp>(use.getUser())) {
+        auto loc = callOp->getLoc();
+        OpBuilder builder(callOp);
+        StringRef callee =
+            cast<LLVM::AddressOfOp>(
+                callOp.getCalleeOperands().front().getDefiningOp())
+                .getGlobalName();
+        int symbolLength = 0;
+        if (callee.consume_front("_Z"))
+          callee.consumeInteger(/*radix=*/10, symbolLength);
+        const char stubPrefix[] = "__device_stub__";
+        callee.consume_front(stubPrefix);
+
+        // LLVM::LLVMFuncOp gpuFuncOp =
+        // cast<LLVM::LLVMFuncOp>(deviceModule.lookupSymbol(callee));
+        std::string deviceSymbol;
+        if (symbolLength)
+          deviceSymbol = "_Z" +
+                         std::to_string(symbolLength - strlen(stubPrefix)) +
+                         callee.str();
+        else
+          deviceSymbol = callee;
+        SymbolRefAttr gpuFuncSymbol = SymbolRefAttr::get(
+            StringAttr::get(ctx, gpuModuleName),
+            {SymbolRefAttr::get(StringAttr::get(ctx, deviceSymbol.c_str()))});
+        auto deviceFunc = dyn_cast_or_null<LLVM::LLVMFuncOp>(
+            hostModule.lookupSymbol(gpuFuncSymbol));
+        if (!deviceFunc)
+          return deviceFunc.emitError();
+        deviceFunc->setAttr("gpu.kernel", builder.getUnitAttr());
+        deviceFunc->setAttr("nvvm.kernel", builder.getUnitAttr());
+        auto shMemSize = builder.create<LLVM::TruncOp>(
+            loc, builder.getI32Type(), callOp.getArgOperands()[7]);
+        // TODO stream is arg 8
+        llvm::SmallVector<mlir::Value> args;
+        for (unsigned i = 9; i < callOp.getArgOperands().size(); i++)
+          args.push_back(callOp.getArgOperands()[i]);
+        builder.create<gpu::LaunchFuncOp>(
+            loc, gpuFuncSymbol,
+            gpu::KernelDim3(
+                {builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[1]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[2]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[3])}),
+            gpu::KernelDim3(
+                {builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[4]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[5]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[6])}),
+            shMemSize,
+            // TODO need stream
+            ValueRange(args));
+        callOp->erase();
+      }
+    }
+  }
+  if (launchFuncs.size())
+    hostModule->setAttr("gpu.container_module", OpBuilder(ctx).getUnitAttr());
+  return success();
+}
+
+LogicalResult mergeInDeviceModule(llvm::Module &M, mlir::ModuleOp HostModule,
+                                  mlir::MLIRContext &context) {
+  StringRef registerFuncName = "__cudaRegisterFatBinary";
+  llvm::Function *registerFunc = M.getFunction(registerFuncName);
+  if (!registerFunc)
+    return failure();
+
+  auto uses = registerFunc->uses();
+  if (uses.empty())
+    return failure();
+
+  llvm::ConstantStruct *Wrapper = nullptr;
+  for (auto &use : uses) {
+    if (Wrapper) {
+      llvm::errs() << "More than one device modules found\n";
+      abort();
+    }
+    if (auto CI = dyn_cast<llvm::CallInst>(use.getUser())) {
+      if (CI->getCalledFunction() == registerFunc) {
+        if (auto WrapperGV =
+                dyn_cast<llvm::GlobalVariable>(CI->getArgOperand(0))) {
+          Wrapper = dyn_cast<llvm::ConstantStruct>(WrapperGV->getInitializer());
+        }
+      }
+    }
+  }
+  if (!Wrapper) {
+    LLVM_DEBUG(llvm::errs() << "No device module found\n");
+    return failure();
+  }
+
+  LLVM_DEBUG(llvm::errs() << "FOUND  WRAPPER\n" << *Wrapper << "\n");
+
+  llvm::Constant *ModuleStringPtr = Wrapper->getOperand(2);
+  StringRef DeviceModuleString = getGlobalString(ModuleStringPtr);
+
+  LLVM_DEBUG(llvm::errs() << "MLIR Device Module\n"
+                          << DeviceModuleString << "\n");
+
+  // verification fails if we enable verifyAfterParse as the device module
+  // defines a data layout for f128 and the datalayout combining doesnt like
+  // when layout is define dfor builtin types
+  mlir::Block block;
+  mlir::ParserConfig config(&context,
+                            /*verifyAfterParse=*/false);
+  if (failed(mlir::parseSourceString(DeviceModuleString, &block, config))) {
+    llvm::errs() << "error: could not parse device module\n";
+    abort();
+  }
+  if (block.getOperations().size() != 1) {
+    llvm::errs() << "error: expected one op in parsed device module str\n";
+    abort();
+  }
+  return mergeDeviceIntoHost(HostModule, cast<mlir::ModuleOp>(block.front()));
+}
+
 } // namespace
 
 void EmitAssemblyHelper::RunTransformer() {
@@ -1604,8 +1755,14 @@ void EmitAssemblyHelper::RunTransformer() {
   mlir::registerAllFromLLVMIRTranslations(registry);
   mlir::MLIRContext context(registry);
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
+
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
   LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
+
+  (void)mergeInDeviceModule(*TheModule, MlirModule.get(), context);
+  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR with device\n"
+                          << *MlirModule << "\n");
+
   mlir::PassManager pm(&context);
   if (mlir::failed(mlir::parsePassPipeline(ClMlirPipeline.c_str(), pm))) {
     llvm::errs() << "Invalid pipeline";
