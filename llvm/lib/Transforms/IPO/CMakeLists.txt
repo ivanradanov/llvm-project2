@@ -43,6 +43,7 @@ add_llvm_component_library(LLVMipo
   StripSymbols.cpp
   ThinLTOBitcodeWriter.cpp
   WholeProgramDevirt.cpp
+  CUDALaunchFixUp.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
