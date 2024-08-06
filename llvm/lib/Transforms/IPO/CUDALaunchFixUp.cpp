@@ -180,14 +180,14 @@ void fixup(Module &M) {
         BlockDim1, ConstantInt::get(Builder.getInt64Ty(), 32));
     BlockDimY = Builder.CreateTrunc(BlockDimY, Builder.getInt32Ty());
     auto BlockDimZ = BlockDim2;
-    auto SharedMemSize = CI->getArgOperand(6);
-    auto StreamPtr = CI->getArgOperand(7);
+    auto SharedMemSize = CI->getArgOperand(5);
+    auto StreamPtr = CI->getArgOperand(6);
     SmallVector<Value *> Args = {
         FuncPtr,   GridDimX,  GridDimY,      GridDimZ,  BlockDimX,
         BlockDimY, BlockDimZ, SharedMemSize, StreamPtr,
     };
     auto StubFunc = cast<Function>(CI->getArgOperand(0));
-    for (unsigned I = 8; I < CI->getNumOperands() - 1; I++)
+    for (unsigned I = 7; I < CI->getNumOperands() - 1; I++)
       Args.push_back(CI->getArgOperand(I));
     SmallVector<Type *> ArgTypes;
     for (Value *V : Args)
