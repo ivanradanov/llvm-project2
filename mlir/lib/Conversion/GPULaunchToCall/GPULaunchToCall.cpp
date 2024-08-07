@@ -272,10 +272,7 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
   Value shMemSize = launchOp.getDynamicSharedMemorySize();
   auto cst = dyn_cast_or_null<arith::ConstantIntOp>(shMemSize.getDefiningOp());
   if (!(cst && cst.value() == 0)) {
-    // TODO put this back once we get rid of cudaPush/Pop calls which hide
-    // it
-
-    // return WalkResult::interrupt();
+    return failure();
   }
 
   auto kernelSymbol = launchOp.getKernel();
