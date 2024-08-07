@@ -15,6 +15,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -64,6 +65,10 @@ static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
     rewriter.replaceAllUsesWith(res, newV);
     rewriter.eraseOp(op);
   });
+}
+
+static constexpr int32_t getSharedMemAddrSpace() {
+  return 3;
 }
 
 namespace mlir {
@@ -256,6 +261,29 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     assert(0 <= dim && dim < 3);
     rewriter.replaceAllUsesWith(threadId, ivs[3 + dim]);
     rewriter.eraseOp(threadId);
+  });
+
+  DenseMap<LLVM::GlobalOp, Value> globalToAlloca;
+  newKernel->walk([&](LLVM::AddressOfOp addrOf) {
+    auto global = cast<LLVM::GlobalOp>(SymbolTable::lookupNearestSymbolFrom(
+        newKernel, addrOf.getGlobalNameAttr()));
+    if (global.getAddrSpace() != getSharedMemAddrSpace())
+      return;
+    Value alloca;
+    if (globalToAlloca.count(global)) {
+      alloca = globalToAlloca.lookup(global);
+    } else {
+      OpBuilder blockBuilder = OpBuilder::atBlockBegin(gridParZ.getBody());
+      auto arrayType = cast<LLVM::LLVMArrayType>(global.getGlobalType());
+      alloca = blockBuilder
+                   .create<LLVM::AllocaOp>(
+                       global.getLoc(), addrOf.getRes().getType(),
+                       arrayType, blockBuilder.create<arith::ConstantIntOp>(global->getLoc(), 1, blockBuilder.getI32Type()))
+                   .getResult();
+      globalToAlloca[global] = alloca;
+    }
+    addrOf.getRes().replaceAllUsesWith(alloca);
+    addrOf->erase();
   });
 
   return ConvertedKernel{newSymName, newKernel};
