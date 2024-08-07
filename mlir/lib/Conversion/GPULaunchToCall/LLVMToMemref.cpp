@@ -494,6 +494,10 @@ private:
       newAA.expr = aa->expr + *gepExpr;
       LLVM_DEBUG(llvm::dbgs() << "added " << newAA.expr << "\n");
       return newAA;
+    } else if (auto addrSpaceCast = dyn_cast_or_null<LLVM::AddrSpaceCastOp>(
+                   addr.getDefiningOp())) {
+      return buildAffineAccess(dataLayout,
+                               cast<PtrVal>(addrSpaceCast.getArg()));
     }
 
     AffineAccess aa;
