@@ -56,11 +56,6 @@ using namespace mlir;
 using PtrVal = TypedValue<LLVM::LLVMPointerType>;
 using MemRefVal = MemrefValue;
 
-struct DimOrSym {
-  Value val;
-  bool isDim;
-};
-
 static std::optional<int64_t> getConstant(Operation *op) {
   if (auto cst = dyn_cast_or_null<arith::ConstantIntOp>(op)) {
     return cst.value();
@@ -76,6 +71,53 @@ static std::optional<int64_t> getConstant(Value v) {
     return getConstant(op);
   return {};
 }
+
+static LogicalResult
+convertLLVMAllocaToMemrefAlloca(LLVM::AllocaOp alloc, RewriterBase &rewriter,
+                                const DataLayout &dataLayout) {
+  if (!alloc.getRes().hasOneUse())
+    return failure();
+
+  auto sizeVal = getConstant(alloc.getArraySize());
+  if (!sizeVal)
+    return failure();
+
+  Type elType = rewriter.getI8Type();
+  int64_t elNum = dataLayout.getTypeSize(alloc.getElemType()) * (*sizeVal);
+
+  auto atAddr =
+      dyn_cast<memref::AtAddrOp>(alloc.getRes().use_begin()->getOwner());
+  if (!atAddr)
+    return failure();
+
+  assert(elType == atAddr.getResult().getType().getElementType());
+
+  SmallVector<int64_t, 1> sizes = {elNum};
+  auto memrefType = MemRefType::get(sizes, elType);
+  auto newAlloca =
+      rewriter.create<memref::AllocaOp>(alloc->getLoc(), memrefType);
+  rewriter.replaceAllUsesWith(atAddr.getResult(), newAlloca.getResult());
+  rewriter.eraseOp(atAddr);
+  rewriter.eraseOp(alloc);
+  return success();
+}
+
+namespace {
+struct ConvertLLVMAllocaToMemrefAlloca
+    : public OpRewritePattern<LLVM::AllocaOp> {
+  using OpRewritePattern<LLVM::AllocaOp>::OpRewritePattern;
+  const DataLayoutAnalysis &dl;
+  ConvertLLVMAllocaToMemrefAlloca(MLIRContext *context,
+                                  const DataLayoutAnalysis &dl)
+      : OpRewritePattern<LLVM::AllocaOp>(context), dl(dl) {}
+
+  LogicalResult matchAndRewrite(LLVM::AllocaOp alloc,
+                                PatternRewriter &rewriter) const override {
+    auto dataLayout = dl.getAtOrAbove(alloc);
+    return convertLLVMAllocaToMemrefAlloca(alloc, rewriter, dataLayout);
+  }
+};
+} // namespace
 
 static Value convertToIndex(Value v) {
   OpBuilder builder(v.getContext());
@@ -804,6 +846,12 @@ struct LLVMToAffineAccessPass
     for (auto &&[oldOp, newOp] : mapping.getOperationMap()) {
       rewriter.replaceOp(oldOp, newOp);
     }
+
+    RewritePatternSet patterns(&getContext());
+    patterns.insert<ConvertLLVMAllocaToMemrefAlloca>(&getContext(),
+                                                     dataLayoutAnalysis);
+    GreedyRewriteConfig config;
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns), config);
   }
 };
 
