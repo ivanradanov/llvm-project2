@@ -172,6 +172,9 @@ static constexpr char DefaultPreMergeMlirPipeline[] =
 
 static constexpr char DefaultPostMergeMlirPipeline[] =
     "canonicalize,"
+    // We need this to canonicalize the trunc(const) shared mem size
+    "convert-llvm-to-arith,"
+    "canonicalize,"
     "gpu-launch-to-parallel,"
     "canonicalize,"
     "llvm-to-affine-access,"
