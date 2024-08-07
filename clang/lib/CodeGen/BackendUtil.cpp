@@ -158,7 +158,7 @@ static cl::opt<bool> ClTransformerEnable("transformer-enable", cl::init(false),
                                          cl::desc("Enable MLIR transformer"));
 
 // clang-format off
-static constexpr char DefaultMlirPipeline[] =
+static constexpr char DefaultPreMergeMlirPipeline[] =
     //"builtin.module("
     //"llvm.func("
     "convert-llvm-to-cf,"
@@ -167,20 +167,27 @@ static constexpr char DefaultMlirPipeline[] =
     "lift-cf-to-scf,"
     "canonicalize,"
     "promote-scf-while,"
+    "canonicalize"
+    ;
+
+static constexpr char DefaultPostMergeMlirPipeline[] =
     "canonicalize,"
     "gpu-launch-to-parallel,"
+    "canonicalize,"
+    "llvm-to-affine-access,"
     "canonicalize"
-    //"llvm-to-affine-access,"
-    //"canonicalize"
-    //")"
-    //")"
     ;
 // clang-format on
 
-static cl::opt<std::string> ClMlirPipeline("transformer-mlir-pipeline",
-                                           cl::init(DefaultMlirPipeline),
-                                           cl::Hidden,
-                                           cl::desc("Enable MLIR transformer"));
+static cl::opt<std::string>
+    ClMlirPreMergePipeline("transformer-pre-mergemlir-pipeline",
+                           cl::init(DefaultPreMergeMlirPipeline), cl::Hidden,
+                           cl::desc("pre-merge MLIR pipeline"));
+
+static cl::opt<std::string>
+    ClMlirPostMergePipeline("transformer-post-merge-mlir-pipeline",
+                            cl::init(DefaultPostMergeMlirPipeline), cl::Hidden,
+                            cl::desc("post-merge MLIR pipeline"));
 
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
 } // namespace llvm
@@ -1766,20 +1773,39 @@ void EmitAssemblyHelper::RunTransformer() {
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
   LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
 
+  {
+    mlir::PassManager pm(&context);
+    if (mlir::failed(
+            mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
+      llvm::errs() << "Invalid pipeline";
+      abort();
+    }
+    if (mlir::failed(pm.run(MlirModule.get()))) {
+      llvm::errs() << "Mlir passes failed";
+      abort();
+    }
+    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+  }
+
   (void)mergeInDeviceModule(*TheModule, MlirModule.get(), context);
   LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR with device\n"
                           << *MlirModule << "\n");
 
-  mlir::PassManager pm(&context);
-  if (mlir::failed(mlir::parsePassPipeline(ClMlirPipeline.c_str(), pm))) {
-    llvm::errs() << "Invalid pipeline";
-    abort();
+  // TODO quick hack - this should actually check if we are post-merge, this
+  // currently works for cuda/hip if the host is x86
+  if (llvm::Triple(TheModule->getTargetTriple()).isX86()) {
+    mlir::PassManager pm(&context);
+    if (mlir::failed(
+            mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
+      llvm::errs() << "Invalid pipeline";
+      abort();
+    }
+    if (mlir::failed(pm.run(MlirModule.get()))) {
+      llvm::errs() << "Mlir passes failed";
+      abort();
+    }
+    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
   }
-  if (mlir::failed(pm.run(MlirModule.get()))) {
-    llvm::errs() << "Mlir passes failed";
-    abort();
-  }
-  LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
 
   auto LabelToOp = buildLabelToOpMap(*TheModule, *MlirModule);
   auto Applications = collectApplications(*TheModule);
