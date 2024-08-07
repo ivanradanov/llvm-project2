@@ -169,8 +169,10 @@ static constexpr char DefaultMlirPipeline[] =
     "canonicalize,"
     "promote-scf-while,"
     "canonicalize,"
-    "llvm-to-affine-access,"
+    "gpu-launch-to-parallel,"
     "canonicalize"
+    //"llvm-to-affine-access,"
+    //"canonicalize"
     //")"
     //")"
     ;
