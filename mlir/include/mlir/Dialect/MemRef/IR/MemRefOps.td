@@ -153,7 +153,13 @@ def AtAddrOp : MemRef_Op<"ataddr", [Pure]> {
       return build($_builder, $_state,
         TypeRange(MemRefType::get({ShapedType::kDynamic}, $_builder.getI8Type())),
         ValueRange(source));
-    }]>];
+    }]>,
+    OpBuilder<(ins "Value":$source, "Type":$dstType), [{
+      return build($_builder, $_state,
+        TypeRange(dstType),
+        ValueRange(source));
+    }]>
+  ];
 }
 
 //===----------------------------------------------------------------------===//

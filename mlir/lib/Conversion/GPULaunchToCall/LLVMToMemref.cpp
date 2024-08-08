@@ -18,6 +18,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/IntegerSet.h"
@@ -94,7 +95,9 @@ convertLLVMAllocaToMemrefAlloca(LLVM::AllocaOp alloc, RewriterBase &rewriter,
   assert(elType == atAddr.getResult().getType().getElementType());
 
   SmallVector<int64_t, 1> sizes = {elNum};
-  auto memrefType = MemRefType::get(sizes, elType);
+  auto memrefType =
+      MemRefType::get(sizes, elType, MemRefLayoutAttrInterface{},
+                      atAddr.getResult().getType().getMemorySpace());
   auto newAlloca =
       rewriter.create<memref::AllocaOp>(alloc->getLoc(), memrefType);
   rewriter.replaceAllUsesWith(atAddr.getResult(), newAlloca.getResult());
@@ -139,8 +142,19 @@ static MemRefVal convertToMemref(PtrVal addr) {
     builder.setInsertionPointToStart(ba.getOwner());
   else
     builder.setInsertionPointAfter(addr.getDefiningOp());
-  return cast<MemRefVal>(
-      builder.create<memref::AtAddrOp>(addr.getLoc(), addr).getResult());
+  Attribute addrSpace;
+  if (addr.getType().getAddressSpace() == 0)
+    addrSpace = nullptr;
+  else
+    addrSpace = IntegerAttr::get(IntegerType::get(addr.getContext(), 64),
+                                 addr.getType().getAddressSpace());
+  // TODO we can actually plug in the size of the memref here if `addr` is
+  // defined by an llvm.alloca
+  auto atAddr = builder.create<memref::AtAddrOp>(
+      addr.getLoc(), addr,
+      MemRefType::get({ShapedType::kDynamic}, builder.getI8Type(),
+                      MemRefLayoutAttrInterface{}, Attribute(addrSpace)));
+  return cast<MemRefVal>(atAddr.getResult());
 }
 
 template <typename From, typename To, auto F>
