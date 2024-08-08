@@ -10,6 +10,10 @@ set(link_libs
   clangExtractAPI
   clangFrontend
   clangRewriteFrontend
+
+  MLIRIR
+  MLIRPass
+
   )
 
 set(deps)
@@ -39,6 +43,8 @@ add_clang_library(clangFrontendTool
   DEPENDS
   ClangDriverOptions
   ${deps}
+  MLIRBuiltinLocationAttributesIncGen
+  MLIRBuiltinTypeInterfacesIncGen
 
   LINK_LIBS
   ${link_libs}
@@ -48,3 +54,5 @@ if(CLANG_ENABLE_CIR)
   target_include_directories(clangFrontendTool PRIVATE ${LLVM_MAIN_SRC_DIR}/../mlir/include)
   target_include_directories(clangFrontendTool PRIVATE ${CMAKE_BINARY_DIR}/tools/mlir/include)
 endif()
+include_directories(${LLVM_MAIN_SRC_DIR}/../mlir/include)
+include_directories(${CMAKE_BINARY_DIR}/tools/mlir/include)

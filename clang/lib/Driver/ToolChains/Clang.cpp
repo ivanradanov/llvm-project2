@@ -7801,6 +7801,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       A->render(Args, CmdArgs);
     }
   }
+  for (const Arg *A : Args.filtered(options::OPT_mmlir)) {
+    A->claim();
+    A->render(Args, CmdArgs);
+  }
 
   // This needs to run after -Xclang argument forwarding to pick up the target
   // features enabled through -Xclang -target-feature flags.
