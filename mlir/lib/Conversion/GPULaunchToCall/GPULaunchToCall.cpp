@@ -318,7 +318,26 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
   auto newKernelSymbol = SymbolRefAttr::get(
       kernelModule.getNameAttr(),
       {SymbolRefAttr::get(StringAttr::get(context, newKernelName.c_str()))});
-  launchOp.setKernelAttr(newKernelSymbol);
+
+  SmallVector<Value, 20> operands;
+  operands.push_back(launchOp.getGridSizeX());
+  operands.push_back(launchOp.getGridSizeY());
+  operands.push_back(launchOp.getGridSizeZ());
+  operands.push_back(launchOp.getBlockSizeX());
+  operands.push_back(launchOp.getBlockSizeY());
+  operands.push_back(launchOp.getBlockSizeZ());
+  operands.push_back(launchOp.getDynamicSharedMemorySize());
+  operands.insert(operands.end(), launchOp.getKernelOperands().begin(),
+                  launchOp.getKernelOperands().end());
+
+  Type tokenType = nullptr;
+  if (launchOp.getAsyncToken())
+    tokenType = launchOp.getAsyncToken().getType();
+  rewriter.setInsertionPoint(launchOp);
+  auto callOp = rewriter.create<gpu::CallOp>(
+      launchOp.getLoc(), newKernelSymbol, operands, tokenType,
+      launchOp.getAsyncObject(), launchOp.getAsyncDependencies());
+  rewriter.replaceOp(launchOp, callOp);
 
   return success();
 }
