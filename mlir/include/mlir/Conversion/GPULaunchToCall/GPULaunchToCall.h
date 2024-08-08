@@ -13,16 +13,25 @@
 #ifndef MLIR_CONVERSION_GPULAUNCHTOCALL_LLVMTOARITH_H
 #define MLIR_CONVERSION_GPULAUNCHTOCALL_LLVMTOARITH_H
 
+#include "mlir/Support/LogicalResult.h"
+
 #include <memory>
 
 namespace mlir {
 
 class Pass;
+class Operation;
+class DataLayoutAnalysis;
 
 std::unique_ptr<Pass> createOutlineGPUJitRegionsPass();
 std::unique_ptr<Pass> createPromoteScfWhilePass();
 std::unique_ptr<Pass> createLLVMToAffineAccessPass();
 std::unique_ptr<Pass> createGPULaunchToParallelPass();
+
+LogicalResult
+convertLLVMToAffineAccess(mlir::Operation *op,
+                          const mlir::DataLayoutAnalysis &dataLayoutAnalysis,
+                          bool legalizeSymbols);
 
 } // namespace mlir
 

@@ -672,7 +672,14 @@ LogicalResult
 convertLLVMToAffineAccess(Operation *op,
                           const DataLayoutAnalysis &dataLayoutAnalysis,
                           bool legalizeSymbols) {
+  if (!legalizeSymbols && !op->hasTrait<OpTrait::AffineScope>()) {
+    LLVM_DEBUG(llvm::errs() << "Must be called with an affine scope root when "
+                               "not legelizing symbols\n");
+    return failure();
+  }
+
   MLIRContext *context = op->getContext();
+
   MemrefConverter mc;
   IndexConverter ic;
 
