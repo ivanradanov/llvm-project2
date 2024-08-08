@@ -67,9 +67,7 @@ static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
   });
 }
 
-static constexpr int32_t getSharedMemAddrSpace() {
-  return 3;
-}
+static constexpr int32_t getSharedMemAddrSpace() { return 3; }
 
 namespace mlir {
 // TODO needs stream support
@@ -186,16 +184,16 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
   };
   // TODO combine them
   StringRef attrName = "gpu.par.grid";
-  unsigned argPos = 0;
+  unsigned argPos = 2;
   unsigned argNum = 1;
-  [[maybe_unused]] auto gridParX = createPar(argPos++, argNum, attrName);
-  [[maybe_unused]] auto gridParY = createPar(argPos++, argNum, attrName);
-  [[maybe_unused]] auto gridParZ = createPar(argPos++, argNum, attrName);
-  // TODO shared mem alloc
+  [[maybe_unused]] auto gridParZ = createPar(argPos--, argNum, attrName);
+  [[maybe_unused]] auto gridParY = createPar(argPos--, argNum, attrName);
+  [[maybe_unused]] auto gridParX = createPar(argPos--, argNum, attrName);
   attrName = "gpu.par.block";
-  [[maybe_unused]] auto blockParX = createPar(argPos++, argNum, attrName);
-  [[maybe_unused]] auto blockParY = createPar(argPos++, argNum, attrName);
-  [[maybe_unused]] auto blockParZ = createPar(argPos++, argNum, attrName);
+  argPos = 5;
+  [[maybe_unused]] auto blockParZ = createPar(argPos--, argNum, attrName);
+  [[maybe_unused]] auto blockParY = createPar(argPos--, argNum, attrName);
+  [[maybe_unused]] auto blockParX = createPar(argPos--, argNum, attrName);
 
   // TODO handle multi block regions would be better as I think there may be
   // cases where removing CFG may be impossible before having the parallel
@@ -273,12 +271,13 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     if (globalToAlloca.count(global)) {
       alloca = globalToAlloca.lookup(global);
     } else {
-      OpBuilder blockBuilder = OpBuilder::atBlockBegin(gridParZ.getBody());
+      OpBuilder blockBuilder = OpBuilder::atBlockBegin(gridParX.getBody());
       auto arrayType = cast<LLVM::LLVMArrayType>(global.getGlobalType());
       alloca = blockBuilder
                    .create<LLVM::AllocaOp>(
-                       global.getLoc(), addrOf.getRes().getType(),
-                       arrayType, blockBuilder.create<arith::ConstantIntOp>(global->getLoc(), 1, blockBuilder.getI32Type()))
+                       global.getLoc(), addrOf.getRes().getType(), arrayType,
+                       blockBuilder.create<arith::ConstantIntOp>(
+                           global->getLoc(), 1, blockBuilder.getI32Type()))
                    .getResult();
       globalToAlloca[global] = alloca;
     }
