@@ -1765,6 +1765,9 @@ LogicalResult mergeInDeviceModule(llvm::Module &M, mlir::ModuleOp HostModule,
 void EmitAssemblyHelper::RunTransformer() {
   LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
+  mlir::registerAsmPrinterCLOptions();
   mlir::registerAllDialects(registry);
   mlir::registerAllPasses();
   mlir::registerAllExtensions(registry);
@@ -1778,6 +1781,7 @@ void EmitAssemblyHelper::RunTransformer() {
 
   {
     mlir::PassManager pm(&context);
+    mlir::applyPassManagerCLOptions(pm);
     if (mlir::failed(
             mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
       llvm::errs() << "Invalid pipeline";
@@ -1798,6 +1802,7 @@ void EmitAssemblyHelper::RunTransformer() {
   // currently works for cuda/hip if the host is x86
   if (llvm::Triple(TheModule->getTargetTriple()).isX86()) {
     mlir::PassManager pm(&context);
+    mlir::applyPassManagerCLOptions(pm);
     if (mlir::failed(
             mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
       llvm::errs() << "Invalid pipeline";
