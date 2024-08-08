@@ -22,6 +22,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
@@ -184,7 +185,8 @@ struct AffineExprBuilder {
 
   SmallPtrSet<Value, 4> illegalSymbols;
 
-  DenseMap<Value, unsigned> valueToPos;
+  DenseMap<Value, unsigned> symToPos;
+  DenseMap<Value, unsigned> dimToPos;
   SmallVector<Value> symbolOperands;
   SmallVector<Value> dimOperands;
 
@@ -246,11 +248,11 @@ struct AffineExprBuilder {
   AffineExpr rescopeExprImpl(AffineExpr expr, affine::AffineScopeOp scope) {
     auto newExpr = expr;
     for (auto sym : symbolsForScope) {
-      unsigned dimPos = getPosition(sym, dimOperands);
+      unsigned dimPos = getDimPosition(sym);
       assert(dimOperands[dimPos] == sym);
       BlockArgument newSym = getScopeRemap(scope, sym);
       assert(newSym);
-      unsigned newSymPos = getPosition(newSym, symbolOperands);
+      unsigned newSymPos = getSymbolPosition(newSym);
       AffineExpr dimExpr = getAffineDimExpr(dimPos, user->getContext());
       AffineExpr newSymExpr = getAffineDimExpr(newSymPos, user->getContext());
       newExpr = newExpr.replace(dimExpr, newSymExpr);
@@ -273,16 +275,22 @@ struct AffineExprBuilder {
     scoped = true;
   }
 
-  unsigned getPosition(Value v, SmallVectorImpl<Value> &operands) {
-    // TODO follow this through casts, exts, etc
-    auto it = valueToPos.find(v);
-    if (it != valueToPos.end())
+  unsigned getPosition(Value v, SmallVectorImpl<Value> &operands,
+                       DenseMap<Value, unsigned> toPos) {
+    auto it = toPos.find(v);
+    if (it != toPos.end())
       return it->getSecond();
     unsigned newPos = operands.size();
-    valueToPos.insert({v, newPos});
-
+    toPos.insert({v, newPos});
     operands.push_back(v);
     return newPos;
+  }
+
+  unsigned getSymbolPosition(Value v) {
+    return getPosition(v, symbolOperands, symToPos);
+  }
+  unsigned getDimPosition(Value v) {
+    return getPosition(v, dimOperands, dimToPos);
   }
 
   template <typename... Ts>
@@ -322,10 +330,9 @@ struct AffineExprBuilder {
     if (!isIndexTy)
       v = convertToIndex(v);
     if (affine::isValidSymbol(v)) {
-      return getAffineSymbolExpr(getPosition(v, symbolOperands),
-                                 v.getContext());
+      return getAffineSymbolExpr(getSymbolPosition(v), v.getContext());
     } else if (affine::isValidDim(v)) {
-      return getAffineDimExpr(getPosition(v, dimOperands), v.getContext());
+      return getAffineDimExpr(getDimPosition(v), v.getContext());
     }
     if (!isIndexTy) {
       v.getDefiningOp()->erase();
@@ -363,16 +370,15 @@ struct AffineExprBuilder {
         if (affineScope->isAncestor(user))
           // TODO should we try to find the inner-most one?
           return getAffineSymbolExpr(
-              getPosition(affineScope.getRegion().front().getArgument(
-                              use.getOperandNumber()),
-                          symbolOperands),
+              getSymbolPosition(affineScope.getRegion().front().getArgument(
+                  use.getOperandNumber())),
               v.getContext());
       }
     }
 
     if (legalizeSymbols) {
       illegalSymbols.insert(v);
-      return getAffineSymbolExpr(getPosition(v, symbolOperands), context);
+      return getAffineSymbolExpr(getSymbolPosition(v), context);
     }
 
     return failure();
@@ -661,6 +667,196 @@ static affine::AffineScopeOp insertAffineScope(Block *block,
   return scope;
 }
 
+namespace mlir {
+LogicalResult
+convertLLVMToAffineAccess(Operation *op,
+                          const DataLayoutAnalysis &dataLayoutAnalysis,
+                          bool legalizeSymbols) {
+  MLIRContext *context = op->getContext();
+  MemrefConverter mc;
+  IndexConverter ic;
+
+  // TODO Pretty slow but annoying to implement as we wrap the operation in
+  // the callback
+  while (true) {
+    auto res = op->walk<WalkOrder::PreOrder>([&](scf::ForOp forOp) {
+      AffineForBuilder forBuilder(forOp, legalizeSymbols);
+      if (failed(forBuilder.build()))
+        return WalkResult::advance();
+      LLVM_DEBUG(llvm::dbgs() << "Converting\n" << forOp << "\n");
+      if (legalizeSymbols) {
+        SmallPtrSet<Block *, 8> blocksToScope;
+        for (auto illegalSym : forBuilder.getIllegalSymbols())
+          blocksToScope.insert(illegalSym.getParentBlock());
+        for (Block *b : blocksToScope) {
+          SmallPtrSet<Value, 6> symbols;
+          forBuilder.collectSymbolsForScope(b->getParent(), symbols);
+          SmallVector<Value, 6> symbolsVec(symbols.begin(), symbols.end());
+          auto scope = insertAffineScope(b, symbolsVec);
+          forBuilder.rescope(scope);
+        }
+      }
+      IRRewriter rewriter(forOp);
+      auto lb = forBuilder.getLbMap();
+      auto ub = forBuilder.getUbMap();
+      auto affineForOp = rewriter.create<affine::AffineForOp>(
+          forOp.getLoc(), ic(lb.operands), lb.map, ic(ub.operands), ub.map,
+          forBuilder.getStep(), forOp.getInitArgs());
+      if (!affineForOp.getRegion().empty())
+        affineForOp.getRegion().front().erase();
+      Block *block = forOp.getBody();
+      SmallVector<Type> blockArgTypes = {rewriter.getIndexType()};
+      auto iterArgTypes = forOp.getInitArgs().getTypes();
+      blockArgTypes.insert(blockArgTypes.end(), iterArgTypes.begin(),
+                           iterArgTypes.end());
+      SmallVector<Location> blockArgLocs =
+          getLocs(forOp.getBody()->getArguments());
+      auto newBlock = rewriter.createBlock(&affineForOp.getRegion(), {},
+                                           blockArgTypes, blockArgLocs);
+      SmallVector<Value> newBlockArgs(newBlock->getArguments());
+      auto origIVType = forOp.getInductionVar().getType();
+      if (origIVType != rewriter.getIndexType()) {
+        rewriter.setInsertionPointToStart(newBlock);
+        newBlockArgs[0] = rewriter.create<arith::IndexCastOp>(
+            newBlockArgs[0].getLoc(), origIVType, newBlockArgs[0]);
+      }
+      rewriter.inlineBlockBefore(block, newBlock, newBlock->end(),
+                                 newBlockArgs);
+      rewriter.replaceOp(forOp, affineForOp);
+      auto yield = cast<scf::YieldOp>(newBlock->getTerminator());
+      rewriter.setInsertionPoint(yield);
+      rewriter.replaceOpWithNewOp<affine::AffineYieldOp>(yield,
+                                                         yield.getOperands());
+      return WalkResult::interrupt();
+    });
+    if (!res.wasInterrupted())
+      break;
+  }
+
+  SmallVector<std::unique_ptr<AffineAccessBuilder>> accessBuilders;
+  auto handleOp = [&](Operation *op, PtrVal addr) {
+    LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << op
+                            << " for address " << addr << "\n");
+    accessBuilders.push_back(
+        std::make_unique<AffineAccessBuilder>(op, legalizeSymbols));
+    AffineAccessBuilder &aab = *accessBuilders.back();
+    auto dl = dataLayoutAnalysis.getAtOrAbove(op);
+    auto res = aab.build(dl, addr);
+    if (failed(res))
+      accessBuilders.pop_back();
+  };
+  op->walk([&](LLVM::StoreOp store) {
+    PtrVal addr = store.getAddr();
+    handleOp(store, addr);
+  });
+  op->walk([&](LLVM::LoadOp load) {
+    PtrVal addr = load.getAddr();
+    handleOp(load, addr);
+  });
+
+  // TODO should also gather other mem operations such as memory intrinsics
+  // TODO should we shrink the scope to where no other memory operations
+  // exist?
+
+  if (legalizeSymbols) {
+    SmallPtrSet<Block *, 8> blocksToScope;
+    for (auto &aabp : accessBuilders)
+      for (auto illegalSym : aabp->illegalSymbols)
+        blocksToScope.insert(illegalSym.getParentBlock());
+    SmallPtrSet<Block *, 8> innermostBlocks;
+    for (Block *b : blocksToScope) {
+      SmallVector<Block *> toRemove;
+      bool isInnermost = true;
+      for (Block *existing : innermostBlocks) {
+        if (existing->getParent()->isProperAncestor(b->getParent()))
+          toRemove.push_back(existing);
+        if (b->getParent()->isAncestor(existing->getParent()))
+          isInnermost = false;
+      }
+      for (Block *r : toRemove)
+        innermostBlocks.erase(r);
+      if (isInnermost)
+        innermostBlocks.insert(b);
+    }
+
+    // TODO this looks terribly slow
+    for (Block *b : innermostBlocks) {
+      SmallPtrSet<Value, 6> symbols;
+      for (auto &aabp : accessBuilders)
+        aabp->collectSymbolsForScope(b->getParent(), symbols);
+      SmallVector<Value, 6> symbolsVec(symbols.begin(), symbols.end());
+      auto scope = insertAffineScope(b, symbolsVec);
+      for (auto &aabp : accessBuilders) {
+        aabp->rescope(scope);
+      }
+    }
+  }
+
+  IRMapping mapping;
+  for (auto &aabp : accessBuilders) {
+    AffineAccessBuilder &aab = *aabp;
+    // TODO add a test where some operations are left illegal
+    if (!aab.isLegal())
+      continue;
+
+    auto mao = aab.getMap();
+
+    auto dl = dataLayoutAnalysis.getAtOrAbove(aab.user);
+    if (auto load = dyn_cast<LLVM::LoadOp>(aab.user)) {
+      IRRewriter rewriter(load);
+      auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
+                                 rewriter.getI8Type());
+      auto vecLoad = rewriter.create<affine::AffineVectorLoadOp>(
+          load.getLoc(), vty, mc(aab.getBase()), mao.map, ic(mao.operands));
+      Operation *newLoad;
+      if (isa<LLVM::LLVMPointerType>(load.getType())) {
+        Type intTy = rewriter.getIntegerType(
+            (int64_t)dl.getTypeSize(load.getType()) * 8);
+        auto cast =
+            rewriter.create<LLVM::BitcastOp>(load.getLoc(), intTy, vecLoad);
+        newLoad = rewriter.create<LLVM::IntToPtrOp>(load.getLoc(),
+                                                    load.getType(), cast);
+      } else {
+        newLoad = rewriter.create<LLVM::BitcastOp>(load.getLoc(),
+                                                   load.getType(), vecLoad);
+      }
+      mapping.map(load, newLoad);
+    } else if (auto store = dyn_cast<LLVM::StoreOp>(aab.user)) {
+      Type ty = store.getValue().getType();
+      IRRewriter rewriter(store);
+      auto vty =
+          VectorType::get({(int64_t)dl.getTypeSize(ty)}, rewriter.getI8Type());
+      Value cast;
+      if (isa<LLVM::LLVMPointerType>(ty)) {
+        Type intTy = rewriter.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
+        cast = rewriter.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
+                                                 store.getValue());
+        cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty, cast);
+      } else {
+        cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty,
+                                                store.getValue());
+      }
+      Operation *newStore = rewriter.create<affine::AffineVectorStoreOp>(
+          store.getLoc(), cast, mc(aab.base), mao.map, ic(mao.operands));
+      mapping.map(store.getOperation(), newStore);
+    } else {
+      llvm_unreachable("");
+    }
+  }
+
+  IRRewriter rewriter(context);
+  for (auto &&[oldOp, newOp] : mapping.getOperationMap()) {
+    rewriter.replaceOp(oldOp, newOp);
+  }
+
+  RewritePatternSet patterns(context);
+  patterns.insert<ConvertLLVMAllocaToMemrefAlloca>(context, dataLayoutAnalysis);
+  GreedyRewriteConfig config;
+  (void)applyPatternsAndFoldGreedily(op, std::move(patterns), config);
+  return success();
+}
+} // namespace mlir
+
 // This should scheduled on individual functions
 struct LLVMToAffineAccessPass
     : public impl::LLVMToAffineAccessPassBase<LLVMToAffineAccessPass> {
@@ -668,190 +864,7 @@ struct LLVMToAffineAccessPass
   void runOnOperation() override {
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
-
-    MemrefConverter mc;
-    IndexConverter ic;
-
-    bool legalizeSymbols = true;
-
-    // TODO Pretty slow but annoying to implement as we wrap the operation in
-    // the callback
-    while (true) {
-      auto res = op->walk<WalkOrder::PreOrder>([&](scf::ForOp forOp) {
-        AffineForBuilder forBuilder(forOp, legalizeSymbols);
-        if (failed(forBuilder.build()))
-          return WalkResult::advance();
-        LLVM_DEBUG(llvm::dbgs() << "Converting\n" << forOp << "\n");
-        if (legalizeSymbols) {
-          SmallPtrSet<Block *, 8> blocksToScope;
-          for (auto illegalSym : forBuilder.getIllegalSymbols())
-            blocksToScope.insert(illegalSym.getParentBlock());
-          for (Block *b : blocksToScope) {
-            SmallPtrSet<Value, 6> symbols;
-            forBuilder.collectSymbolsForScope(b->getParent(), symbols);
-            SmallVector<Value, 6> symbolsVec(symbols.begin(), symbols.end());
-            auto scope = insertAffineScope(b, symbolsVec);
-            forBuilder.rescope(scope);
-          }
-        }
-        IRRewriter rewriter(forOp);
-        auto lb = forBuilder.getLbMap();
-        auto ub = forBuilder.getUbMap();
-        auto affineForOp = rewriter.create<affine::AffineForOp>(
-            forOp.getLoc(), ic(lb.operands), lb.map, ic(ub.operands), ub.map,
-            forBuilder.getStep(), forOp.getInitArgs());
-        if (!affineForOp.getRegion().empty())
-          affineForOp.getRegion().front().erase();
-        Block *block = forOp.getBody();
-        SmallVector<Type> blockArgTypes = {rewriter.getIndexType()};
-        auto iterArgTypes = forOp.getInitArgs().getTypes();
-        blockArgTypes.insert(blockArgTypes.end(), iterArgTypes.begin(),
-                             iterArgTypes.end());
-        SmallVector<Location> blockArgLocs =
-            getLocs(forOp.getBody()->getArguments());
-        auto newBlock = rewriter.createBlock(&affineForOp.getRegion(), {},
-                                             blockArgTypes, blockArgLocs);
-        SmallVector<Value> newBlockArgs(newBlock->getArguments());
-        auto origIVType = forOp.getInductionVar().getType();
-        if (origIVType != rewriter.getIndexType()) {
-          rewriter.setInsertionPointToStart(newBlock);
-          newBlockArgs[0] = rewriter.create<arith::IndexCastOp>(
-              newBlockArgs[0].getLoc(), origIVType, newBlockArgs[0]);
-        }
-        rewriter.inlineBlockBefore(block, newBlock, newBlock->end(),
-                                   newBlockArgs);
-        rewriter.replaceOp(forOp, affineForOp);
-        auto yield = cast<scf::YieldOp>(newBlock->getTerminator());
-        rewriter.setInsertionPoint(yield);
-        rewriter.replaceOpWithNewOp<affine::AffineYieldOp>(yield,
-                                                           yield.getOperands());
-        return WalkResult::interrupt();
-      });
-      if (!res.wasInterrupted())
-        break;
-    }
-
-    SmallVector<std::unique_ptr<AffineAccessBuilder>> accessBuilders;
-    auto handleOp = [&](Operation *op, PtrVal addr) {
-      LLVM_DEBUG(llvm::dbgs() << "Building affine access for " << op
-                              << " for address " << addr << "\n");
-      accessBuilders.push_back(
-          std::make_unique<AffineAccessBuilder>(op, legalizeSymbols));
-      AffineAccessBuilder &aab = *accessBuilders.back();
-      auto dl = dataLayoutAnalysis.getAtOrAbove(op);
-      auto res = aab.build(dl, addr);
-      if (failed(res))
-        accessBuilders.pop_back();
-    };
-    op->walk([&](LLVM::StoreOp store) {
-      PtrVal addr = store.getAddr();
-      handleOp(store, addr);
-    });
-    op->walk([&](LLVM::LoadOp load) {
-      PtrVal addr = load.getAddr();
-      handleOp(load, addr);
-    });
-
-    // TODO should also gather other mem operations such as memory intrinsics
-    // TODO should we shrink the scope to where no other memory operations
-    // exist?
-
-    if (legalizeSymbols) {
-      SmallPtrSet<Block *, 8> blocksToScope;
-      for (auto &aabp : accessBuilders)
-        for (auto illegalSym : aabp->illegalSymbols)
-          blocksToScope.insert(illegalSym.getParentBlock());
-      SmallPtrSet<Block *, 8> innermostBlocks;
-      for (Block *b : blocksToScope) {
-        SmallVector<Block *> toRemove;
-        bool isInnermost = true;
-        for (Block *existing : innermostBlocks) {
-          if (existing->getParent()->isProperAncestor(b->getParent()))
-            toRemove.push_back(existing);
-          if (b->getParent()->isAncestor(existing->getParent()))
-            isInnermost = false;
-        }
-        for (Block *r : toRemove)
-          innermostBlocks.erase(r);
-        if (isInnermost)
-          innermostBlocks.insert(b);
-      }
-
-      // TODO this looks terribly slow
-      for (Block *b : innermostBlocks) {
-        SmallPtrSet<Value, 6> symbols;
-        for (auto &aabp : accessBuilders)
-          aabp->collectSymbolsForScope(b->getParent(), symbols);
-        SmallVector<Value, 6> symbolsVec(symbols.begin(), symbols.end());
-        auto scope = insertAffineScope(b, symbolsVec);
-        for (auto &aabp : accessBuilders) {
-          aabp->rescope(scope);
-        }
-      }
-    }
-
-    IRMapping mapping;
-    for (auto &aabp : accessBuilders) {
-      AffineAccessBuilder &aab = *aabp;
-      // TODO add a test where some operations are left illegal
-      if (!aab.isLegal())
-        continue;
-
-      auto mao = aab.getMap();
-
-      auto dl = dataLayoutAnalysis.getAtOrAbove(aab.user);
-      if (auto load = dyn_cast<LLVM::LoadOp>(aab.user)) {
-        IRRewriter rewriter(load);
-        auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
-                                   rewriter.getI8Type());
-        auto vecLoad = rewriter.create<affine::AffineVectorLoadOp>(
-            load.getLoc(), vty, mc(aab.getBase()), mao.map, ic(mao.operands));
-        Operation *newLoad;
-        if (isa<LLVM::LLVMPointerType>(load.getType())) {
-          Type intTy = rewriter.getIntegerType(
-              (int64_t)dl.getTypeSize(load.getType()) * 8);
-          auto cast =
-              rewriter.create<LLVM::BitcastOp>(load.getLoc(), intTy, vecLoad);
-          newLoad = rewriter.create<LLVM::IntToPtrOp>(load.getLoc(),
-                                                      load.getType(), cast);
-        } else {
-          newLoad = rewriter.create<LLVM::BitcastOp>(load.getLoc(),
-                                                     load.getType(), vecLoad);
-        }
-        mapping.map(load, newLoad);
-      } else if (auto store = dyn_cast<LLVM::StoreOp>(aab.user)) {
-        Type ty = store.getValue().getType();
-        IRRewriter rewriter(store);
-        auto vty = VectorType::get({(int64_t)dl.getTypeSize(ty)},
-                                   rewriter.getI8Type());
-        Value cast;
-        if (isa<LLVM::LLVMPointerType>(ty)) {
-          Type intTy = rewriter.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
-          cast = rewriter.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
-                                                   store.getValue());
-          cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty, cast);
-        } else {
-          cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty,
-                                                  store.getValue());
-        }
-        Operation *newStore = rewriter.create<affine::AffineVectorStoreOp>(
-            store.getLoc(), cast, mc(aab.base), mao.map, ic(mao.operands));
-        mapping.map(store.getOperation(), newStore);
-      } else {
-        llvm_unreachable("");
-      }
-    }
-
-    IRRewriter rewriter(op->getContext());
-    for (auto &&[oldOp, newOp] : mapping.getOperationMap()) {
-      rewriter.replaceOp(oldOp, newOp);
-    }
-
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<ConvertLLVMAllocaToMemrefAlloca>(&getContext(),
-                                                     dataLayoutAnalysis);
-    GreedyRewriteConfig config;
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns), config);
+    (void)convertLLVMToAffineAccess(op, dataLayoutAnalysis, true);
   }
 };
 
