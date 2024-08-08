@@ -129,17 +129,19 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     // TODO we can use affine::AffineScopeOp in an llvm func
     auto newFty = LLVM::LLVMFunctionType::get(fty.getReturnType(), paramTypes,
                                               fty.isVarArg());
+    auto oldAttrs = llvmKernel->getAttrs();
+    SmallVector<NamedAttribute> newAttrs;
+    for (auto attr : oldAttrs)
+      if (attr.getName() != "function_type" && attr.getName() != "arg_attrs" &&
+          attr.getName() != "CConv" && attr.getName() != "linkage" &&
+          attr.getName() != "sym_name")
+        newAttrs.push_back(attr);
     LLVM::LLVMFuncOp funcOp;
     newKernel = funcOp = rewriter.create<LLVM::LLVMFuncOp>(
         funcLoc, newSymName.c_str(), newFty, llvmKernel.getLinkage(),
         llvmKernel.getDsoLocal(), llvmKernel.getCConv(),
-        llvmKernel.getComdatAttr(),
-        /* TODO attrs if we pass in llvmKernel->getAttrs() here we get an
-           error in the op rewriter */
-        ArrayRef<NamedAttribute>(), paramAttrs,
+        llvmKernel.getComdatAttr(), newAttrs, paramAttrs,
         llvmKernel.getFunctionEntryCount());
-    // TODO temp until we get attrs working
-    funcOp->setAttr("gpu.kernel", rewriter.getUnitAttr());
     funcOp->setAttr("gpu.par.kernel", rewriter.getUnitAttr());
 
     newEntryBlock =
