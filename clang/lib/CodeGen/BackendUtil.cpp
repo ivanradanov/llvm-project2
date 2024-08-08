@@ -98,6 +98,7 @@
 #include "llvm/Transforms/Utils/Debugify.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
+#include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
 #include "mlir/Dialect/Transform/IR/TransformAttrs.h"
@@ -153,6 +154,10 @@ static cl::opt<PGOOptions::ColdFuncOpt> ClPGOColdFuncAttr(
                clEnumValN(PGOOptions::ColdFuncOpt::OptNone, "optnone",
                           "Mark cold functions with optnone.")));
 
+static cl::opt<std::string>
+    ClTransformerPipeline("transformer-pipeline", cl::init("default"),
+                          cl::Hidden, cl::desc("Transformer pipeline to use"));
+
 static cl::opt<bool> ClTransformerEnable("transformer-enable", cl::init(false),
                                          cl::Hidden,
                                          cl::desc("Enable MLIR transformer"));
@@ -176,9 +181,9 @@ static constexpr char DefaultPostMergeMlirPipeline[] =
     "convert-llvm-to-arith,"
     "canonicalize,"
     "gpu-launch-to-parallel,"
-    "canonicalize,"
-    "llvm-to-affine-access,"
     "canonicalize"
+    //"llvm-to-affine-access,"
+    //"canonicalize"
     ;
 // clang-format on
 
@@ -1706,6 +1711,7 @@ LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
 
 LogicalResult mergeInDeviceModule(llvm::Module &M, mlir::ModuleOp HostModule,
                                   mlir::MLIRContext &context) {
+  using namespace mlir;
   StringRef registerFuncName = "__cudaRegisterFatBinary";
   llvm::Function *registerFunc = M.getFunction(registerFuncName);
   if (!registerFunc)
@@ -1760,9 +1766,71 @@ LogicalResult mergeInDeviceModule(llvm::Module &M, mlir::ModuleOp HostModule,
   return mergeDeviceIntoHost(HostModule, cast<mlir::ModuleOp>(block.front()));
 }
 
-} // namespace
+void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
+                                    mlir::ModuleOp MlirModule) {
+  using namespace mlir;
 
-void EmitAssemblyHelper::RunTransformer() {
+  MLIRContext &context = *MlirModule->getContext();
+  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
+
+  {
+    mlir::PassManager pm(&context);
+    (void)mlir::applyPassManagerCLOptions(pm);
+    if (mlir::failed(
+            mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
+      llvm::errs() << "Invalid pipeline";
+      abort();
+    }
+    if (mlir::failed(pm.run(MlirModule))) {
+      llvm::errs() << "Mlir passes failed";
+      abort();
+    }
+    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+  }
+
+  (void)mergeInDeviceModule(*TheModule, MlirModule, context);
+  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR with device\n"
+                          << *MlirModule << "\n");
+
+  // TODO quick hack - this should actually check if we are post-merge, this
+  // currently works for cuda/hip if the host is x86
+  if (llvm::Triple(TheModule->getTargetTriple()).isX86()) {
+    mlir::PassManager pm(&context);
+    (void)mlir::applyPassManagerCLOptions(pm);
+    if (mlir::failed(
+            mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
+      llvm::errs() << "Invalid pipeline";
+      abort();
+    }
+    if (mlir::failed(pm.run(MlirModule))) {
+      llvm::errs() << "Mlir passes failed";
+      abort();
+    }
+    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+  }
+}
+
+void embedMlirModule(llvm::Module *TheModule, mlir::ModuleOp MlirModule) {
+  using namespace mlir;
+
+  if (EmitMLIR) {
+    std::string MlirString;
+    llvm::raw_string_ostream MlirStream(MlirString);
+    mlir::OpPrintingFlags Flags;
+    Flags.enableDebugInfo();
+    mlir::AsmState asmState(MlirModule, Flags);
+    MlirModule->print(MlirStream, asmState);
+    MlirStream.flush();
+
+    llvm::IRBuilder<> B(TheModule->getContext());
+    auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
+                                   TheModule, true);
+    GV->setSection("llvm.metadata");
+    appendToUsed(*TheModule, {GV});
+  }
+}
+
+void defaultPipeline(llvm::Module *TheModule) {
   LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
   mlir::registerMLIRContextCLOptions();
@@ -1777,43 +1845,7 @@ void EmitAssemblyHelper::RunTransformer() {
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
 
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
-  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
-
-  {
-    mlir::PassManager pm(&context);
-    mlir::applyPassManagerCLOptions(pm);
-    if (mlir::failed(
-            mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
-      llvm::errs() << "Invalid pipeline";
-      abort();
-    }
-    if (mlir::failed(pm.run(MlirModule.get()))) {
-      llvm::errs() << "Mlir passes failed";
-      abort();
-    }
-    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
-  }
-
-  (void)mergeInDeviceModule(*TheModule, MlirModule.get(), context);
-  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR with device\n"
-                          << *MlirModule << "\n");
-
-  // TODO quick hack - this should actually check if we are post-merge, this
-  // currently works for cuda/hip if the host is x86
-  if (llvm::Triple(TheModule->getTargetTriple()).isX86()) {
-    mlir::PassManager pm(&context);
-    mlir::applyPassManagerCLOptions(pm);
-    if (mlir::failed(
-            mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
-      llvm::errs() << "Invalid pipeline";
-      abort();
-    }
-    if (mlir::failed(pm.run(MlirModule.get()))) {
-      llvm::errs() << "Mlir passes failed";
-      abort();
-    }
-    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
-  }
+  runDefaultPrePostMLIRPipelines(TheModule, MlirModule.get());
 
   auto LabelToOp = buildLabelToOpMap(*TheModule, *MlirModule);
   auto Applications = collectApplications(*TheModule);
@@ -1840,22 +1872,48 @@ void EmitAssemblyHelper::RunTransformer() {
     llvm::errs() << "Verification failed\n";
   LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
 
-  if (EmitMLIR) {
-    std::string MlirString;
-    llvm::raw_string_ostream MlirStream(MlirString);
-    mlir::OpPrintingFlags Flags;
-    Flags.enableDebugInfo();
-    mlir::AsmState asmState(MlirModule.get(), Flags);
-    MlirModule->print(MlirStream, asmState);
-    MlirStream.flush();
+  embedMlirModule(TheModule, MlirModule.get());
 
-    llvm::IRBuilder<> B(TheModule->getContext());
-    auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
-                                   TheModule, true);
-    GV->setSection("llvm.metadata");
-    appendToUsed(*TheModule, {GV});
-  }
   LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
+}
+
+void gpuOptPipeline(llvm::Module *TheModule) {
+  LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
+  mlir::DialectRegistry registry;
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerAllDialects(registry);
+  mlir::registerAllPasses();
+  mlir::registerAllExtensions(registry);
+  mlir::registerAllToLLVMIRTranslations(registry);
+  mlir::registerAllFromLLVMIRTranslations(registry);
+  mlir::MLIRContext context(registry);
+  std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
+
+  auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
+  runDefaultPrePostMLIRPipelines(TheModule, MlirModule.get());
+
+  MlirModule.get()->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
+    gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
+      if (func->getAttr("gpu.par.kernel")) {
+        const mlir::DataLayoutAnalysis dl(gpuModule);
+        (void)mlir::convertLLVMToAffineAccess(func, dl, false);
+      }
+    });
+  });
+
+  embedMlirModule(TheModule, MlirModule.get());
+
+  LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
+}
+
+} // namespace
+
+void EmitAssemblyHelper::RunTransformer() {
+  llvm::StringSwitch<std::function<void(llvm::Module *)>>(ClTransformerPipeline)
+      .Case("gpu-opt", gpuOptPipeline)
+      .Default(defaultPipeline)(TheModule);
 }
 
 void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
