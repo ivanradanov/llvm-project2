@@ -10,6 +10,10 @@ set(link_libs
   clangExtractAPI
   clangFrontend
   clangRewriteFrontend
+
+  MLIRIR
+  MLIRPass
+
   )
 
 if(CLANG_ENABLE_ARCMT)
@@ -29,7 +33,13 @@ add_clang_library(clangFrontendTool
 
   DEPENDS
   ClangDriverOptions
+  MLIRBuiltinLocationAttributesIncGen
+  MLIRBuiltinTypeInterfacesIncGen
+
 
   LINK_LIBS
   ${link_libs}
   )
+
+include_directories(${LLVM_MAIN_SRC_DIR}/../mlir/include)
+include_directories(${CMAKE_BINARY_DIR}/tools/mlir/include)
