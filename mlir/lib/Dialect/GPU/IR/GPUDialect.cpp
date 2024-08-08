@@ -1292,6 +1292,45 @@ static void printLaunchFuncOperands(OpAsmPrinter &printer, Operation *,
 }
 
 //===----------------------------------------------------------------------===//
+// CallOp
+//===----------------------------------------------------------------------===//
+
+void CallOp::build(OpBuilder &builder, OperationState &result,
+                   SymbolRefAttr kernelSymbol, ValueRange kernelOperands,
+                   Type asyncTokenType, Value asyncObject,
+                   ValueRange asyncDependencies) {
+  assert(kernelSymbol.getNestedReferences().size() == 1 &&
+         "expected a symbol reference with a single nested reference");
+  result.addOperands(asyncDependencies);
+  if (asyncTokenType)
+    result.types.push_back(builder.getType<AsyncTokenType>());
+  if (asyncObject)
+    result.addOperands({asyncObject});
+
+  result.addOperands(kernelOperands);
+
+  Properties &prop = result.getOrAddProperties<Properties>();
+  prop.kernel = kernelSymbol;
+  [[maybe_unused]] size_t segmentSizesLen = std::size(prop.operandSegmentSizes);
+  assert(segmentSizesLen == 3);
+  for (auto &sz : prop.operandSegmentSizes)
+    sz = 0;
+  prop.operandSegmentSizes[0] = asyncDependencies.size();
+  prop.operandSegmentSizes[1] = static_cast<int32_t>(kernelOperands.size());
+  prop.operandSegmentSizes[2] = asyncObject ? 1 : 0;
+}
+
+StringAttr CallOp::getKernelModuleName() {
+  return getKernel().getRootReference();
+}
+
+StringAttr CallOp::getKernelName() { return getKernel().getLeafReference(); }
+
+unsigned CallOp::getNumKernelOperands() { return getKernelOperands().size(); }
+
+Value CallOp::getKernelOperand(unsigned i) { return getKernelOperands()[i]; }
+
+//===----------------------------------------------------------------------===//
 // ShuffleOp
 //===----------------------------------------------------------------------===//
 

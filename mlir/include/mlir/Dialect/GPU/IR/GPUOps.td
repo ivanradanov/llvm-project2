@@ -601,6 +601,71 @@ def GPU_DynamicSharedMemoryOp : GPU_Op<"dynamic_shared_memory", [Pure]>
   let hasVerifier = 1;
 }
 
+def GPU_CallOp :GPU_Op<"call", [
+      CallOpInterface,
+      GPU_AsyncOpInterface,
+      AttrSizedOperandSegments,
+    ]>,
+    Arguments<(ins Variadic<GPU_AsyncToken>:$asyncDependencies,
+               SymbolRefAttr:$kernel,
+               Variadic<AnyType>:$kernelOperands,
+               Optional<AnyType>:$asyncObject)>,
+    Results<(outs Optional<GPU_AsyncToken>:$asyncToken)> {
+  let summary = "Launches a function as a GPU kernel";
+
+  let description = [{
+    Call a GPU function (i.e. with grid, block size = 1)
+  }];
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<(ins "SymbolRefAttr":$kernel,
+      "ValueRange":$kernelOperands,
+      "Type":$asyncTokenType,
+      CArg<"Value", "nullptr">:$asyncObject,
+      CArg<"ValueRange", "{}">:$asyncDependencies)>
+  ];
+
+  let extraClassDeclaration = [{
+    /// The name of the kernel's containing module.
+    StringAttr getKernelModuleName();
+
+    /// The name of the kernel.
+    StringAttr getKernelName();
+
+    /// The number of operands passed to the kernel function.
+    unsigned getNumKernelOperands();
+
+    /// The i-th operand passed to the kernel function.
+    Value getKernelOperand(unsigned i);
+
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return {arg_operand_begin(), arg_operand_end()};
+    }
+
+    MutableOperandRange getArgOperandsMutable() {
+      return getKernelOperandsMutable();
+    }
+
+    operand_iterator arg_operand_begin() { return operand_begin();   }
+    operand_iterator arg_operand_end() { return operand_begin() + getNumKernelOperands(); }
+
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getKernel();
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(CallInterfaceCallable callee) {
+      setKernelAttr(callee.get<SymbolRefAttr>());
+    }
+  }];
+
+}
+
 def LaunchIndx : AnyTypeOf<[Index, I32, I64]>;
 
 def GPU_LaunchFuncOp :GPU_Op<"launch_func", [
