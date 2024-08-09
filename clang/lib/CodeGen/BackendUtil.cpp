@@ -1895,10 +1895,11 @@ void gpuOptPipeline(llvm::Module *TheModule) {
   runDefaultPrePostMLIRPipelines(TheModule, MlirModule.get());
 
   MlirModule.get()->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
+    const mlir::DataLayoutAnalysis dl(gpuModule);
     gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
       if (func->getAttr("gpu.par.kernel")) {
-        const mlir::DataLayoutAnalysis dl(gpuModule);
         (void)mlir::convertLLVMToAffineAccess(func, dl, false);
+        mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
       }
     });
   });
