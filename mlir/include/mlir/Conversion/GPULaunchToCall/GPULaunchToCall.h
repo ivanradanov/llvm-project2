@@ -33,6 +33,12 @@ convertLLVMToAffineAccess(mlir::Operation *op,
                           const mlir::DataLayoutAnalysis &dataLayoutAnalysis,
                           bool legalizeSymbols);
 
+namespace gpu {
+namespace affine_opt {
+void optGlobalSharedMemCopies(Operation *root);
+}
+} // namespace gpu
+
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_GPULAUNCHTOCALL_LLVMTOARITH_H
