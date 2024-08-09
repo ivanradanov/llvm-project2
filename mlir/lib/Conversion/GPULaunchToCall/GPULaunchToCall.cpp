@@ -2,6 +2,7 @@
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -424,6 +425,61 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
 } // namespace mlir
 
 namespace {
+static Value buildMinMaxReductionSeq(Location loc,
+                                     arith::CmpIPredicate predicate,
+                                     ValueRange values, OpBuilder &builder) {
+  assert(!values.empty() && "empty min/max chain");
+  assert(predicate == arith::CmpIPredicate::sgt ||
+         predicate == arith::CmpIPredicate::slt);
+
+  auto valueIt = values.begin();
+  Value value = *valueIt++;
+  for (; valueIt != values.end(); ++valueIt) {
+    if (predicate == arith::CmpIPredicate::sgt)
+      value = builder.create<arith::MaxSIOp>(loc, value, *valueIt);
+    else
+      value = builder.create<arith::MinSIOp>(loc, value, *valueIt);
+  }
+
+  return value;
+}
+static Value lowerAffineMapMax(OpBuilder &builder, Location loc, AffineMap map,
+                               ValueRange operands) {
+  if (auto values = affine::expandAffineMap(builder, loc, map, operands))
+    return buildMinMaxReductionSeq(loc, arith::CmpIPredicate::sgt, *values,
+                                   builder);
+  return nullptr;
+}
+struct PromoteIfSingleIteration
+    : public OpRewritePattern<affine::AffineParallelOp> {
+  using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(affine::AffineParallelOp op,
+                                PatternRewriter &rewriter) const override {
+    auto ranges = op.getConstantRanges();
+    if (!ranges)
+      return failure();
+    unsigned iterations = 1;
+    for (auto range : *ranges)
+      iterations *= range;
+    if (iterations != 1)
+      return failure();
+    SmallVector<Value, 3> argReplacements;
+    for (unsigned i = 0, e = op.getNumDims(); i < e; ++i) {
+      Value lower =
+          lowerAffineMapMax(rewriter, op.getLoc(), op.getLowerBoundMap(i),
+                            op.getLowerBoundsOperands());
+      if (!lower)
+        return rewriter.notifyMatchFailure(op, "couldn't convert lower bounds");
+      argReplacements.push_back(lower);
+    }
+    auto term = op.getBody()->getTerminator();
+    rewriter.inlineBlockBefore(op.getBody(), op, argReplacements);
+    rewriter.replaceOp(op, term->getResults());
+    rewriter.eraseOp(term);
+
+    return success();
+  }
+};
 template <typename T>
 struct CallConstantPropagation : public OpRewritePattern<T> {
   using OpRewritePattern<T>::OpRewritePattern;
@@ -445,7 +501,9 @@ struct GPULaunchToParallelPass
     });
 
     RewritePatternSet patterns(context);
-    patterns.insert<CallConstantPropagation<gpu::CallOp>>(context);
+    patterns
+        .insert<CallConstantPropagation<gpu::CallOp>, PromoteIfSingleIteration>(
+            context);
     GreedyRewriteConfig config;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config)))
