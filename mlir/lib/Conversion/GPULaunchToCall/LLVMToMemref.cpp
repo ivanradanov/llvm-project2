@@ -873,8 +873,7 @@ convertLLVMToAffineAccess(Operation *op,
   RewritePatternSet patterns(context);
   patterns.insert<ConvertLLVMAllocaToMemrefAlloca>(context, dataLayoutAnalysis);
   GreedyRewriteConfig config;
-  (void)applyPatternsAndFoldGreedily(op, std::move(patterns), config);
-  return success();
+  return applyPatternsAndFoldGreedily(op, std::move(patterns), config);
 }
 } // namespace mlir
 
@@ -885,7 +884,8 @@ struct LLVMToAffineAccessPass
   void runOnOperation() override {
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
-    (void)convertLLVMToAffineAccess(op, dataLayoutAnalysis, true);
+    if (failed(convertLLVMToAffineAccess(op, dataLayoutAnalysis, true)))
+      signalPassFailure();
   }
 };
 
