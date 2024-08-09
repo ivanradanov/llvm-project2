@@ -262,17 +262,17 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     return par;
   };
   // TODO combine them
-  StringRef attrName = "gpu.par.grid";
   unsigned argPos = 2;
   unsigned argNum = 1;
-  [[maybe_unused]] auto gridParZ = createPar(argPos--, argNum, attrName);
-  [[maybe_unused]] auto gridParY = createPar(argPos--, argNum, attrName);
-  [[maybe_unused]] auto gridParX = createPar(argPos--, argNum, attrName);
-  attrName = "gpu.par.block";
+  // clang-format off
+  [[maybe_unused]] auto gridParZ = createPar(argPos--, argNum, "gpu.par.grid.z");
+  [[maybe_unused]] auto gridParY = createPar(argPos--, argNum, "gpu.par.grid.y");
+  [[maybe_unused]] auto gridParX = createPar(argPos--, argNum, "gpu.par.grid.x");
   argPos = 5;
-  [[maybe_unused]] auto blockParZ = createPar(argPos--, argNum, attrName);
-  [[maybe_unused]] auto blockParY = createPar(argPos--, argNum, attrName);
-  [[maybe_unused]] auto blockParX = createPar(argPos--, argNum, attrName);
+  [[maybe_unused]] auto blockParZ = createPar(argPos--, argNum, "gpu.par.block.z");
+  [[maybe_unused]] auto blockParY = createPar(argPos--, argNum, "gpu.par.block.y");
+  [[maybe_unused]] auto blockParX = createPar(argPos--, argNum, "gpu.par.block.x");
+  // clang-format on
 
   // TODO handle multi block regions would be better as I think there may be
   // cases where removing CFG may be impossible before having the parallel
@@ -297,21 +297,23 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
   rewriter.clone(*term, mapping);
 
   // clang-format off
-  unsigned dim = 0;
-  replaceIdDim<NVVM::GridDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
-  replaceIdDim<NVVM::GridDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
-  replaceIdDim<NVVM::GridDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
-  replaceIdDim<NVVM::BlockDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
-  replaceIdDim<NVVM::BlockDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
-  replaceIdDim<NVVM::BlockDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  unsigned dim = 2;
+  replaceIdDim<NVVM::GridDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
+  replaceIdDim<NVVM::GridDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
+  replaceIdDim<NVVM::GridDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
+  dim = 5;
+  replaceIdDim<NVVM::BlockDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
+  replaceIdDim<NVVM::BlockDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
+  replaceIdDim<NVVM::BlockDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
 
-  dim = 0;
-  replaceIdDim<NVVM::BlockIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
-  replaceIdDim<NVVM::BlockIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
-  replaceIdDim<NVVM::BlockIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
-  replaceIdDim<NVVM::ThreadIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
-  replaceIdDim<NVVM::ThreadIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
-  replaceIdDim<NVVM::ThreadIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  dim = 2;
+  replaceIdDim<NVVM::BlockIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
+  replaceIdDim<NVVM::BlockIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
+  replaceIdDim<NVVM::BlockIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
+  dim = 5;
+  replaceIdDim<NVVM::ThreadIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
+  replaceIdDim<NVVM::ThreadIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
+  replaceIdDim<NVVM::ThreadIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
   // clang-format on
 
   // TODO unused currently but left here just in case
