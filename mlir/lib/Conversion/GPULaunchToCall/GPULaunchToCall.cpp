@@ -23,9 +23,12 @@
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "llvm/Support/Error.h"
@@ -43,6 +46,67 @@ using namespace mlir;
 
 #define PASS_NAME "gpu-launch-to-parallel"
 #define DEBUG_TYPE PASS_NAME
+
+static LogicalResult propagateConstants(Operation *call,
+                                        RewriterBase &rewriter) {
+  auto callInterface = dyn_cast<CallOpInterface>(call);
+  if (!callInterface) {
+    LLVM_DEBUG(llvm::dbgs() << "Not a CallOpInterface: " << *call << "\n");
+    return failure();
+  }
+  SymbolRefAttr callee = llvm::dyn_cast_if_present<SymbolRefAttr>(
+      callInterface.getCallableForCallee());
+  if (!callee) {
+    return failure();
+  }
+  auto func = SymbolTable::lookupNearestSymbolFrom(call, callee);
+  auto funcInterface = dyn_cast<FunctionOpInterface>(func);
+  Region *body = &funcInterface.getFunctionBody();
+
+  if (!funcInterface.isPrivate()) {
+    return failure();
+  }
+  assert(!funcInterface.isDeclaration());
+
+  std::optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(
+      func, SymbolTable::getNearestSymbolTable(call));
+  // All uses visible
+  if (!uses) {
+    return failure();
+  }
+  // Has only one use
+  if (std::next(uses->begin()) != uses->end()) {
+    return failure();
+  }
+
+  auto operands = callInterface.getArgOperands();
+  auto args = body->getArguments();
+  if (operands.size() != args.size()) {
+    return failure();
+  }
+
+  unsigned numPropagated = 0;
+  rewriter.setInsertionPointToStart(&body->front());
+  for (auto [operand, arg] : llvm::zip(operands, args)) {
+    if (arg.use_empty())
+      continue;
+    auto op = operand.getDefiningOp();
+    if (!op)
+      continue;
+    if (!op->hasTrait<OpTrait::ConstantLike>())
+      continue;
+    assert(op->getNumOperands() == 0);
+    unsigned resNo = 0;
+    while (op->getResult(resNo) != operand) {
+      resNo++;
+      assert(resNo < op->getNumResults());
+    }
+    arg.replaceAllUsesWith(rewriter.clone(*op)->getResult(resNo));
+    numPropagated++;
+  }
+
+  return success(numPropagated > 0);
+}
 
 template <typename NVVMOp>
 static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
@@ -70,14 +134,14 @@ static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
 static constexpr int32_t getSharedMemAddrSpace() { return 3; }
 
 namespace mlir {
-// TODO needs stream support
 struct ConvertedKernel {
-  std::string name;
+  SmallString<128> name;
   Operation *kernel;
 };
 FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
                                                       Type shmemSizeType,
-                                                      RewriterBase &rewriter) {
+                                                      RewriterBase &rewriter,
+                                                      bool generateNewKernel) {
   MLIRContext *context = gpuKernelFunc->getContext();
   auto funcLoc = gpuKernelFunc->getLoc();
   rewriter.setInsertionPoint(gpuKernelFunc);
@@ -91,17 +155,28 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
   Block *newEntryBlock = nullptr;
   Operation *newKernel;
   Region *kernelRegion = nullptr;
-  std::string newSymName;
+  SmallString<128> newSymName;
   if (isa<gpu::GPUFuncOp>(gpuKernelFunc)) {
     return failure();
   } else if (auto llvmKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
-    newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
     auto st = SymbolTable::getNearestSymbolTable(gpuKernelFunc);
     if (!st)
       return failure();
-    auto existing = SymbolTable::lookupSymbolIn(st, newSymName);
-    if (existing)
-      return ConvertedKernel{newSymName, existing};
+    if (!generateNewKernel) {
+      newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
+      unsigned counter;
+      newSymName = SymbolTable::generateSymbolName<128>(
+          newSymName,
+          [&st](StringRef newName) {
+            return SymbolTable::lookupSymbolIn(st, newName);
+          },
+          counter);
+    } else {
+      newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
+      auto existing = SymbolTable::lookupSymbolIn(st, newSymName);
+      if (existing)
+        return ConvertedKernel{newSymName, existing};
+    }
 
     auto fty = llvmKernel.getFunctionType();
     assert(!fty.isVarArg());
@@ -142,7 +217,9 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
         llvmKernel.getDsoLocal(), llvmKernel.getCConv(),
         llvmKernel.getComdatAttr(), newAttrs, paramAttrs,
         llvmKernel.getFunctionEntryCount());
+    funcOp.setVisibility(SymbolTable::Visibility::Private);
     funcOp->setAttr("gpu.par.kernel", rewriter.getUnitAttr());
+    funcOp.setLinkage(LLVM::Linkage::Private);
 
     newEntryBlock =
         rewriter.createBlock(&funcOp.getBody(), {}, paramTypes, paramLocs);
@@ -308,12 +385,12 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
   auto gpuKernelFunc = SymbolTable::lookupSymbolIn(st, kernelSymbol);
   Type shmemSizeType = launchOp.getDynamicSharedMemorySize().getType();
   auto converted =
-      convertGPUKernelToParallel(gpuKernelFunc, shmemSizeType, rewriter);
+      convertGPUKernelToParallel(gpuKernelFunc, shmemSizeType, rewriter, true);
   if (failed(converted))
     return failure();
 
   Operation *newKernelFunc = converted->kernel;
-  std::string newKernelName = converted->name;
+  SmallString<128> newKernelName = converted->name;
 
   auto kernelModule = newKernelFunc->getParentOfType<gpu::GPUModuleOp>();
   auto newKernelSymbol = SymbolRefAttr::get(
@@ -344,14 +421,33 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
 }
 } // namespace mlir
 
+namespace {
+template <typename T>
+struct CallConstantPropagation : public OpRewritePattern<T> {
+  using OpRewritePattern<T>::OpRewritePattern;
+  LogicalResult matchAndRewrite(T call,
+                                PatternRewriter &rewriter) const override {
+    return propagateConstants(call, rewriter);
+  }
+};
+} // namespace
+
 struct GPULaunchToParallelPass
     : public impl::GPULaunchToParallelPassBase<GPULaunchToParallelPass> {
   using Base::Base;
   void runOnOperation() override {
-    IRRewriter rewriter(&getContext());
+    auto context = &getContext();
+    IRRewriter rewriter(context);
     getOperation()->walk([&](gpu::LaunchFuncOp launchOp) {
       (void)convertGPULaunchFuncToParallel(launchOp, rewriter);
     });
+
+    RewritePatternSet patterns(context);
+    patterns.insert<CallConstantPropagation<gpu::CallOp>>(context);
+    GreedyRewriteConfig config;
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                            config)))
+      signalPassFailure();
   }
 };
 std::unique_ptr<Pass> mlir::createGPULaunchToParallelPass() {
