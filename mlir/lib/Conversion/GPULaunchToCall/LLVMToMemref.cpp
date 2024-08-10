@@ -13,6 +13,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -681,6 +682,47 @@ static affine::AffineScopeOp insertAffineScope(Block *block,
   return scope;
 }
 
+static Value createVectorLoad(OpBuilder &b, Location loc, VectorType vty,
+                              MemRefVal m, AffineMap map,
+                              ValueRange mapOperands) {
+  bool useVectorLoadStore = false;
+  if (useVectorLoadStore)
+    return b.create<affine::AffineVectorLoadOp>(loc, vty, m, map, mapOperands);
+
+  SmallVector<Value> newMapOperands(mapOperands);
+
+  std::array<arith::AtomicRMWKind, 1> reds = {
+      arith::AtomicRMWKind::vector_insert};
+  assert(!vty.isScalable());
+  unsigned rank = vty.getRank();
+  SmallVector<AffineMap> lbs(rank,
+                             AffineMap::getConstantMap(0, b.getContext()));
+  SmallVector<int64_t> steps(rank, 1);
+  SmallVector<AffineMap> ubs;
+  ubs.reserve(rank);
+  for (auto size : vty.getShape())
+    ubs.push_back(AffineMap::getConstantMap(size, b.getContext()));
+  auto par = b.create<affine::AffineParallelOp>(
+      loc, TypeRange{vty}, reds, lbs, ValueRange(), ubs, ValueRange(), steps);
+  b.setInsertionPointToStart(par.getBody());
+
+  assert(map.getNumResults() == rank);
+  SmallVector<AffineExpr> newExprs;
+  for (unsigned i = 0; i < rank; i++) {
+    auto expr = map.getResult(i);
+    expr = expr + getAffineDimExpr(map.getNumDims() + i, b.getContext());
+    newExprs.push_back(expr);
+    newMapOperands.push_back(par.getIVs()[i]);
+  }
+  AffineMap newMap = AffineMap::get(
+      map.getNumDims() + rank, map.getNumSymbols(), newExprs, b.getContext());
+  auto load = b.create<affine::AffineLoadOp>(loc, m, newMap, newMapOperands);
+  auto bc = b.create<vector::BroadcastOp>(loc, vty, load);
+  b.create<affine::AffineYieldOp>(loc, ValueRange{bc});
+  b.setInsertionPointAfter(par);
+  return par.getResult(0);
+}
+
 namespace mlir {
 LogicalResult
 convertLLVMToAffineAccess(Operation *op,
@@ -827,8 +869,9 @@ convertLLVMToAffineAccess(Operation *op,
       IRRewriter rewriter(load);
       auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
                                  rewriter.getI8Type());
-      auto vecLoad = rewriter.create<affine::AffineVectorLoadOp>(
-          load.getLoc(), vty, mc(aab.getBase()), mao.map, ic(mao.operands));
+      auto vecLoad =
+          createVectorLoad(rewriter, load.getLoc(), vty, mc(aab.getBase()),
+                           mao.map, ic(mao.operands));
       Operation *newLoad;
       if (isa<LLVM::LLVMPointerType>(load.getType())) {
         Type intTy = rewriter.getIntegerType(
