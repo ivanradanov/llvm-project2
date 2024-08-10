@@ -298,23 +298,21 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
   rewriter.clone(*term, mapping);
 
   // clang-format off
-  unsigned dim = 2;
-  replaceIdDim<NVVM::GridDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
-  replaceIdDim<NVVM::GridDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
-  replaceIdDim<NVVM::GridDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
-  dim = 5;
-  replaceIdDim<NVVM::BlockDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
-  replaceIdDim<NVVM::BlockDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
-  replaceIdDim<NVVM::BlockDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim--));
+  unsigned dim = 0;
+  replaceIdDim<NVVM::GridDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::GridDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::GridDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::BlockDimXOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::BlockDimYOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
+  replaceIdDim<NVVM::BlockDimZOp>(rewriter, newEntryBlock->getParent(), newEntryBlock->getArgument(dim++));
 
-  dim = 2;
-  replaceIdDim<NVVM::BlockIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
-  replaceIdDim<NVVM::BlockIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
-  replaceIdDim<NVVM::BlockIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
-  dim = 5;
-  replaceIdDim<NVVM::ThreadIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
-  replaceIdDim<NVVM::ThreadIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
-  replaceIdDim<NVVM::ThreadIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim--]);
+  dim = 0;
+  replaceIdDim<NVVM::BlockIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::BlockIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::BlockIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::ThreadIdZOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::ThreadIdYOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
+  replaceIdDim<NVVM::ThreadIdXOp>(rewriter, newEntryBlock->getParent(), ivs[dim++]);
   // clang-format on
 
   // TODO unused currently but left here just in case
