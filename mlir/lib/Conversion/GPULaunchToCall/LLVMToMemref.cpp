@@ -682,6 +682,49 @@ static affine::AffineScopeOp insertAffineScope(Block *block,
   return scope;
 }
 
+static Operation *createVectorStore(OpBuilder &b, Location loc,
+                                    TypedValue<VectorType> v, MemRefVal m,
+                                    AffineMap map, ValueRange mapOperands) {
+  bool useVectorLoadStore = false;
+  if (useVectorLoadStore)
+    return b.create<affine::AffineVectorStoreOp>(loc, v, m, map, mapOperands);
+
+  SmallVector<Value> newMapOperands(mapOperands);
+
+  VectorType vty = v.getType();
+  assert(!vty.isScalable());
+  unsigned rank = vty.getRank();
+  SmallVector<AffineMap> lbs(rank,
+                             AffineMap::getConstantMap(0, b.getContext()));
+  SmallVector<int64_t> steps(rank, 1);
+  SmallVector<AffineMap> ubs;
+  ubs.reserve(rank);
+  for (auto size : vty.getShape())
+    ubs.push_back(AffineMap::getConstantMap(size, b.getContext()));
+  auto par = b.create<affine::AffineParallelOp>(
+      loc, TypeRange{}, ArrayRef<arith::AtomicRMWKind>{}, lbs, ValueRange(),
+      ubs, ValueRange(), steps);
+  par->setAttr("affine.vector.store", b.getUnitAttr());
+
+  b.setInsertionPointToStart(par.getBody());
+
+  assert(map.getNumResults() == rank);
+  SmallVector<AffineExpr> newExprs;
+  SmallVector<OpFoldResult> idxs;
+  for (unsigned i = 0; i < rank; i++) {
+    auto expr = map.getResult(i);
+    expr = expr + getAffineDimExpr(map.getNumDims() + i, b.getContext());
+    newExprs.push_back(expr);
+    newMapOperands.push_back(par.getIVs()[i]);
+    idxs.push_back(par.getIVs()[i]);
+  }
+  AffineMap newMap = AffineMap::get(
+      map.getNumDims() + rank, map.getNumSymbols(), newExprs, b.getContext());
+  auto el = b.create<vector::ExtractOp>(loc, v, idxs);
+  b.create<affine::AffineStoreOp>(loc, el, m, newMap, newMapOperands);
+  return par;
+}
+
 static Value createVectorLoad(OpBuilder &b, Location loc, VectorType vty,
                               MemRefVal m, AffineMap map,
                               ValueRange mapOperands) {
@@ -704,6 +747,7 @@ static Value createVectorLoad(OpBuilder &b, Location loc, VectorType vty,
     ubs.push_back(AffineMap::getConstantMap(size, b.getContext()));
   auto par = b.create<affine::AffineParallelOp>(
       loc, TypeRange{vty}, reds, lbs, ValueRange(), ubs, ValueRange(), steps);
+  par->setAttr("affine.vector.load", b.getUnitAttr());
   b.setInsertionPointToStart(par.getBody());
 
   assert(map.getNumResults() == rank);
@@ -890,18 +934,19 @@ convertLLVMToAffineAccess(Operation *op,
       IRRewriter rewriter(store);
       auto vty =
           VectorType::get({(int64_t)dl.getTypeSize(ty)}, rewriter.getI8Type());
-      Value cast;
+      Value v;
       if (isa<LLVM::LLVMPointerType>(ty)) {
         Type intTy = rewriter.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
-        cast = rewriter.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
-                                                 store.getValue());
-        cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty, cast);
+        v = rewriter.create<LLVM::PtrToIntOp>(store.getLoc(), intTy,
+                                              store.getValue());
+        v = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty, v);
       } else {
-        cast = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty,
-                                                store.getValue());
+        v = rewriter.create<LLVM::BitcastOp>(store.getLoc(), vty,
+                                             store.getValue());
       }
-      Operation *newStore = rewriter.create<affine::AffineVectorStoreOp>(
-          store.getLoc(), cast, mc(aab.base), mao.map, ic(mao.operands));
+      Operation *newStore = createVectorStore(
+          rewriter, store.getLoc(), cast<TypedValue<VectorType>>(v),
+          mc(aab.base), mao.map, ic(mao.operands));
       mapping.map(store.getOperation(), newStore);
     } else {
       llvm_unreachable("");
