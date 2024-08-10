@@ -3861,6 +3861,8 @@ void AffineParallelOp::setSteps(ArrayRef<int64_t> newSteps) {
 static bool isResultTypeMatchAtomicRMWKind(Type resultType,
                                            arith::AtomicRMWKind op) {
   switch (op) {
+  case arith::AtomicRMWKind::vector_insert:
+    return isa<VectorType>(resultType);
   case arith::AtomicRMWKind::addf:
     return isa<FloatType>(resultType);
   case arith::AtomicRMWKind::addi:

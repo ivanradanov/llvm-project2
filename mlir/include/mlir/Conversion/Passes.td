@@ -355,6 +355,7 @@ def LLVMToAffineAccessPass : Pass<"llvm-to-affine-access"> {
   let dependentDialects = [
     "memref::MemRefDialect",
     "affine::AffineDialect",
+    "vector::VectorDialect",
   ];
   let constructor = "mlir::createLLVMToAffineAccessPass()";
 }
