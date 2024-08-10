@@ -6,10 +6,12 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace mlir;
 
@@ -29,6 +31,40 @@ struct AccessInfo {
   SmallVector<Value, 4> lbs, ubs;
   SmallVector<AffineMap, 4> lbMaps, ubMaps;
 };
+
+static Value isVectorStore(affine::AffineWriteOpInterface store) {
+  if (!store->getParentOp()->hasAttr("affine.vector.store"))
+    return nullptr;
+  return cast<vector::ExtractOp>(store.getValueToStore().getDefiningOp())
+      .getVector();
+}
+
+static affine::AffineLoadOp isVectorLoad(affine::AffineParallelOp par) {
+  if (!par->hasAttr("affine.vector.load"))
+    return nullptr;
+  return cast<affine::AffineLoadOp>(
+      cast<vector::BroadcastOp>(
+          par.getBody()->getTerminator()->getOperand(0).getDefiningOp())
+          .getSource()
+          .getDefiningOp());
+}
+
+static Value isVectorLoad(affine::AffineReadOpInterface load) {
+  if (!load->getParentOp()->hasAttr("affine.vector.load"))
+    return nullptr;
+  return load->getParentOp()->getResult(0);
+}
+
+template <typename T>
+static Value computeMap(RewriterBase &rewriter, Location loc, AffineMap map,
+                        ValueRange operands) {
+  if (map.getNumResults() == 1)
+    return rewriter.create<T>(loc, map, operands);
+  else if (map.getNumResults() > 1)
+    return rewriter.create<affine::AffineApplyOp>(loc, map, operands);
+  else
+    llvm_unreachable("map with 0 results");
+}
 
 void optGlobalSharedMemCopies(Operation *root) {
   SmallVector<memref::AllocaOp> shmemAllocas;
@@ -73,24 +109,29 @@ void optGlobalSharedMemCopies(Operation *root) {
       if (auto load = dyn_cast<affine::AffineReadOpInterface>(opInst)) {
         // These can't be optimized, copy_async only supports global->shared
         continue;
-        if (!load.getValue().hasOneUse())
-          continue;
-        auto store = dyn_cast_or_null<affine::AffineWriteOpInterface>(
-            *load.getValue().getUsers().begin());
-        if (!store)
-          continue;
-        if (isGlobalMemref(cast<MemrefValue>(store.getMemRef())))
-          copies.push_back({load, store});
-      } else if (auto store =
-                     dyn_cast<affine::AffineWriteOpInterface>(opInst)) {
-        if (!store.getValueToStore().hasOneUse())
-          continue;
-        auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
-            store.getValueToStore().getDefiningOp());
-        if (!load)
-          continue;
-        if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
-          copies.push_back({load, store});
+      } else if (auto store = dyn_cast<affine::AffineStoreOp>(opInst)) {
+        if (Value storedVal = isVectorStore(store)) {
+          if (!storedVal.hasOneUse())
+            continue;
+          auto par = dyn_cast_or_null<affine::AffineParallelOp>(
+              storedVal.getDefiningOp());
+          if (!par)
+            continue;
+          auto load = isVectorLoad(par);
+          if (!load)
+            continue;
+          if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
+            copies.push_back({load, store});
+        } else {
+          if (!store.getValueToStore().hasOneUse())
+            continue;
+          auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
+              store.getValueToStore().getDefiningOp());
+          if (!load)
+            continue;
+          if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
+            copies.push_back({load, store});
+        }
       } else {
         allAffineAccesses = false;
       }
@@ -103,7 +144,11 @@ void optGlobalSharedMemCopies(Operation *root) {
       affine::MemRefRegion region(access->getLoc());
       SmallVector<Value> accessIVs;
       affine::getAffineIVs(*access, accessIVs);
-      if (failed(region.compute(access, accessIVs.size() - numGridLoops))) {
+      AccessInfo info;
+      unsigned loopDepth = accessIVs.size() - numGridLoops;
+      if (failed(region.compute(access, loopDepth,
+                                /*sliceState=*/nullptr,
+                                /*addMemRefDimBounds=*/false))) {
         LLVM_DEBUG(llvm::dbgs() << "Could not compute memref region for "
                                 << *access << "\n");
         return {};
@@ -113,7 +158,6 @@ void optGlobalSharedMemCopies(Operation *root) {
       LLVM_DEBUG(region.getConstraints()->dump());
       unsigned rank = region.getRank();
       const affine::FlatAffineValueConstraints *cst = region.getConstraints();
-      AccessInfo info;
       info.lbMaps.append(rank, {});
       info.ubMaps.append(rank, {});
       cst->getValues(rank, cst->getNumVars(), &info.regionSymbols);
@@ -121,10 +165,10 @@ void optGlobalSharedMemCopies(Operation *root) {
         region.getLowerAndUpperBound(i, info.lbMaps[i], info.ubMaps[i]);
         LLVM_DEBUG(llvm::dbgs() << "lb " << info.lbMaps[i] << "\n");
         LLVM_DEBUG(llvm::dbgs() << "ub " << info.ubMaps[i] << "\n");
-        auto lb = rewriter.create<affine::AffineMaxOp>(
-            access->getLoc(), info.lbMaps[i], info.regionSymbols);
-        auto ub = rewriter.create<affine::AffineMinOp>(
-            access->getLoc(), info.lbMaps[i], info.regionSymbols);
+        auto lb = computeMap<affine::AffineMaxOp>(
+            rewriter, access->getLoc(), info.lbMaps[i], info.regionSymbols);
+        auto ub = computeMap<affine::AffineMinOp>(
+            rewriter, access->getLoc(), info.ubMaps[i], info.regionSymbols);
         info.lbs.push_back(lb);
         info.ubs.push_back(ub);
       }

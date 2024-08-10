@@ -4,6 +4,7 @@ add_mlir_conversion_library(MLIRGPULaunchToCall
   LLVMToMemref.cpp
   PromoteWhile.cpp
   GPUAffineOpt.cpp
+  ReshapeMemrefs.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/GPULaunchToCall
