@@ -19,6 +19,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DynamicAPInt.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/MathExtras.h"
@@ -34,9 +35,10 @@ using namespace mlir;
 
 namespace {
 
-struct AddExpr {
-  AffineExpr divisible;
-  AffineExpr remainder;
+struct AccessInfo {
+  affine::MemRefAccess access;
+  AffineExpr floor;
+  AffineExpr mod;
 };
 
 LogicalResult getOpIndexSet(Operation *op,
@@ -57,14 +59,14 @@ struct ReshapeMemrefsPass
     op->walk([&](memref::AllocaOp alloca) {
       using namespace mlir::affine;
 
-      SmallVector<MemRefAccess> accesses;
+      SmallVector<AccessInfo> accesses;
 
       bool foundAllUses = true;
       for (auto user : alloca.getResult().getUsers()) {
         if (auto load = dyn_cast<AffineLoadOp>(user)) {
-          accesses.push_back(MemRefAccess(load));
+          accesses.push_back({MemRefAccess(load)});
         } else if (auto store = dyn_cast<AffineStoreOp>(user)) {
-          accesses.push_back(MemRefAccess(store));
+          accesses.push_back({MemRefAccess(store)});
         } else {
           foundAllUses = false;
           break;
@@ -76,7 +78,8 @@ struct ReshapeMemrefsPass
 
       llvm::SmallSetVector<int64_t, 16> constantsSet;
       llvm::SmallSetVector<Value, 16> symbols;
-      for (auto access : accesses) {
+      for (auto ainfo : accesses) {
+        auto access = ainfo.access;
         AffineValueMap valueMap;
         access.getAccessMap(&valueMap);
         AffineMap map = valueMap.getAffineMap();
@@ -98,7 +101,8 @@ struct ReshapeMemrefsPass
         LLVM_DEBUG(llvm::dbgs() << "Checking shape candidate " << cst << " at "
                                 << resultId << "\n");
         bool allValid = true;
-        for (auto access : accesses) {
+        for (auto ainfo : accesses) {
+          auto access = ainfo.access;
           AffineValueMap accessAvm;
           access.getAccessMap(&accessAvm);
           AffineExpr expr = accessAvm.getResult(resultId);
@@ -109,6 +113,7 @@ struct ReshapeMemrefsPass
           LLVM_DEBUG(llvm::dbgs() << "Mod: " << mod << "\n");
           LLVM_DEBUG(llvm::dbgs() << "Floor: " << floor << "\n");
 
+          DenseMap<AffineExpr, AffineExpr> toReplace;
           auto res = mod.walk([&](AffineExpr expr) {
             AffineBinaryOpExpr binexpr = dyn_cast<AffineBinaryOpExpr>(expr);
             if (!binexpr)
@@ -160,16 +165,50 @@ struct ReshapeMemrefsPass
             auto lb = cLb.getValue();
             auto ub = cUb.getValue();
 
-            if (lb >= 0 && lb <= cst && ub >= 0 && ub <= cst)
-              return WalkResult::advance();
-            return WalkResult::interrupt();
+            if (!(lb >= 0 && lb <= cst && ub >= 0 && ub <= cst))
+              return WalkResult::interrupt();
+
+            toReplace.insert({expr, lhs});
+            return WalkResult::advance();
+
           });
+
           bool isValid = !res.wasInterrupted();
 
           if (!isValid) {
             allValid = false;
             break;
           }
+
+          mod =
+              simplifyAffineExpr(mod.replace(toReplace), accessAvm.getNumDims(),
+                                 accessAvm.getNumSymbols());
+
+          toReplace.clear();
+          auto zero = getAffineConstantExpr(0, ctx);
+          floor.walk([&](AffineExpr expr) {
+            AffineBinaryOpExpr binexpr = dyn_cast<AffineBinaryOpExpr>(expr);
+            if (!binexpr)
+              return;
+            if (binexpr.getKind() != AffineExprKind::FloorDiv)
+              return;
+            if (binexpr.getRHS() != getAffineConstantExpr(cst, ctx))
+              return;
+
+            // Theoretically all the checks above for the `mod` should succeed
+            // here too.
+            toReplace.insert({expr, zero});
+          });
+
+          floor = simplifyAffineExpr(floor.replace(toReplace),
+                                     accessAvm.getNumDims(),
+                                     accessAvm.getNumSymbols());
+
+          LLVM_DEBUG(llvm::dbgs() << "Mod new: " << mod << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "Floor new: " << floor << "\n");
+
+          ainfo.floor = floor;
+          ainfo.mod = mod;
         }
 
         if (!allValid)
