@@ -1,5 +1,8 @@
+#include "mlir/Analysis/Presburger/IntegerRelation.h"
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
+#include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
+#include "mlir/Dialect/Affine/Analysis/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -9,6 +12,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SetVector.h"
 
@@ -22,10 +26,19 @@ namespace mlir {
 using namespace mlir;
 
 namespace {
+
 struct AddExpr {
   AffineExpr divisible;
   AffineExpr remainder;
 };
+
+LogicalResult getOpIndexSet(Operation *op,
+                            affine::FlatAffineValueConstraints *indexSet) {
+  SmallVector<Operation *, 4> ops;
+  affine::getEnclosingAffineOps(*op, &ops);
+  return getIndexSet(ops, indexSet);
+}
+
 } // namespace
 
 struct ReshapeMemrefsPass
@@ -74,39 +87,89 @@ struct ReshapeMemrefsPass
       SmallVector<int64_t> constants(constantsSet.begin(), constantsSet.end());
       llvm::sort(constants);
 
-      std::function<SmallVector<AffineExpr>(int64_t, AffineExpr, AffineExpr)>
-          getNonMultipleAddOperand;
-      getNonMultipleAddOperand =
-          [&](int64_t cst, AffineExpr expr,
-              AffineExpr operand) -> SmallVector<AffineExpr> {
-        if (expr.isMultipleOf(cst))
-          return {operand};
-        if (auto binExpr = dyn_cast<AffineBinaryOpExpr>(expr)) {
-          if (binExpr.getKind() == AffineExprKind::Add) {
-            auto lhs = binExpr.getLHS();
-            auto rhs = binExpr.getRHS();
-            auto nmaos = getNonMultipleAddOperand(cst, lhs, operand + rhs);
-            nmaos.append(getNonMultipleAddOperand(cst, rhs, operand + lhs));
-            return nmaos;
-          }
-        }
-        return {};
-      };
-
       auto checkShapeCandidate = [&](int64_t cst, unsigned resultId) {
         LLVM_DEBUG(llvm::dbgs() << "Checking shape candidate " << cst << " at "
                                 << resultId << "\n");
+        bool allValid = true;
         for (auto access : accesses) {
-          AffineValueMap valueMap;
-          access.getAccessMap(&valueMap);
-          AffineExpr expr = valueMap.getResult(resultId);
-          LLVM_DEBUG(llvm::dbgs() << "for access " << *access.opInst
+          AffineValueMap accessAvm;
+          access.getAccessMap(&accessAvm);
+          AffineExpr expr = accessAvm.getResult(resultId);
+          LLVM_DEBUG(llvm::dbgs() << "For access " << *access.opInst
                                   << " with expr " << expr << "\n");
-          auto nmaos = getNonMultipleAddOperand(cst, expr,
-                                                getAffineConstantExpr(0, ctx));
-          for (auto nmao : nmaos)
-            LLVM_DEBUG(llvm::dbgs() << "nmao " << nmao << "\n");
+          auto mod = expr % cst;
+          auto floor = expr.floorDiv(cst);
+          LLVM_DEBUG(llvm::dbgs() << "Mod: " << mod << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "Floor: " << floor << "\n");
+
+          auto res = mod.walk([&](AffineExpr expr) {
+            AffineBinaryOpExpr binexpr = dyn_cast<AffineBinaryOpExpr>(expr);
+            if (!binexpr)
+              return WalkResult::advance();
+            if (binexpr.getKind() != AffineExprKind::Mod)
+              return WalkResult::advance();
+            if (binexpr.getRHS() != getAffineConstantExpr(cst, ctx))
+              return WalkResult::advance();
+            auto lhs = binexpr.getLHS();
+            auto lhsMap = AffineMap::get(accessAvm.getNumDims(),
+                                         accessAvm.getNumSymbols(), lhs);
+            AffineValueMap lhsAvm(lhsMap, accessAvm.getOperands());
+            lhsAvm.composeSimplifyAndCanonicalize();
+            LLVM_DEBUG(llvm::dbgs()
+                       << "Nested mod: " << lhsAvm.getAffineMap() << "\n");
+            affine::FlatAffineValueConstraints domain;
+            if (failed(getOpIndexSet(access.opInst, &domain)))
+              return WalkResult::interrupt();
+            if (failed(domain.composeMap(&lhsAvm)))
+              return WalkResult::interrupt();
+            LLVM_DEBUG(llvm::dbgs() << "Composed domain: ");
+            LLVM_DEBUG(domain.dump());
+            domain.setDimSymbolSeparation(domain.getNumDimAndSymbolVars() - 1);
+            domain.simplify();
+            SmallVector<Value, 4> vars;
+            domain.getValues(domain.getNumDimVars(),
+                             domain.getNumDimAndSymbolVars(), &vars);
+            for (Value var : vars)
+              if ((affine::isAffineInductionVar(var)))
+                domain.projectOut(var);
+            domain.constantFoldVarRange(
+                /*pos=*/1,
+                /*num=*/domain.getNumDimAndSymbolVars() - 1);
+            domain.removeTrivialRedundancy();
+            auto bounds = domain.getLowerAndUpperBound(
+                0, 0, 1, domain.getNumDimVars(), {}, ctx);
+            auto lbExpr = simplifyAffineExpr(bounds.first.getResult(0),
+                                             1 + accessAvm.getNumDims(),
+                                             accessAvm.getNumSymbols());
+            auto ubExpr = simplifyAffineExpr(bounds.second.getResult(0),
+                                             1 + accessAvm.getNumDims(),
+                                             accessAvm.getNumSymbols());
+            LLVM_DEBUG(llvm::dbgs() << "LB: " << lbExpr << "\n");
+            LLVM_DEBUG(llvm::dbgs() << "UB: " << ubExpr << "\n");
+            auto cLb = dyn_cast<AffineConstantExpr>(lbExpr);
+            auto cUb = dyn_cast<AffineConstantExpr>(ubExpr);
+            if (!cLb || !cUb)
+              return WalkResult::interrupt();
+            auto lb = cLb.getValue();
+            auto ub = cUb.getValue();
+
+            if (lb >= 0 && lb <= cst && ub >= 0 && ub <= cst)
+              return WalkResult::advance();
+            return WalkResult::interrupt();
+          });
+          bool isValid = !res.wasInterrupted();
+
+          if (!isValid) {
+            allValid = false;
+            break;
+          }
         }
+
+        if (!allValid)
+          return;
+
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Found valid shape candidate" << cst << "\n");
       };
 
       bool changed;
