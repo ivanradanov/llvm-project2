@@ -341,6 +341,15 @@ def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
   let constructor = "mlir::createOutlineGPUJitRegionsPass()";
 }
 
+def ReshapeMemrefs : Pass<"reshape-memrefs"> {
+  let summary = "";
+  let dependentDialects = [
+    "affine::AffineDialect",
+    "memref::MemRefDialect",
+  ];
+  let constructor = "mlir::createReshapeMemrefsPass()";
+}
+
 def PromoteScfWhilePass : Pass<"promote-scf-while"> {
   let summary = "";
   let dependentDialects = [
