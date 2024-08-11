@@ -5,16 +5,23 @@
 #include "mlir/Dialect/Affine/Analysis/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/DynamicAPInt.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/MathExtras.h"
 
 #define DEBUG_TYPE "reshape-memrefs"
 
@@ -170,6 +177,26 @@ struct ReshapeMemrefsPass
 
         LLVM_DEBUG(llvm::dbgs()
                    << "Found valid shape candidate" << cst << "\n");
+
+        OpBuilder builder(alloca);
+        auto oldMt = alloca.getMemref().getType();
+        SmallVector<Value> dynSizes = alloca.getDynamicSizes();
+        SmallVector<int64_t> shape(oldMt.getShape().begin(),
+                                   oldMt.getShape().end());
+        shape.push_back(cst);
+        if (shape[resultId] != ShapedType::kDynamic) {
+          shape[resultId] = llvm::divideCeil(shape[resultId], cst);
+        } else {
+          llvm_unreachable("Unsupported dymanic memref.alloca");
+        }
+        // TODO should we use the existing alloca layout interface in here
+        // somehow?
+        auto newMt = MemRefType::get(shape, oldMt.getElementType(),
+                                     MemRefLayoutAttrInterface{},
+                                     oldMt.getMemorySpace());
+        auto newAlloca = builder.create<memref::AllocaOp>(
+            alloca->getLoc(), newMt, alloca.getDynamicSizes(),
+            alloca.getSymbolOperands(), alloca.getAlignmentAttr());
       };
 
       bool changed;
