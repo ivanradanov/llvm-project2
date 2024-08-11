@@ -42,6 +42,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <functional>
@@ -421,6 +422,10 @@ struct AffineExprBuilder {
     AffineMap map;
     SmallVector<Value> operands;
   };
+  AffineExpr getExpr() {
+    assert(isLegal());
+    return expr;
+  }
   MapAndOperands getMap() {
     assert(isLegal());
     AffineMap map = AffineMap::get(dimOperands.size(), symbolOperands.size(),
@@ -621,6 +626,157 @@ public:
 
     lbBuilder.rescopeExpr(scope);
     ubBuilder.rescopeExpr(scope);
+  }
+};
+
+struct AffineIfBuilder {
+public:
+  scf::IfOp ifOp;
+  bool legalizeSymbols;
+  AffineIfBuilder(scf::IfOp ifOp, bool legalizeSymbols)
+      : ifOp(ifOp), legalizeSymbols(legalizeSymbols) {}
+
+  struct Constraint {
+    arith::CmpIPredicate pred;
+    Value lhs;
+    Value rhs;
+  };
+
+  struct SetAndOperands {
+    IntegerSet set;
+    SmallVector<Value> operands;
+  } sao;
+
+  SmallVector<AffineExprBuilder, 0> builders;
+
+  LogicalResult build() {
+    Value cond = ifOp.getCondition();
+
+    SmallVector<Constraint> constraints;
+    if (failed(getConstraints(cond, constraints)))
+      return failure();
+
+    SmallVector<AffineExpr> exprs;
+    SmallVector<bool> eqs;
+    unsigned numDims = 0;
+    unsigned numSymbols = 0;
+    SmallVector<Value> dimOperands;
+    SmallVector<Value> symbolOperands;
+    for (auto c : constraints) {
+
+      builders.push_back({ifOp, legalizeSymbols});
+      AffineExprBuilder &blhs = builders.back();
+      if (failed(blhs.build(c.lhs)))
+        return failure();
+      auto lhs = blhs.getExpr();
+      lhs = lhs.shiftDims(blhs.dimOperands.size(), numDims);
+      lhs = lhs.shiftSymbols(blhs.symbolOperands.size(), numSymbols);
+      numDims += blhs.dimOperands.size();
+      numSymbols += blhs.symbolOperands.size();
+      dimOperands.append(blhs.dimOperands);
+      symbolOperands.append(blhs.symbolOperands);
+
+      builders.push_back({ifOp, legalizeSymbols});
+      AffineExprBuilder &brhs = builders.back();
+      if (failed(brhs.build(c.rhs)))
+        return failure();
+      auto rhs = brhs.getExpr();
+      rhs = rhs.shiftDims(brhs.dimOperands.size(), numDims);
+      rhs = rhs.shiftSymbols(brhs.symbolOperands.size(), numSymbols);
+      numDims += brhs.dimOperands.size();
+      numSymbols += brhs.symbolOperands.size();
+      dimOperands.append(brhs.dimOperands);
+      symbolOperands.append(brhs.symbolOperands);
+
+      AffineExpr expr = getAffineConstantExpr(0, ifOp->getContext());
+      switch (c.pred) {
+      case arith::CmpIPredicate::eq:
+        exprs.push_back(rhs - lhs);
+        eqs.push_back(true);
+        break;
+      case arith::CmpIPredicate::ne:
+        // TODO not very sure about this, write some tests
+        exprs.push_back(rhs - lhs + 1);
+        eqs.push_back(false);
+        exprs.push_back(lhs - rhs + 1);
+        eqs.push_back(false);
+        break;
+      case arith::CmpIPredicate::slt:
+      case arith::CmpIPredicate::ult:
+        expr = expr - 1;
+        [[fallthrough]];
+      case arith::CmpIPredicate::sle:
+      case arith::CmpIPredicate::ule:
+        expr = expr + rhs - lhs;
+        exprs.push_back(expr);
+        eqs.push_back(false);
+        break;
+      case arith::CmpIPredicate::sgt:
+      case arith::CmpIPredicate::ugt:
+        expr = expr - 1;
+        [[fallthrough]];
+      case arith::CmpIPredicate::sge:
+      case arith::CmpIPredicate::uge:
+        expr = expr + lhs - rhs;
+        exprs.push_back(expr);
+        eqs.push_back(false);
+        break;
+      }
+    }
+    sao.set = IntegerSet::get(numDims, numSymbols, exprs, eqs);
+    sao.operands = dimOperands;
+    sao.operands.append(symbolOperands);
+    affine::canonicalizeSetAndOperands(&sao.set, &sao.operands);
+
+    return success();
+  }
+
+  void collectSymbolsForScope(Region *region, SmallPtrSetImpl<Value> &symbols) {
+    for (auto &builder : builders)
+      builder.collectSymbolsForScope(region, symbols);
+  }
+
+  SmallPtrSet<Value, 4> getIllegalSymbols() {
+    SmallPtrSet<Value, 4> set;
+    for (auto &builder : builders)
+      set.insert(builder.illegalSymbols.begin(), builder.illegalSymbols.end());
+    return set;
+  }
+
+  void rescope(affine::AffineScopeOp scope) {
+    if (!scope->isAncestor(ifOp))
+      return;
+    SmallVector<AffineExpr> newExprs;
+
+    for (auto &builder : builders)
+      builder.rescopeExpr(scope);
+  }
+
+  SetAndOperands getSet() { return sao; }
+
+  LogicalResult getConstraints(Value conjunction,
+                               SmallVectorImpl<Constraint> &constraints) {
+    Operation *op = conjunction.getDefiningOp();
+    if (!op)
+      return failure();
+    if (isa<LLVM::AndOp, arith::AndIOp>(op)) {
+      auto lhs = op->getOperand(0);
+      auto rhs = op->getOperand(1);
+      if (succeeded(getConstraints(lhs, constraints)) &&
+          succeeded(getConstraints(rhs, constraints)))
+        return success();
+      else
+        return failure();
+    }
+    if (auto cmp = dyn_cast<arith::CmpIOp>(op)) {
+      Constraint c;
+      c.pred = cmp.getPredicate();
+      c.lhs = cmp.getLhs();
+      c.rhs = cmp.getRhs();
+      constraints.push_back(c);
+      return success();
+    }
+    return failure();
   }
 };
 
@@ -834,6 +990,50 @@ convertLLVMToAffineAccess(Operation *op,
       rewriter.setInsertionPoint(yield);
       rewriter.replaceOpWithNewOp<affine::AffineYieldOp>(yield,
                                                          yield.getOperands());
+      return WalkResult::interrupt();
+    });
+    if (!res.wasInterrupted())
+      break;
+  }
+
+  while (true) {
+    auto res = op->walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
+      AffineIfBuilder ifBuilder(ifOp, legalizeSymbols);
+      if (failed(ifBuilder.build()))
+        return WalkResult::advance();
+      LLVM_DEBUG(llvm::dbgs() << "Converting\n" << ifOp << "\n");
+      if (legalizeSymbols) {
+        SmallPtrSet<Block *, 8> blocksToScope;
+        for (auto illegalSym : ifBuilder.getIllegalSymbols())
+          blocksToScope.insert(illegalSym.getParentBlock());
+        for (Block *b : blocksToScope) {
+          SmallPtrSet<Value, 6> symbols;
+          ifBuilder.collectSymbolsForScope(b->getParent(), symbols);
+          SmallVector<Value, 6> symbolsVec(symbols.begin(), symbols.end());
+          auto scope = insertAffineScope(b, symbolsVec);
+          ifBuilder.rescope(scope);
+        }
+      }
+      IRRewriter rewriter(ifOp);
+      auto sao = ifBuilder.getSet();
+      auto affineIfOp = rewriter.create<affine::AffineIfOp>(
+          ifOp.getLoc(), ifOp.getResultTypes(), sao.set, ic(sao.operands),
+          ifOp.elseBlock());
+      for (auto [newRegion, oldRegion] :
+           llvm::zip(affineIfOp.getRegions(), ifOp.getRegions())) {
+        if (!newRegion->empty())
+          newRegion->front().erase();
+        if (oldRegion->empty())
+          continue;
+        Block *block = &oldRegion->front();
+        auto newBlock = rewriter.createBlock(newRegion);
+        rewriter.inlineBlockBefore(block, newBlock, newBlock->end(), {});
+        auto yield = cast<scf::YieldOp>(newBlock->getTerminator());
+        rewriter.setInsertionPoint(yield);
+        rewriter.replaceOpWithNewOp<affine::AffineYieldOp>(yield,
+                                                           yield.getOperands());
+      }
+      rewriter.replaceOp(ifOp, affineIfOp);
       return WalkResult::interrupt();
     });
     if (!res.wasInterrupted())
