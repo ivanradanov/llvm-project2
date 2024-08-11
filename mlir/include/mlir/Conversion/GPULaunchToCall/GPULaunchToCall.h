@@ -27,6 +27,7 @@ std::unique_ptr<Pass> createOutlineGPUJitRegionsPass();
 std::unique_ptr<Pass> createPromoteScfWhilePass();
 std::unique_ptr<Pass> createLLVMToAffineAccessPass();
 std::unique_ptr<Pass> createGPULaunchToParallelPass();
+std::unique_ptr<Pass> createReshapeMemrefsPass();
 
 LogicalResult
 convertLLVMToAffineAccess(mlir::Operation *op,
