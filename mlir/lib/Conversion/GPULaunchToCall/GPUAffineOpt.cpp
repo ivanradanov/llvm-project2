@@ -1,21 +1,33 @@
-
+#include "mlir/Analysis/DataLayoutAnalysis.h"
+#include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
+#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace mlir;
 
 #define DEBUG_TYPE "gpu-affine-opt"
+
+namespace mlir {
+#define GEN_PASS_DEF_GPUAFFINEOPTPASS
+#include "mlir/Conversion/Passes.h.inc"
+} // namespace mlir
 
 namespace mlir {
 namespace gpu {
@@ -245,3 +257,23 @@ void optGlobalSharedMemCopies(Operation *root) {
 } // namespace affine_opt
 } // namespace gpu
 } // namespace mlir
+
+struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
+  using Base::Base;
+  void runOnOperation() override {
+    Operation *op = getOperation();
+    op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
+      const mlir::DataLayoutAnalysis dl(gpuModule);
+      gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
+        if (func->getAttr("gpu.par.kernel")) {
+          (void)mlir::convertLLVMToAffineAccess(func, dl, false);
+          mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+        }
+      });
+    });
+  }
+};
+
+std::unique_ptr<Pass> mlir::createGPUAffineOptPass() {
+  return std::make_unique<GPUAffineOptPass>();
+}
