@@ -153,12 +153,8 @@ reshapeMemref(Value memref,
         domain.removeTrivialRedundancy();
         auto bounds = domain.getLowerAndUpperBound(
             0, 0, 1, domain.getNumDimVars(), {}, ctx);
-        auto lbExpr = simplifyAffineExpr(bounds.first.getResult(0),
-                                         1 + accessAvm.getNumDims(),
-                                         accessAvm.getNumSymbols());
-        auto ubExpr = simplifyAffineExpr(bounds.second.getResult(0),
-                                         1 + accessAvm.getNumDims(),
-                                         accessAvm.getNumSymbols());
+        auto lbExpr = bounds.first.getResult(0);
+        auto ubExpr = bounds.second.getResult(0);
         LLVM_DEBUG(llvm::dbgs() << "LB: " << lbExpr << "\n");
         LLVM_DEBUG(llvm::dbgs() << "UB: " << ubExpr << "\n");
         auto cLb = dyn_cast<AffineConstantExpr>(lbExpr);
@@ -261,7 +257,7 @@ LogicalResult reshapeAtAddr(memref::AtAddrOp &atAddr) {
     auto oldMt = atAddr.getResult().getType();
     SmallVector<int64_t> shape(oldMt.getShape().begin(),
                                oldMt.getShape().end());
-    shape.push_back(cst);
+    shape.insert(std::next(shape.begin(), resultId + 1), cst);
     if (shape[resultId] != ShapedType::kDynamic) {
       shape[resultId] = llvm::divideCeil(shape[resultId], cst);
     } else {
@@ -287,7 +283,7 @@ LogicalResult reshapeAlloca(memref::AllocaOp &alloca) {
     SmallVector<Value> dynSizes = alloca.getDynamicSizes();
     SmallVector<int64_t> shape(oldMt.getShape().begin(),
                                oldMt.getShape().end());
-    shape.push_back(cst);
+    shape.insert(std::next(shape.begin(), resultId + 1), cst);
     if (shape[resultId] != ShapedType::kDynamic) {
       shape[resultId] = llvm::divideCeil(shape[resultId], cst);
     } else {
