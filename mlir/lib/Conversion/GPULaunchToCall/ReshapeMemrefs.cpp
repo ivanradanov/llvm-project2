@@ -37,8 +37,7 @@ namespace {
 
 struct AccessInfo {
   affine::MemRefAccess access;
-  AffineExpr floor;
-  AffineExpr mod;
+  AffineMap map;
 };
 
 LogicalResult getOpIndexSet(Operation *op,
@@ -204,11 +203,15 @@ struct ReshapeMemrefsPass
                                      accessAvm.getNumDims(),
                                      accessAvm.getNumSymbols());
 
-          LLVM_DEBUG(llvm::dbgs() << "Mod new: " << mod << "\n");
-          LLVM_DEBUG(llvm::dbgs() << "Floor new: " << floor << "\n");
-
-          ainfo.floor = floor;
-          ainfo.mod = mod;
+          SmallVector<AffineExpr> exprs(
+              accessAvm.getAffineMap().getResults().begin(),
+              accessAvm.getAffineMap().getResults().end());
+          exprs.erase(std::next(exprs.begin(), resultId));
+          exprs.insert(std::next(exprs.begin(), resultId), mod);
+          exprs.insert(std::next(exprs.begin(), resultId), floor);
+          ainfo.map = AffineMap::get(accessAvm.getNumDims(),
+                                     accessAvm.getNumSymbols(), exprs, ctx);
+          LLVM_DEBUG(llvm::dbgs() << "New map: " << ainfo.map << "\n");
         }
 
         if (!allValid)
