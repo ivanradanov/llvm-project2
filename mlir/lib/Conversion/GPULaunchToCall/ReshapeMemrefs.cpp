@@ -29,7 +29,7 @@
 #define DEBUG_TYPE "reshape-memrefs"
 
 namespace mlir {
-#define GEN_PASS_DEF_RESHAPEMEMREFS
+#define GEN_PASS_DEF_RESHAPEMEMREFSPASS
 #include "mlir/Conversion/Passes.h.inc"
 } // namespace mlir
 
@@ -304,7 +304,7 @@ LogicalResult reshapeAlloca(memref::AllocaOp &alloca) {
 } // namespace
 
 struct ReshapeMemrefsPass
-    : public impl::ReshapeMemrefsBase<ReshapeMemrefsPass> {
+    : public impl::ReshapeMemrefsPassBase<ReshapeMemrefsPass> {
   using Base::Base;
   void runOnOperation() override {
     Operation *op = getOperation();
