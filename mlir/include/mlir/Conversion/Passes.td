@@ -343,7 +343,11 @@ def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
 
 def GPUAffineOptPass : Pass<"gpu-affine-opt"> {
   let summary = "";
-  let dependentDialects = [];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "affine::AffineDialect",
+    "nvgpu::NVGPUDialect",
+  ];
   let constructor = "mlir::createGPUAffineOptPass()";
 }
 

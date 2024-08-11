@@ -42,6 +42,7 @@ struct AccessInfo {
   SmallVector<Value, 8> regionSymbols;
   SmallVector<Value, 4> lbs, ubs;
   SmallVector<AffineMap, 4> lbMaps, ubMaps;
+  unsigned rank;
 };
 
 static Value isVectorStore(affine::AffineWriteOpInterface store) {
@@ -157,7 +158,7 @@ void optGlobalSharedMemCopies(Operation *root) {
       SmallVector<Value> accessIVs;
       affine::getAffineIVs(*access, accessIVs);
       AccessInfo info;
-      unsigned loopDepth = accessIVs.size() - numGridLoops;
+      unsigned loopDepth = numGridLoops;
       if (failed(region.compute(access, loopDepth,
                                 /*sliceState=*/nullptr,
                                 /*addMemRefDimBounds=*/false))) {
@@ -184,6 +185,7 @@ void optGlobalSharedMemCopies(Operation *root) {
         info.lbs.push_back(lb);
         info.ubs.push_back(ub);
       }
+      info.rank = rank;
       return info;
     };
 
@@ -202,52 +204,67 @@ void optGlobalSharedMemCopies(Operation *root) {
 
       // TODO need to align stuff to 4, 8, or 16-byte chunks
 
-      // TODO currently we also have copies in nested constrol flow... need to
-      // analyse those
+      // TODO currently we may also have copies in nested (non-affine) constrol
+      // flow... need to analyse those
 
-      if (loadBounds->lbMaps.size() != 1)
+      int64_t copySize = 16;
+      for (const AccessInfo &info : {*loadBounds, *storeBounds}) {
+        unsigned lastDim = info.rank - 1;
+        // TODO is step=1 correct here?
+        auto tempFor = rewriter.create<affine::AffineForOp>(
+            copy.load->getLoc(), info.regionSymbols, info.lbMaps[lastDim],
+            info.regionSymbols, info.ubMaps[lastDim], 1, ValueRange(), nullptr);
+
+        auto largestDivisor = affine::getLargestDivisorOfTripCount(tempFor);
+
+        int64_t thisCopySize = 0;
+        if (largestDivisor % 4 == 0)
+          thisCopySize = 4;
+        if (largestDivisor % 8 == 0)
+          thisCopySize = 8;
+        if (largestDivisor % 16 == 0)
+          thisCopySize = 16;
+
+        copySize = thisCopySize < copySize ? thisCopySize : copySize;
+
+        rewriter.eraseOp(tempFor);
+
+        if (!thisCopySize) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Region span was not divisible by 4, 8, or 16\n");
+        }
+      }
+      if (copySize == 0)
         continue;
-      if (storeBounds->lbMaps.size() != 1)
-        continue;
 
-      auto tempFor = rewriter.create<affine::AffineForOp>(
-          copy.load->getLoc(), storeBounds->regionSymbols,
-          storeBounds->lbMaps[0], storeBounds->regionSymbols,
-          storeBounds->ubMaps[0], 1, ValueRange(), nullptr);
-      auto largestDivisor = affine::getLargestDivisorOfTripCount(tempFor);
-
-      int64_t copySize = 0;
-      if (largestDivisor % 4 == 0)
-        copySize = 4;
-      if (largestDivisor % 8 == 0)
-        copySize = 8;
-      if (largestDivisor % 16 == 0)
-        copySize = 16;
-
-      rewriter.eraseOp(tempFor);
-
-      if (!copySize) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Region span was not divisible by 4, 8, or 16\n");
+      if (loadBounds->rank != storeBounds->rank) {
+        LLVM_DEBUG(llvm::dbgs() << "store and load rank not equal\n");
         continue;
       }
 
-      rewriter.create<affine::AffineForOp>(
-          copy.load->getLoc(), storeBounds->regionSymbols,
-          storeBounds->lbMaps[0], storeBounds->regionSymbols,
-          storeBounds->ubMaps[0], copySize, ValueRange(),
-          [&](OpBuilder &b, Location loc, Value iv, ValueRange ivs) {
-            Value storeIdx = iv;
-            // loadIdx = storeIdx - storeLB + loadLB
-            Value loadIdx =
-                b.create<arith::SubIOp>(loc, storeIdx, storeBounds->lbs[0]);
-            loadIdx = b.create<arith::AddIOp>(loc, loadIdx, loadBounds->lbs[0]);
-            rewriter.create<nvgpu::DeviceAsyncCopyOp>(
-                copy.load->getLoc(), copy.store.getMemRef(), storeIdx,
-                copy.load.getMemRef(), loadIdx, rewriter.getIndexAttr(copySize),
-                nullptr, nullptr);
-            rewriter.create<affine::AffineYieldOp>(loc);
-          });
+      // TODO need to check if the iteration num over each dim is the same
+
+      OpBuilder::InsertionGuard guard(rewriter);
+      SmallVector<Value> ivs;
+      for (unsigned dim = 0; dim < storeBounds->rank; dim++) {
+        int64_t step = dim == storeBounds->rank - 1 ? copySize : 1;
+        auto forOp = rewriter.create<affine::AffineForOp>(
+            copy.load->getLoc(), storeBounds->regionSymbols,
+            storeBounds->lbMaps[dim], storeBounds->regionSymbols,
+            storeBounds->ubMaps[dim], step, ValueRange());
+        rewriter.setInsertionPointToStart(forOp.getBody());
+        ivs.push_back(forOp.getInductionVar());
+      }
+      Location loc = copy.load.getLoc();
+      // loadIdx = storeIdx - storeLB + loadLB
+      // Value loadIdx =
+      //     rewriter.create<arith::SubIOp>(loc, storeIdx, storeBounds->lbs[0]);
+      // loadIdx =
+      //     rewriter.create<arith::AddIOp>(loc, loadIdx, loadBounds->lbs[0]);
+      rewriter.create<nvgpu::DeviceAsyncCopyOp>(
+          copy.load->getLoc(), copy.store.getMemRef(), ivs,
+          copy.load.getMemRef(), /* TODO TEMP THIS IS WRONG */ ivs,
+          rewriter.getIndexAttr(copySize), nullptr, nullptr);
     }
   }
 
