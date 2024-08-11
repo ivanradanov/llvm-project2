@@ -28,6 +28,7 @@ std::unique_ptr<Pass> createPromoteScfWhilePass();
 std::unique_ptr<Pass> createLLVMToAffineAccessPass();
 std::unique_ptr<Pass> createGPULaunchToParallelPass();
 std::unique_ptr<Pass> createReshapeMemrefsPass();
+std::unique_ptr<Pass> createGPUAffineOptPass();
 
 LogicalResult
 convertLLVMToAffineAccess(mlir::Operation *op,
