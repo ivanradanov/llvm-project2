@@ -188,7 +188,7 @@ static constexpr char DefaultPostMergeMlirPipeline[] =
 // clang-format on
 
 static cl::opt<std::string>
-    ClMlirPreMergePipeline("transformer-pre-mergemlir-pipeline",
+    ClMlirPreMergePipeline("transformer-pre-merge-mlir-pipeline",
                            cl::init(DefaultPreMergeMlirPipeline), cl::Hidden,
                            cl::desc("pre-merge MLIR pipeline"));
 
