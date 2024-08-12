@@ -8,6 +8,7 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -111,24 +112,25 @@ void optGlobalSharedMemCopies(Operation *root) {
   };
 
   SmallVector<affine::AffineParallelOp> blockPars;
-  affine::AffineParallelOp outermostBlockPar = nullptr;
   root->walk([&](affine::AffineParallelOp par) {
     if (par->hasAttr("gpu.par.block.z") || par->hasAttr("gpu.par.block.y") ||
         par->hasAttr("gpu.par.block.x")) {
       blockPars.push_back(par);
-      if (outermostBlockPar) {
-        if (par->isProperAncestor(outermostBlockPar)) {
-          outermostBlockPar = par;
-        }
-      } else {
-        outermostBlockPar = par;
-      }
     }
   });
+  llvm::sort(
+      blockPars,
+      [&](affine::AffineParallelOp a, affine::AffineParallelOp b) -> bool {
+        return a->isProperAncestor(b);
+      });
+  affine::AffineParallelOp outermostBlockPar = blockPars.front();
+  affine::AffineParallelOp innermostBlockPar = blockPars.back();
 
   SmallVector<Value> gridIVs;
   affine::getAffineIVs(*outermostBlockPar, gridIVs);
   unsigned numGridLoops = gridIVs.size();
+
+  llvm::SmallSetVector<Operation *, 4> syncsInserted;
 
   for (auto alloca : shmemAllocas) {
     LLVM_DEBUG(llvm::dbgs() << "Handling " << *alloca << ":\n");
@@ -205,7 +207,38 @@ void optGlobalSharedMemCopies(Operation *root) {
       return info;
     };
 
+    // Find the point we need to wait for the copy to complete
+    auto findSynchronisationPoint = [&](Operation *store) -> Operation * {
+      Operation *topLevel = store;
+      while (topLevel && topLevel->getBlock() != innermostBlockPar.getBody())
+        topLevel = topLevel->getParentOp();
+      assert(topLevel);
+
+      Operation *pt = nullptr;
+      innermostBlockPar.getBody()->walk([&](NVVM::Barrier0Op bar) {
+        if (bar->getParentOp() == innermostBlockPar) {
+          if (topLevel->isBeforeInBlock(bar)) {
+            if (pt) {
+              if (bar->isBeforeInBlock(pt))
+                pt = bar;
+            } else {
+              pt = bar;
+            }
+          }
+        }
+      });
+      // TODO check the same memory is not loaded from until this point
+      // TODO we should really do this using get memory effects etc and
+      // reschedule the loops using distribution to reflect the real
+      // schedule, this is just temporary
+      return pt;
+    };
+
     for (auto copy : copies) {
+      auto synchronisationPt = findSynchronisationPoint(copy.storeOp);
+      if (!synchronisationPt)
+        return;
+
       IRRewriter rewriter(copy.storeOp);
 
       LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
@@ -321,10 +354,16 @@ void optGlobalSharedMemCopies(Operation *root) {
 
       rewriter.eraseOp(copy.storeOp);
       rewriter.eraseOp(copy.loadOp);
+
+      if (!syncsInserted.contains(synchronisationPt)) {
+        rewriter.setInsertionPoint(synchronisationPt);
+        auto token = rewriter.create<nvgpu::DeviceAsyncCreateGroupOp>(
+            loc, nvgpu::DeviceAsyncTokenType::get(ctx), ValueRange());
+        rewriter.create<nvgpu::DeviceAsyncWaitOp>(loc, token, nullptr);
+        syncsInserted.insert(synchronisationPt);
+      }
     }
   }
-
-  root->dump();
 }
 
 } // namespace affine_opt

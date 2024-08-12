@@ -83,7 +83,6 @@ module {
 // CHECK: #[[$ATTR_9:.+]] = affine_set<(d0) : (-d0 + 6 >= 0)>
 // CHECK: #[[$ATTR_10:.+]] = affine_set<(d0, d1) : (-(d0 * 256 + d1) + 6 >= 0)>
 
-
 // CHECK-LABEL:   gpu.module @__mlir_gpu_module [#[[?]]<chip = "sm_80">]  {
 // CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z10stencil_1dPKiPi(%[[VAL_0:.*]]: i64, %[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_8:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly}) attributes {convergent, frame_pointer = #[[?]]<all>, gpu.kernel, gpu.par.kernel, no_unwind, nvvm.kernel, passthrough = ["mustprogress", "norecurse", ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "sm_52"], ["uniform-work-group-size", "true"]], sym_visibility = "private", target_cpu = "sm_52", target_features = #[[?]]<["+ptx84", "+sm_52"]>} {
 // CHECK:             %[[VAL_9:.*]] = arith.constant 0 : i32
@@ -149,21 +148,23 @@ module {
 // CHECK:                     }
 // CHECK:                   }
 // CHECK:                 }
+// CHECK:                 %[[VAL_55:.*]] = nvgpu.device_async_create_group
+// CHECK:                 nvgpu.device_async_wait %[[VAL_55]]
 // CHECK:                 nvvm.barrier0
-// CHECK:                 %[[VAL_55:.*]] = affine.for %[[VAL_56:.*]] = -7 to 8 iter_args(%[[VAL_57:.*]] = %[[VAL_9]]) -> (i32) {
-// CHECK:                   %[[VAL_58:.*]] = affine.parallel (%[[VAL_59:.*]]) = (0) to (4) reduce ("vector_insert") -> (vector<4xi8>) {
-// CHECK:                     %[[VAL_60:.*]] = affine.load %[[VAL_14]]{{\[}}%[[VAL_56]] + %[[VAL_15]] + 7, %[[VAL_59]]] : memref<270x4xi8, 3>
-// CHECK:                     %[[VAL_61:.*]] = vector.broadcast %[[VAL_60]] : i8 to vector<4xi8>
-// CHECK:                     affine.yield %[[VAL_61]] : vector<4xi8>
+// CHECK:                 %[[VAL_56:.*]] = affine.for %[[VAL_57:.*]] = -7 to 8 iter_args(%[[VAL_58:.*]] = %[[VAL_9]]) -> (i32) {
+// CHECK:                   %[[VAL_59:.*]] = affine.parallel (%[[VAL_60:.*]]) = (0) to (4) reduce ("vector_insert") -> (vector<4xi8>) {
+// CHECK:                     %[[VAL_61:.*]] = affine.load %[[VAL_14]]{{\[}}%[[VAL_57]] + %[[VAL_15]] + 7, %[[VAL_60]]] : memref<270x4xi8, 3>
+// CHECK:                     %[[VAL_62:.*]] = vector.broadcast %[[VAL_61]] : i8 to vector<4xi8>
+// CHECK:                     affine.yield %[[VAL_62]] : vector<4xi8>
 // CHECK:                   } {affine.vector.load}
-// CHECK:                   %[[VAL_62:.*]] = llvm.bitcast %[[VAL_58]] : vector<4xi8> to i32
-// CHECK:                   %[[VAL_63:.*]] = arith.addi %[[VAL_62]], %[[VAL_57]] : i32
-// CHECK:                   affine.yield %[[VAL_63]] : i32
+// CHECK:                   %[[VAL_63:.*]] = llvm.bitcast %[[VAL_59]] : vector<4xi8> to i32
+// CHECK:                   %[[VAL_64:.*]] = arith.addi %[[VAL_63]], %[[VAL_58]] : i32
+// CHECK:                   affine.yield %[[VAL_64]] : i32
 // CHECK:                 }
-// CHECK:                 %[[VAL_64:.*]] = llvm.bitcast %[[VAL_55]] : i32 to vector<4xi8>
-// CHECK:                 affine.parallel (%[[VAL_65:.*]]) = (0) to (4) {
-// CHECK:                   %[[VAL_66:.*]] = vector.extract %[[VAL_64]]{{\[}}%[[VAL_65]]] : i8 from vector<4xi8>
-// CHECK:                   affine.store %[[VAL_66]], %[[VAL_11]]{{\[}}%[[VAL_13]], %[[VAL_15]], %[[VAL_65]]] : memref<?x256x4xi8>
+// CHECK:                 %[[VAL_65:.*]] = llvm.bitcast %[[VAL_56]] : i32 to vector<4xi8>
+// CHECK:                 affine.parallel (%[[VAL_66:.*]]) = (0) to (4) {
+// CHECK:                   %[[VAL_67:.*]] = vector.extract %[[VAL_65]]{{\[}}%[[VAL_66]]] : i8 from vector<4xi8>
+// CHECK:                   affine.store %[[VAL_67]], %[[VAL_11]]{{\[}}%[[VAL_13]], %[[VAL_15]], %[[VAL_66]]] : memref<?x256x4xi8>
 // CHECK:                 } {affine.vector.store}
 // CHECK:               } {gpu.par.block.x}
 // CHECK:             } {gpu.par.grid.x}
