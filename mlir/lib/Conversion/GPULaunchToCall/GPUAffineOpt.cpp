@@ -36,6 +36,8 @@ namespace affine_opt {
 struct Copy {
   affine::AffineReadOpInterface load;
   affine::AffineWriteOpInterface store;
+  Operation *loadOp;
+  Operation *storeOp;
 };
 
 struct AccessInfo {
@@ -45,27 +47,37 @@ struct AccessInfo {
   unsigned rank;
 };
 
-static Value isVectorStore(affine::AffineWriteOpInterface store) {
+struct VectorStore {
+  affine::AffineParallelOp par;
+  affine::AffineStoreOp store;
+  Value val;
+};
+struct VectorLoad {
+  affine::AffineParallelOp par;
+  affine::AffineLoadOp load;
+  Value val;
+};
+
+static std::optional<VectorStore> isVectorStore(affine::AffineStoreOp store) {
   if (!store->getParentOp()->hasAttr("affine.vector.store"))
-    return nullptr;
-  return cast<vector::ExtractOp>(store.getValueToStore().getDefiningOp())
-      .getVector();
+    return {};
+  return VectorStore{
+      cast<affine::AffineParallelOp>(store->getParentOp()), store,
+      cast<vector::ExtractOp>(store.getValueToStore().getDefiningOp())
+          .getVector()};
 }
 
-static affine::AffineLoadOp isVectorLoad(affine::AffineParallelOp par) {
+static std::optional<VectorLoad> isVectorLoad(affine::AffineParallelOp par) {
   if (!par->hasAttr("affine.vector.load"))
-    return nullptr;
-  return cast<affine::AffineLoadOp>(
-      cast<vector::BroadcastOp>(
-          par.getBody()->getTerminator()->getOperand(0).getDefiningOp())
-          .getSource()
-          .getDefiningOp());
-}
-
-static Value isVectorLoad(affine::AffineReadOpInterface load) {
-  if (!load->getParentOp()->hasAttr("affine.vector.load"))
-    return nullptr;
-  return load->getParentOp()->getResult(0);
+    return {};
+  return VectorLoad{
+      par,
+      cast<affine::AffineLoadOp>(
+          cast<vector::BroadcastOp>(
+              par.getBody()->getTerminator()->getOperand(0).getDefiningOp())
+              .getSource()
+              .getDefiningOp()),
+      par->getResult(0)};
 }
 
 template <typename T>
@@ -123,18 +135,19 @@ void optGlobalSharedMemCopies(Operation *root) {
         // These can't be optimized, copy_async only supports global->shared
         continue;
       } else if (auto store = dyn_cast<affine::AffineStoreOp>(opInst)) {
-        if (Value storedVal = isVectorStore(store)) {
-          if (!storedVal.hasOneUse())
+        if (auto vectorStore = isVectorStore(store)) {
+          if (!vectorStore->val.hasOneUse())
             continue;
-          auto par = dyn_cast_or_null<affine::AffineParallelOp>(
-              storedVal.getDefiningOp());
-          if (!par)
+          auto parLoad = dyn_cast_or_null<affine::AffineParallelOp>(
+              vectorStore->val.getDefiningOp());
+          if (!parLoad)
             continue;
-          auto load = isVectorLoad(par);
-          if (!load)
+          auto vectorLoad = isVectorLoad(parLoad);
+          if (!vectorLoad)
             continue;
-          if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
-            copies.push_back({load, store});
+          if (isGlobalMemref(cast<MemrefValue>(vectorLoad->load.getMemRef())))
+            copies.push_back({vectorLoad->load, vectorStore->store,
+                              vectorLoad->par, vectorStore->par});
         } else {
           if (!store.getValueToStore().hasOneUse())
             continue;
@@ -143,7 +156,7 @@ void optGlobalSharedMemCopies(Operation *root) {
           if (!load)
             continue;
           if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
-            copies.push_back({load, store});
+            copies.push_back({load, store, load, store});
         }
       } else {
         allAffineAccesses = false;
@@ -204,8 +217,8 @@ void optGlobalSharedMemCopies(Operation *root) {
 
       // TODO need to align stuff to 4, 8, or 16-byte chunks
 
-      // TODO currently we may also have copies in nested (non-affine) constrol
-      // flow... need to analyse those
+      // TODO currently we may also have copies in nested (non-affine)
+      // control flow... need to analyse those
 
       int64_t copySize = 16;
       for (const AccessInfo &info : {*loadBounds, *storeBounds}) {
@@ -267,6 +280,9 @@ void optGlobalSharedMemCopies(Operation *root) {
       rewriter.create<nvgpu::DeviceAsyncCopyOp>(
           loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(),
           loadIdxs, rewriter.getIndexAttr(copySize), nullptr, nullptr);
+
+      rewriter.eraseOp(copy.storeOp);
+      rewriter.eraseOp(copy.loadOp);
     }
   }
 
