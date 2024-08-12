@@ -11,7 +11,9 @@
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
@@ -108,10 +110,12 @@ void optGlobalSharedMemCopies(Operation *root) {
            m.getParentRegion()->getParentOp() == root;
   };
 
+  SmallVector<affine::AffineParallelOp> blockPars;
   affine::AffineParallelOp outermostBlockPar = nullptr;
   root->walk([&](affine::AffineParallelOp par) {
     if (par->hasAttr("gpu.par.block.z") || par->hasAttr("gpu.par.block.y") ||
         par->hasAttr("gpu.par.block.x")) {
+      blockPars.push_back(par);
       if (outermostBlockPar) {
         if (par->isProperAncestor(outermostBlockPar)) {
           outermostBlockPar = par;
@@ -164,9 +168,8 @@ void optGlobalSharedMemCopies(Operation *root) {
     }
     LLVM_DEBUG(llvm::dbgs() << "all affine: " << allAffineAccesses << "\n");
 
-    IRRewriter rewriter(alloca->getNextNode());
-
-    auto handleAccess = [&](Operation *access) -> std::optional<AccessInfo> {
+    auto handleAccess = [&](RewriterBase &rewriter,
+                            Operation *access) -> std::optional<AccessInfo> {
       affine::MemRefRegion region(access->getLoc());
       SmallVector<Value> accessIVs;
       affine::getAffineIVs(*access, accessIVs);
@@ -203,11 +206,13 @@ void optGlobalSharedMemCopies(Operation *root) {
     };
 
     for (auto copy : copies) {
+      IRRewriter rewriter(copy.storeOp);
+
       LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
-      auto loadBounds = handleAccess(copy.load);
+      auto loadBounds = handleAccess(rewriter, copy.load);
       if (!loadBounds)
         continue;
-      auto storeBounds = handleAccess(copy.store);
+      auto storeBounds = handleAccess(rewriter, copy.store);
       if (!storeBounds)
         continue;
 
@@ -255,12 +260,45 @@ void optGlobalSharedMemCopies(Operation *root) {
         continue;
       }
 
+      // TODO this if construction does not always work. Consider this case:
+      //
+      // affine.parallel %i = 0 to 10 {
+      //   affine.if %i > 5 {
+      //     // The constructed if:
+      //     affine.if %i == 0 {
+      //       ...
+      //     }
+      //   }
+      // }
+      //
+      // The intention is to execute this once per block _when_ it would be
+      // executed anyways.
+      //
+      // To achieve that, instead, it should pick one point from the domain of
+      // copy.storeOp and compare the IVs against that instead of 0.
+      Location loc = copy.load.getLoc();
+      SmallVector<AffineExpr> ifExprs;
+      SmallVector<bool> ifEqs;
+      SmallVector<Value> ifOperands;
+      MLIRContext *ctx = copy.load.getContext();
+      // TODO assert that the block loops actually start at zero because this if
+      // checks for iv == 0
+      for (unsigned i = 0; i < blockPars.size(); i++) {
+        ifOperands.append(llvm::map_to_vector(
+            blockPars[i].getIVs(), [&](auto ba) -> Value { return ba; }));
+        ifExprs.push_back(getAffineDimExpr(i, ctx));
+        ifEqs.push_back(true);
+      }
+      IntegerSet set = IntegerSet::get(blockPars.size(), 0, ifExprs, ifEqs);
+      auto affineIfOp =
+          rewriter.create<affine::AffineIfOp>(loc, TypeRange(), set, ifOperands,
+                                              /*hasElse=*/false);
+      rewriter.setInsertionPointToStart(affineIfOp.getThenBlock());
+
       // TODO need to check if the iteration num over each dim is the same
 
-      OpBuilder::InsertionGuard guard(rewriter);
       SmallVector<Value> storeIdxs;
       SmallVector<Value> loadIdxs;
-      Location loc = copy.load.getLoc();
       for (unsigned dim = 0; dim < storeBounds->rank; dim++) {
         int64_t step = dim == storeBounds->rank - 1 ? copySize : 1;
         auto forOp = rewriter.create<affine::AffineForOp>(
