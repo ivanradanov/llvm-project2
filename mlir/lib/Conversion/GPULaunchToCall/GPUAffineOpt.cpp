@@ -245,7 +245,9 @@ void optGlobalSharedMemCopies(Operation *root) {
       // TODO need to check if the iteration num over each dim is the same
 
       OpBuilder::InsertionGuard guard(rewriter);
-      SmallVector<Value> ivs;
+      SmallVector<Value> storeIdxs;
+      SmallVector<Value> loadIdxs;
+      Location loc = copy.load.getLoc();
       for (unsigned dim = 0; dim < storeBounds->rank; dim++) {
         int64_t step = dim == storeBounds->rank - 1 ? copySize : 1;
         auto forOp = rewriter.create<affine::AffineForOp>(
@@ -253,18 +255,18 @@ void optGlobalSharedMemCopies(Operation *root) {
             storeBounds->lbMaps[dim], storeBounds->regionSymbols,
             storeBounds->ubMaps[dim], step, ValueRange());
         rewriter.setInsertionPointToStart(forOp.getBody());
-        ivs.push_back(forOp.getInductionVar());
+        Value iv = forOp.getInductionVar();
+        // loadIdx = storeIdx - storeLB + loadLB
+        Value loadIdx =
+            rewriter.create<arith::SubIOp>(loc, iv, storeBounds->lbs[dim]);
+        loadIdx =
+            rewriter.create<arith::AddIOp>(loc, loadIdx, loadBounds->lbs[dim]);
+        storeIdxs.push_back(iv);
+        loadIdxs.push_back(loadIdx);
       }
-      Location loc = copy.load.getLoc();
-      // loadIdx = storeIdx - storeLB + loadLB
-      // Value loadIdx =
-      //     rewriter.create<arith::SubIOp>(loc, storeIdx, storeBounds->lbs[0]);
-      // loadIdx =
-      //     rewriter.create<arith::AddIOp>(loc, loadIdx, loadBounds->lbs[0]);
       rewriter.create<nvgpu::DeviceAsyncCopyOp>(
-          copy.load->getLoc(), copy.store.getMemRef(), ivs,
-          copy.load.getMemRef(), /* TODO TEMP THIS IS WRONG */ ivs,
-          rewriter.getIndexAttr(copySize), nullptr, nullptr);
+          loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(),
+          loadIdxs, rewriter.getIndexAttr(copySize), nullptr, nullptr);
     }
   }
 
