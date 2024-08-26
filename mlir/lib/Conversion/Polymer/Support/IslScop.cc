@@ -1,6 +1,6 @@
 //===- IslScop.cc -----------------------------------------------*- C++ -*-===//
 
-#include "polymer/Support/IslScop.h"
+#include "mlir/Conversion/Polymer/Support/IslScop.h"
 #include "mlir/Analysis/Presburger/PresburgerSpace.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -8,8 +8,8 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LLVM.h"
-#include "polymer/Support/ScatteringUtils.h"
-#include "polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"

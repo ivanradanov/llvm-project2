@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Transforms/ExtractScopStmt.h"
+#include "mlir/Conversion/Polymer/Transforms/ExtractScopStmt.h"
 
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
@@ -30,7 +30,7 @@
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
 
-#include "polymer/Support/PolymerUtils.h"
+#include "mlir/Conversion/Polymer/Support/PolymerUtils.h"
 
 #include "llvm/ADT/SetVector.h"
 

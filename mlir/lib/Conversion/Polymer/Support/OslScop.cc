@@ -4,9 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Support/OslScop.h"
-#include "polymer/Support/ScatteringUtils.h"
-#include "polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/OslScop.h"
+#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 
 #include "osl/osl.h"
 

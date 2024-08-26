@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Transforms/PlutoTransform.h"
-#include "polymer/Support/OslScop.h"
-#include "polymer/Support/OslScopStmtOpSet.h"
-#include "polymer/Support/OslSymbolTable.h"
-#include "polymer/Support/PolymerUtils.h"
-#include "polymer/Support/ScopStmt.h"
-#include "polymer/Target/OpenScop.h"
+#include "mlir/Conversion/Polymer/Transforms/PlutoTransform.h"
+#include "mlir/Conversion/Polymer/Support/OslScop.h"
+#include "mlir/Conversion/Polymer/Support/OslScopStmtOpSet.h"
+#include "mlir/Conversion/Polymer/Support/OslSymbolTable.h"
+#include "mlir/Conversion/Polymer/Support/PolymerUtils.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Target/OpenScop.h"
 
 #include "pluto/internal/pluto.h"
 #include "pluto/osl_pluto.h"

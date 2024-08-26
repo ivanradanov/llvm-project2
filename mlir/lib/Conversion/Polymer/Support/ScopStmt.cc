@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"

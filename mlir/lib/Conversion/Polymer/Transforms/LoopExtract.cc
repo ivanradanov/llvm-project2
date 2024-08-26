@@ -1,6 +1,6 @@
 //===- LoopExtraction.cc - Extract loops ------------------------------C++-===//
 
-#include "polymer/Transforms/LoopExtract.h"
+#include "mlir/Conversion/Polymer/Transforms/LoopExtract.h"
 
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
@@ -142,24 +142,3 @@ static int extractPointLoops(FuncOp f, int startId, OpBuilder &b) {
   return startId;
 }
 
-struct ExtractPointLoopsPass
-    : public mlir::PassWrapper<ExtractPointLoopsPass, OperationPass<ModuleOp>> {
-  void runOnOperation() override {
-    ModuleOp m = getOperation();
-    OpBuilder b(m.getContext());
-
-    SmallVector<FuncOp, 4> fs;
-    m.walk([&](FuncOp f) {
-      if (hasPointLoops(f))
-        fs.push_back(f);
-    });
-
-    int startId = 0;
-    for (FuncOp f : fs)
-      startId += extractPointLoops(f, startId, b);
-  }
-};
-
-void polymer::registerLoopExtractPasses() {
-  // PassRegistration<ExtractPointLoopsPass>();
-}

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Support/OslScopStmtOpSet.h"
+#include "mlir/Conversion/Polymer/Support/OslScopStmtOpSet.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
