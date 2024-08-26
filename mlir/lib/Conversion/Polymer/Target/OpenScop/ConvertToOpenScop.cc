@@ -6,12 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Visitors.h"
-#include "polymer/Support/OslScop.h"
-#include "polymer/Support/OslScopStmtOpSet.h"
-#include "polymer/Support/OslSymbolTable.h"
-#include "polymer/Support/ScopStmt.h"
-#include "polymer/Target/OpenScop.h"
-#include "polymer/Transforms/ExtractScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/OslScop.h"
+#include "mlir/Conversion/Polymer/Support/OslScopStmtOpSet.h"
+#include "mlir/Conversion/Polymer/Support/OslSymbolTable.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Target/OpenScop.h"
+#include "mlir/Conversion/Polymer/Transforms/ExtractScopStmt.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"

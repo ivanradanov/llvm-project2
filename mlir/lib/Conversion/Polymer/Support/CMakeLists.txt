@@ -3,11 +3,11 @@ add_mlir_library(PolymerSupport
   ScopStmt.cc
   Utils.cc
 
-  DEPENDS
-  mlir-headers
-
-  ADDITIONAL_HEADERS
+  ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/Polymer/Support
+  ${MLIR_MAIN_INCLUDE_DIR}/../../polly/include/
+  ${MLIR_MAIN_INCLUDE_DIR}/../../polly/lib/External/isl/include/
+  ${LLVM_BINARY_DIR}/tools/polly/lib/External/isl/include
 
   LINK_LIBS PUBLIC
   MLIRAnalysis
@@ -18,3 +18,11 @@ add_mlir_library(PolymerSupport
 )
 
 target_link_libraries(PolymerSupport PUBLIC ${GMP_LIBRARY})
+
+target_include_directories(PolymerSupport
+  PRIVATE
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/Polymer/Transforms
+  ${MLIR_MAIN_INCLUDE_DIR}/../../polly/include/
+  ${MLIR_MAIN_INCLUDE_DIR}/../../polly/lib/External/isl/include/
+  ${LLVM_BINARY_DIR}/tools/polly/lib/External/isl/include
+)

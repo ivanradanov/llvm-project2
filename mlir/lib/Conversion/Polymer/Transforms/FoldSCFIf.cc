@@ -1,6 +1,6 @@
 //===- FoldSCFIf.cc - Fold scf.if into select --------------C++-===//
 
-#include "polymer/Transforms/FoldSCFIf.h"
+#include "mlir/Conversion/Polymer/Transforms/FoldSCFIf.h"
 
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
@@ -60,77 +60,6 @@ static bool hasSingleStore(Block *block) {
   }
   return true;
 }
-
-struct MatchIfElsePass
-    : PassWrapper<MatchIfElsePass, OperationPass<func::FuncOp>> {
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-    OpBuilder b(f.getContext());
-
-    // If there is no store in the target block for a specific memref stored in
-    // the source block, we will create a dummy load.
-    auto matchStore = [&](Block *target, Block *source, Location loc) {
-      llvm::SetVector<Value> memrefs;
-
-      for (Operation &op : target->getOperations())
-        if (isa<memref::StoreOp, mlir::affine::AffineStoreOp>(op))
-          memrefs.insert(op.getOperand(1));
-
-      b.setInsertionPoint(target->getTerminator());
-      for (Operation &op : source->getOperations()) {
-        if (!isa<mlir::affine::AffineStoreOp, memref::StoreOp>(op))
-          continue;
-        Value memref = op.getOperand(1);
-        if (memrefs.count(memref)) // has been stored to
-          continue;
-
-        if (auto storeOp = dyn_cast<affine::AffineStoreOp>(op)) {
-          Value value = b.create<affine::AffineLoadOp>(
-              loc, storeOp.getMemRef(), storeOp.getAffineMap(),
-              storeOp.getMapOperands());
-          b.create<affine::AffineStoreOp>(loc, value, storeOp.getMemRef(),
-                                          storeOp.getAffineMap(),
-                                          storeOp.getMapOperands());
-        } else if (auto storeOp = dyn_cast<memref::StoreOp>(op)) {
-          Value value = b.create<memref::LoadOp>(loc, storeOp.getMemRef(),
-                                                 storeOp.getIndices());
-          b.create<memref::StoreOp>(loc, value, storeOp.getMemRef(),
-                                    storeOp.getIndices());
-        }
-      }
-    };
-
-    f.walk([&](scf::IfOp ifOp) {
-      Location loc = ifOp.getLoc();
-      OpBuilder::InsertionGuard g(b);
-
-      // If there is no else block, initialize one with a terminating yield.
-      if (!ifOp.elseBlock()) {
-        ifOp.getElseRegion().emplaceBlock();
-
-        b.setInsertionPointToStart(ifOp.elseBlock());
-        b.create<scf::YieldOp>(loc);
-      }
-
-      if (!hasSingleStore(ifOp.thenBlock()) ||
-          !hasSingleStore(ifOp.elseBlock())) {
-        LLVM_DEBUG(
-            dbgs()
-            << "Skipped if:\n"
-            << ifOp
-            << "\ndue to there are duplicated stores on the same memref.");
-        return;
-      }
-
-      matchStore(ifOp.elseBlock(), ifOp.thenBlock(), loc);
-      matchStore(ifOp.thenBlock(), ifOp.elseBlock(), loc);
-
-      LLVM_DEBUG(dbgs() << "Matched else block:\n" << ifOp << "\n\n");
-    });
-
-    LLVM_DEBUG(dbgs() << "After store matched:\n" << f << "\n\n");
-  }
-};
 
 /// ---------------------- LiftStoreOps ------------------------------
 
@@ -284,20 +213,6 @@ static bool processLiftStoreOps(func::FuncOp f, OpBuilder &b) {
   return changed;
 }
 
-struct LiftStoreOps : PassWrapper<LiftStoreOps, OperationPass<func::FuncOp>> {
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-    OpBuilder b(f.getContext());
-
-    // For each scf.if, see if it has single store for each memref on each
-    // branch.
-    while (processLiftStoreOps(f, b))
-      ;
-
-    LLVM_DEBUG(dbgs() << "After LiftStoreOps: " << f << "\n\n");
-  }
-};
-
 /// ---------------------- FoldSCFIf ----------------------------------
 
 static bool foldSCFIf(scf::IfOp ifOp, func::FuncOp f, OpBuilder &b) {
@@ -360,24 +275,3 @@ static bool process(func::FuncOp f, OpBuilder &b) {
   return changed;
 }
 
-struct FoldSCFIfPass : PassWrapper<FoldSCFIfPass, OperationPass<func::FuncOp>> {
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-    OpBuilder b(f.getContext());
-
-    if (f->hasAttr("scop.ignored"))
-      return;
-    while (process(f, b))
-      ;
-  }
-};
-
-void polymer::registerFoldSCFIfPass() {
-  PassPipelineRegistration<>(
-      "fold-scf-if", "Fold scf.if into select.", [](OpPassManager &pm) {
-        pm.addPass(std::make_unique<MatchIfElsePass>());
-        pm.addPass(std::make_unique<LiftStoreOps>());
-        pm.addPass(affine::createAffineScalarReplacementPass());
-        pm.addPass(std::make_unique<FoldSCFIfPass>());
-      });
-}

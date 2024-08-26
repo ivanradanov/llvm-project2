@@ -23,7 +23,6 @@ class ModuleOp;
 namespace func {
 class FuncOp;
 }
-struct LogicalResult;
 class Operation;
 class Value;
 } // namespace mlir

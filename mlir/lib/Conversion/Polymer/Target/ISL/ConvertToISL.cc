@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Support/IslScop.h"
-#include "polymer/Support/ScopStmt.h"
-#include "polymer/Target/ISL.h"
-#include "polymer/Transforms/ExtractScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/IslScop.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Target/ISL.h"
+#include "mlir/Conversion/Polymer/Transforms/ExtractScopStmt.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
@@ -34,7 +34,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <isl/schedule.h>
+#include "isl/schedule.h"
 
 #include <memory>
 

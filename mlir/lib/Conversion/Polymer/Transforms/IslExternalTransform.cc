@@ -1,10 +1,10 @@
 
 #include "mlir/IR/Verifier.h"
-#include "polymer/Support/IslScop.h"
-#include "polymer/Support/ScopStmt.h"
-#include "polymer/Target/ISL.h"
-#include "polymer/Transforms/ExtractScopStmt.h"
-#include "polymer/Transforms/PlutoTransform.h"
+#include "mlir/Conversion/Polymer/Support/IslScop.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Target/ISL.h"
+#include "mlir/Conversion/Polymer/Transforms/ExtractScopStmt.h"
+#include "mlir/Conversion/Polymer/Transforms/PlutoTransform.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
@@ -24,6 +24,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "isl/id.h"
@@ -39,22 +40,13 @@ using llvm::dbgs;
 
 #define DEBUG_TYPE "islexternal-opt"
 
-static llvm::cl::opt<std::string> ClIslExternalDumpSchedules(
-    "islexternal-dump-schedules",
-    llvm::cl::desc("Directory to dump ISL schedules to"));
-
-static llvm::cl::opt<std::string> ClIslExternalDumpAccesses(
-    "islexternal-dump-accesses",
-    llvm::cl::desc("Directory to dump ISL accesses to"));
-
-static llvm::cl::opt<std::string> ClIslExternalImportSchedules(
-    "islexternal-import-schedules",
-    llvm::cl::desc("Directory to import ISL schedules from"));
-
 namespace polymer {
 
 mlir::func::FuncOp islexternalTransform(mlir::func::FuncOp f,
-                                        OpBuilder &rewriter) {
+                                        OpBuilder &rewriter,
+                                        std::optional<std::string> ClIslExternalDumpSchedules,
+                                        std::optional<std::string> ClIslExternalDumpAccesses,
+                                        std::optional<std::string> ClIslExternalImportSchedules) {
   LLVM_DEBUG(dbgs() << "IslExternal transforming: \n");
   LLVM_DEBUG(f.dump());
 
@@ -63,8 +55,8 @@ mlir::func::FuncOp islexternalTransform(mlir::func::FuncOp f,
   std::unique_ptr<IslScop> scop = createIslFromFuncOp(f);
 
   std::error_code EC;
-  if (ClIslExternalDumpSchedules.getNumOccurrences() > 0) {
-    std::string fname = (ClIslExternalDumpSchedules + "/" + funcName).str();
+  if (ClIslExternalDumpSchedules) {
+    std::string fname = (*ClIslExternalDumpSchedules + "/" + funcName).str();
     llvm::raw_fd_ostream ScheduleOut(fname, EC);
     if (EC) {
       llvm::errs() << "Can't open " << fname << "\n";
@@ -72,8 +64,8 @@ mlir::func::FuncOp islexternalTransform(mlir::func::FuncOp f,
     }
     scop->dumpSchedule(ScheduleOut);
   }
-  if (ClIslExternalDumpAccesses.getNumOccurrences() > 0) {
-    std::string fname = (ClIslExternalDumpAccesses + "/" + funcName).str();
+  if (ClIslExternalDumpAccesses) {
+    std::string fname = (*ClIslExternalDumpAccesses + "/" + funcName).str();
     llvm::raw_fd_ostream AccessesOut(fname, EC);
     if (EC) {
       llvm::errs() << "Can't open " << fname << "\n";
@@ -83,11 +75,11 @@ mlir::func::FuncOp islexternalTransform(mlir::func::FuncOp f,
   }
 
   isl_schedule *newSchedule = nullptr;
-  if (ClIslExternalImportSchedules.getNumOccurrences() == 0) {
+  if (ClIslExternalImportSchedules) {
     // Do a round trip
     newSchedule = isl_schedule_copy(scop->getSchedule());
   } else {
-    std::string fname = (ClIslExternalImportSchedules + "/" + funcName).str();
+    std::string fname = (*ClIslExternalImportSchedules + "/" + funcName).str();
     auto ScheduleIn = llvm::MemoryBuffer::getFileAsStream(fname);
     if (std::error_code EC = ScheduleIn.getError()) {
       llvm::errs() << "Can't open " << fname << "\n";

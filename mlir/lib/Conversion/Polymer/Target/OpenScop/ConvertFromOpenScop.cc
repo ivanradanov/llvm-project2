@@ -14,12 +14,12 @@ extern "C" {
 #include "pluto/internal/ast_transform.h"
 }
 
-#include "polymer/Support/OslScop.h"
-#include "polymer/Support/OslScopStmtOpSet.h"
-#include "polymer/Support/OslSymbolTable.h"
-#include "polymer/Support/ScopStmt.h"
-#include "polymer/Support/Utils.h"
-#include "polymer/Target/OpenScop.h"
+#include "mlir/Conversion/Polymer/Support/OslScop.h"
+#include "mlir/Conversion/Polymer/Support/OslScopStmtOpSet.h"
+#include "mlir/Conversion/Polymer/Support/OslSymbolTable.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/Utils.h"
+#include "mlir/Conversion/Polymer/Target/OpenScop.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"

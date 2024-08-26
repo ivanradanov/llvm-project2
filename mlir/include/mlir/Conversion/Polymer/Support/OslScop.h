@@ -9,7 +9,7 @@
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Support/LLVM.h"
-#include "polymer/Support/ScatteringUtils.h"
+#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"

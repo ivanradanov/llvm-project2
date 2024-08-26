@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polymer/Transforms/Reg2Mem.h"
+#include "mlir/Conversion/Polymer/Transforms/Reg2Mem.h"
 
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -33,7 +33,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 
-#include "polymer/Support/PolymerUtils.h"
+#include "mlir/Conversion/Polymer/Support/PolymerUtils.h"
 
 #include <map>
 
