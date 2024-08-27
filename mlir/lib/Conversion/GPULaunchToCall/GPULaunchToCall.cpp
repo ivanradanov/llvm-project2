@@ -13,6 +13,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -245,10 +246,12 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
   auto createPar = [&](unsigned argPos, unsigned argNum, StringRef attrName) {
     SmallVector<AffineMap> idMaps, zeroMaps;
     SmallVector<Value> lbVs, ubVs;
-    auto idMap = AffineMap::getMultiDimIdentityMap(1, context);
     auto zeroMap = AffineMap::getConstantMap(0, context);
-    idMaps.insert(idMaps.begin(), argNum, idMap);
     zeroMaps.insert(zeroMaps.begin(), argNum, zeroMap);
+    for (unsigned i = 0; i < argNum; i++) {
+      auto idMap = AffineMap::get(0, argNum, getAffineSymbolExpr(i, context));
+      idMaps.push_back(idMap);
+    }
 
     for (unsigned i = 0; i < argNum; i++)
       ubVs.push_back(getArg(argPos + i));
@@ -263,16 +266,12 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     return par;
   };
   // TODO combine them
-  unsigned argPos = 2;
-  unsigned argNum = 1;
+  unsigned argPos = 0;
+  unsigned argNum = 3;
   // clang-format off
-  [[maybe_unused]] auto gridParZ = createPar(argPos--, argNum, "gpu.par.grid.z");
-  [[maybe_unused]] auto gridParY = createPar(argPos--, argNum, "gpu.par.grid.y");
-  [[maybe_unused]] auto gridParX = createPar(argPos--, argNum, "gpu.par.grid.x");
-  argPos = 5;
-  [[maybe_unused]] auto blockParZ = createPar(argPos--, argNum, "gpu.par.block.z");
-  [[maybe_unused]] auto blockParY = createPar(argPos--, argNum, "gpu.par.block.y");
-  [[maybe_unused]] auto blockParX = createPar(argPos--, argNum, "gpu.par.block.x");
+  [[maybe_unused]] auto gridPar = createPar(argPos--, argNum, "gpu.par.grid");
+  argPos = 3;
+  [[maybe_unused]] auto blockPar = createPar(argPos--, argNum, "gpu.par.block");
   // clang-format on
 
   // TODO handle multi block regions would be better as I think there may be
@@ -341,6 +340,14 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     rewriter.eraseOp(threadId);
   });
 
+  // Barriers
+  SmallVector<Value, 3> blockIndices(blockPar.getIVs());
+  newEntryBlock->getParent()->walk([&](NVVM::Barrier0Op barrier) {
+    rewriter.setInsertionPoint(barrier);
+    rewriter.replaceOpWithNewOp<affine::AffineBarrierOp>(barrier, blockIndices);
+    return WalkResult::skip();
+  });
+
   DenseMap<LLVM::GlobalOp, Value> globalToAlloca;
   newKernel->walk([&](LLVM::AddressOfOp addrOf) {
     auto global = cast<LLVM::GlobalOp>(SymbolTable::lookupNearestSymbolFrom(
@@ -351,7 +358,7 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     if (globalToAlloca.count(global)) {
       alloca = globalToAlloca.lookup(global);
     } else {
-      OpBuilder blockBuilder = OpBuilder::atBlockBegin(gridParX.getBody());
+      OpBuilder blockBuilder = OpBuilder::atBlockBegin(gridPar.getBody());
       auto arrayType = cast<LLVM::LLVMArrayType>(global.getGlobalType());
       alloca = blockBuilder
                    .create<LLVM::AllocaOp>(
