@@ -1,4 +1,5 @@
 add_mlir_conversion_library(MLIRGPULaunchToCall
+  LoopDistribute.cpp
   GPULaunchToCall.cpp
   OutlineGpuJitRegions.cpp
   LLVMToMemref.cpp
