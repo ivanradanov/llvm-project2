@@ -345,6 +345,11 @@ def AffineForOp : Affine_Op<"for",
   let hasRegionVerifier = 1;
 }
 
+def AffineBarrierOp : Affine_Op<"barrier"> {
+  let arguments = (ins Variadic<Index>:$indices);
+  let summary = "barrier for parallel loops";
+}
+
 def AffineIfOp : Affine_Op<"if",
                            [ImplicitAffineTerminator, RecursivelySpeculatable,
                             RecursiveMemoryEffects, NoRegionArguments,
