@@ -211,7 +211,7 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     for (auto attr : oldAttrs)
       if (attr.getName() != "function_type" && attr.getName() != "arg_attrs" &&
           attr.getName() != "CConv" && attr.getName() != "linkage" &&
-          attr.getName() != "sym_name")
+          attr.getName() != "sym_name" && attr.getName() != "comdat")
         newAttrs.push_back(attr);
     LLVM::LLVMFuncOp funcOp;
     newKernel = funcOp = rewriter.create<LLVM::LLVMFuncOp>(
@@ -317,25 +317,25 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
   // TODO unused currently but left here just in case
   newEntryBlock->getParent()->walk([&](gpu::GridDimOp gridDim) {
     auto dim = (unsigned)gridDim.getDimension();
-    assert(0 <= dim && dim < 3);
+    assert(dim < 3);
     rewriter.replaceAllUsesWith(gridDim, newEntryBlock->getArgument(dim));
     rewriter.eraseOp(gridDim);
   });
   newEntryBlock->getParent()->walk([&](gpu::BlockDimOp blockDim) {
     auto dim = (unsigned)blockDim.getDimension();
-    assert(0 <= dim && dim < 3);
+    assert(dim < 3);
     rewriter.replaceAllUsesWith(blockDim, newEntryBlock->getArgument(3 + dim));
     rewriter.eraseOp(blockDim);
   });
   newEntryBlock->getParent()->walk([&](gpu::BlockIdOp blockId) {
     auto dim = (unsigned)blockId.getDimension();
-    assert(0 <= dim && dim < 3);
+    assert(dim < 3);
     rewriter.replaceAllUsesWith(blockId, ivs[dim]);
     rewriter.eraseOp(blockId);
   });
   newEntryBlock->getParent()->walk([&](gpu::ThreadIdOp threadId) {
     auto dim = (unsigned)threadId.getDimension();
-    assert(0 <= dim && dim < 3);
+    assert(dim < 3);
     rewriter.replaceAllUsesWith(threadId, ivs[3 + dim]);
     rewriter.eraseOp(threadId);
   });
