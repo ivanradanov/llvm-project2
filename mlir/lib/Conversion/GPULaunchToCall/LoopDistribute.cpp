@@ -808,6 +808,10 @@ splitSubLoop(affine::AffineParallelOp op, PatternRewriter &rewriter,
       op.getLoc(), TypeRange(), ArrayRef<AtomicRMWKind>(), innerLower,
       op.getLowerBoundsOperands(), innerUpper, op.getUpperBoundsOperands(),
       innerStep);
+  for (auto attr : op->getDiscardableAttrs()) {
+    preLoop->setAttr(attr.getName(), attr.getValue());
+    postLoop->setAttr(attr.getName(), attr.getValue());
+  }
   rewriter.eraseOp(&postLoop.getBody()->back());
   return success();
 }
