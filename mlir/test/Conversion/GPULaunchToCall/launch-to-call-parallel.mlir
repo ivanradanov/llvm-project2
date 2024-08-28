@@ -69,12 +69,17 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
   }
 }
 
-// CHECK-LABEL:   gpu.module @__mlir_gpu_module [#[[?]]<chip = "sm_80">]  {
+// CHECK: #[[$ATTR_0:.+]] = #llvm.tbaa_root<id = "Simple C++ TBAA">
+// CHECK: #[[$ATTR_1:.+]] = #llvm.tbaa_type_desc<id = "omnipotent char", members = {<#tbaa_root, 0>}>
+// CHECK: #[[$ATTR_2:.+]] = #llvm.tbaa_type_desc<id = "int", members = {<#tbaa_type_desc, 0>}>
+// CHECK: #[[$ATTR_3:.+]] = #llvm.tbaa_tag<base_type = #tbaa_type_desc1, access_type = #tbaa_type_desc1, offset = 0>
+
+// CHECK-LABEL:   gpu.module @__mlir_gpu_module
 // CHECK:           llvm.mlir.global internal unnamed_addr @_ZZ10stencil_1dPKiPiE4temp() {addr_space = 3 : i32, alignment = 4 : i64, dso_local} : !llvm.array<270 x i32> {
 // CHECK:             %[[VAL_0:.*]] = llvm.mlir.undef : !llvm.array<270 x i32>
 // CHECK:             llvm.return %[[VAL_0]] : !llvm.array<270 x i32>
 // CHECK:           }
-// CHECK:           llvm.func local_unnamed_addr @_Z10stencil_1dPKiPi(%[[VAL_1:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_2:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly}) attributes {convergent, frame_pointer = #[[?]]<all>, gpu.kernel, no_unwind, nvvm.kernel, passthrough = ["mustprogress", "norecurse", ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "sm_52"], ["uniform-work-group-size", "true"]], target_cpu = "sm_52", target_features = #[[?]]<["+ptx84", "+sm_52"]>} {
+// CHECK:           llvm.func local_unnamed_addr @_Z10stencil_1dPKiPi(%[[VAL_1:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_2:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly})
 // CHECK:             %[[VAL_3:.*]] = arith.constant 1 : i32
 // CHECK:             %[[VAL_4:.*]] = arith.constant 0 : i32
 // CHECK:             %[[VAL_5:.*]] = arith.constant 8 : i32
