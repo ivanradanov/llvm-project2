@@ -1942,7 +1942,7 @@ void gpuOptPipeline(llvm::Module *TheModule) {
     gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
       if (func->getAttr("gpu.par.kernel")) {
         (void)mlir::convertLLVMToAffineAccess(func, dl, false);
-        mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+        mlir::gpu::affine_opt::optGlobalSharedMemCopiesWithBarriersIntact(func);
       }
     });
   });
