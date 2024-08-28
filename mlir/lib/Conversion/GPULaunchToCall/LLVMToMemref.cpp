@@ -838,10 +838,11 @@ static affine::AffineScopeOp insertAffineScope(Block *block,
   return scope;
 }
 
+static constexpr bool useVectorLoadStore = true;
+
 static Operation *createVectorStore(OpBuilder &b, Location loc,
                                     TypedValue<VectorType> v, MemRefVal m,
                                     AffineMap map, ValueRange mapOperands) {
-  bool useVectorLoadStore = false;
   if (useVectorLoadStore)
     return b.create<affine::AffineVectorStoreOp>(loc, v, m, map, mapOperands);
 
@@ -884,7 +885,6 @@ static Operation *createVectorStore(OpBuilder &b, Location loc,
 static Value createVectorLoad(OpBuilder &b, Location loc, VectorType vty,
                               MemRefVal m, AffineMap map,
                               ValueRange mapOperands) {
-  bool useVectorLoadStore = false;
   if (useVectorLoadStore)
     return b.create<affine::AffineVectorLoadOp>(loc, vty, m, map, mapOperands);
 

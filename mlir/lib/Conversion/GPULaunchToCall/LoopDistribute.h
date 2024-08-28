@@ -3,6 +3,8 @@
 
 #include "mlir/IR/PatternMatch.h"
 
-void addDistributePatterns(mlir::RewritePatternSet &patterns, mlir::StringRef method);
+mlir::LogicalResult distributeParallelLoops(mlir::Operation *op,
+                                            mlir::StringRef method,
+                                            mlir::MLIRContext *context);
 
 #endif // MLIR_CONVERSION_LOOPDISTRIBUTE_H_
