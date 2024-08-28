@@ -506,9 +506,7 @@ struct GPULaunchToParallelPass
     });
 
     RewritePatternSet patterns(context);
-    patterns
-        .insert<CallConstantPropagation<gpu::CallOp>, PromoteIfSingleIteration>(
-            context);
+    patterns.insert<CallConstantPropagation<gpu::CallOp>>(context);
     GreedyRewriteConfig config;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config)))

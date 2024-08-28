@@ -37,7 +37,7 @@ convertLLVMToAffineAccess(mlir::Operation *op,
 
 namespace gpu {
 namespace affine_opt {
-void optGlobalSharedMemCopies(Operation *root);
+void optGlobalSharedMemCopiesWithBarriersIntact(Operation *root);
 }
 } // namespace gpu
 

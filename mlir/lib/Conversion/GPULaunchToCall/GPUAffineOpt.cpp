@@ -23,6 +23,8 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include "LoopDistribute.h"
+
 using namespace mlir;
 
 #define DEBUG_TYPE "gpu-affine-opt"
@@ -94,7 +96,7 @@ static Value computeMap(RewriterBase &rewriter, Location loc, AffineMap map,
     llvm_unreachable("map with 0 results");
 }
 
-void optGlobalSharedMemCopies(Operation *root) {
+void optGlobalSharedMemCopiesWithBarriersIntact(Operation *root) {
   SmallVector<memref::AllocaOp> shmemAllocas;
   llvm::SmallSetVector<MemrefValue, 4> shmemMemrefs;
   root->walk([&](memref::AllocaOp alloca) {
@@ -111,24 +113,25 @@ void optGlobalSharedMemCopies(Operation *root) {
            m.getParentRegion()->getParentOp() == root;
   };
 
-  SmallVector<affine::AffineParallelOp> blockPars;
+  affine::AffineParallelOp gridPar = nullptr;
+  SmallVector<affine::AffineParallelOp> gridPars;
   root->walk([&](affine::AffineParallelOp par) {
-    if (par->hasAttr("gpu.par.block.z") || par->hasAttr("gpu.par.block.y") ||
-        par->hasAttr("gpu.par.block.x")) {
-      blockPars.push_back(par);
+    if (par->hasAttr("gpu.par.grid")) {
+      assert(!gridPar);
+      gridPar = par;
     }
   });
-  llvm::sort(
-      blockPars,
-      [&](affine::AffineParallelOp a, affine::AffineParallelOp b) -> bool {
-        return a->isProperAncestor(b);
-      });
-  affine::AffineParallelOp outermostBlockPar = blockPars.front();
-  affine::AffineParallelOp innermostBlockPar = blockPars.back();
-
-  SmallVector<Value> gridIVs;
-  affine::getAffineIVs(*outermostBlockPar, gridIVs);
-  unsigned numGridLoops = gridIVs.size();
+  affine::AffineParallelOp blockPar = nullptr;
+  SmallVector<affine::AffineParallelOp> blockPars;
+  root->walk([&](affine::AffineParallelOp par) {
+    if (par->hasAttr("gpu.par.block")) {
+      assert(!blockPar);
+      blockPar = par;
+    }
+  });
+  assert(gridPar);
+  assert(blockPar);
+  unsigned numGridLoops = 1;
 
   llvm::SmallSetVector<Operation *, 4> syncsInserted;
 
@@ -210,13 +213,13 @@ void optGlobalSharedMemCopies(Operation *root) {
     // Find the point we need to wait for the copy to complete
     auto findSynchronisationPoint = [&](Operation *store) -> Operation * {
       Operation *topLevel = store;
-      while (topLevel && topLevel->getBlock() != innermostBlockPar.getBody())
+      while (topLevel && topLevel->getBlock() != blockPar.getBody())
         topLevel = topLevel->getParentOp();
       assert(topLevel);
 
       Operation *pt = nullptr;
-      innermostBlockPar.getBody()->walk([&](NVVM::Barrier0Op bar) {
-        if (bar->getParentOp() == innermostBlockPar) {
+      blockPar.getBody()->walk([&](NVVM::Barrier0Op bar) {
+        if (bar->getParentOp() == blockPar) {
           if (topLevel->isBeforeInBlock(bar)) {
             if (pt) {
               if (bar->isBeforeInBlock(pt))
@@ -379,9 +382,10 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
         if (func->getAttr("gpu.par.kernel")) {
           (void)mlir::convertLLVMToAffineAccess(func, dl, false);
-          mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+          // mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
         }
       });
+      distributeParallelLoops(gpuModule, "distribute", &getContext());
     });
   }
 };
