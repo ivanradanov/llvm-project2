@@ -356,6 +356,8 @@ def GPUAffineOptPass : Pass<"gpu-affine-opt"> {
     "arith::ArithDialect",
     "affine::AffineDialect",
     "nvgpu::NVGPUDialect",
+    "memref::MemRefDialect",
+    "vector::VectorDialect",
   ];
   let constructor = "mlir::createGPUAffineOptPass()";
 }

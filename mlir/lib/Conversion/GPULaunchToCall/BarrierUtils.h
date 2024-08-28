@@ -51,8 +51,9 @@ allocateTemporaryBuffer(mlir::OpBuilder &rewriter, mlir::Value value,
                         mlir::DataLayout *DLI = nullptr) {
   using namespace mlir;
   SmallVector<int64_t> bufferSize(iterationCounts.size(), ShapedType::kDynamic);
-  mlir::Type ty = value.getType();
-  if (alloca)
+  mlir::Type elty = value.getType();
+  mlir::Type ty = rewriter.getI8Type();
+  if (alloca) {
     if (auto allocaOp = value.getDefiningOp<memref::AllocaOp>()) {
       auto mt = allocaOp.getType();
       bool hasDynamicSize = false;
@@ -68,7 +69,10 @@ allocateTemporaryBuffer(mlir::OpBuilder &rewriter, mlir::Value value,
         }
         ty = mt.getElementType();
       }
+    } else {
+      bufferSize.push_back(DLI->getTypeSize(elty));
     }
+  }
   auto type = MemRefType::get(bufferSize, ty);
   return rewriter.create<T>(value.getLoc(), type, iterationCounts);
 }
@@ -90,34 +94,6 @@ mlir::Value allocateTemporaryBuffer<mlir::LLVM::AllocaOp>(
             .getResult());
   }
   return rewriter.create<LLVM::AllocaOp>(value.getLoc(), val.getType(), sz);
-}
-
-template <>
-mlir::Value allocateTemporaryBuffer<mlir::LLVM::CallOp>(
-    mlir::OpBuilder &rewriter, mlir::Value value,
-    mlir::ValueRange iterationCounts, bool alloca, mlir::DataLayout *DLI) {
-  using namespace mlir;
-  auto val = value.getDefiningOp<LLVM::AllocaOp>();
-  auto sz = val.getArraySize();
-  assert(DLI);
-  sz = cast<TypedValue<IntegerType>>(
-      rewriter
-          .create<arith::MulIOp>(
-              value.getLoc(), sz,
-              rewriter.create<arith::ConstantIntOp>(
-                  value.getLoc(), DLI->getTypeSize(val.getElemType()),
-                  sz.getType().cast<IntegerType>().getWidth()))
-          .getResult());
-  for (auto iter : iterationCounts) {
-    sz = cast<TypedValue<IntegerType>>(
-        rewriter
-            .create<arith::MulIOp>(value.getLoc(), sz,
-                                   rewriter.create<arith::IndexCastOp>(
-                                       value.getLoc(), sz.getType(), iter))
-            .getResult());
-  }
-  auto m = val->getParentOfType<ModuleOp>();
-  return callMalloc(rewriter, m, value.getLoc(), sz);
 }
 
 #endif // MLIR_LIB_DIALECT_SCF_TRANSFORMS_BARRIERUTILS_H_
