@@ -64,7 +64,9 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
     }
   }
   llvm.func local_unnamed_addr @foo(%70 : i64, %71 : i64, %72 : i64, %73 : i64, %74 : i64, %75 : i64, %shm : i32, %a1 : !llvm.ptr, %a2 : !llvm.ptr) -> () {
-    gpu.launch_func  @__mlir_gpu_module::@_Z10stencil_1dPKiPi blocks in (%70, %71, %72) threads in (%73, %74, %75) : i64 dynamic_shared_memory_size %shm args(%a1 : !llvm.ptr, %a2 : !llvm.ptr)
+    %c0_i32 = arith.constant 0 : i32
+    %c1_i64 = arith.constant 1 : i64
+    gpu.launch_func  @__mlir_gpu_module::@_Z10stencil_1dPKiPi blocks in (%70, %c1_i64, %72) threads in (%73, %74, %75) : i64 dynamic_shared_memory_size %c0_i32 args(%a1 : !llvm.ptr, %a2 : !llvm.ptr)
     llvm.return
   }
 }
@@ -79,63 +81,71 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
 // CHECK:             %[[VAL_0:.*]] = llvm.mlir.undef : !llvm.array<270 x i32>
 // CHECK:             llvm.return %[[VAL_0]] : !llvm.array<270 x i32>
 // CHECK:           }
-// CHECK:           llvm.func local_unnamed_addr @_Z10stencil_1dPKiPi(%[[VAL_1:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_2:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly})
-// CHECK:             %[[VAL_3:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_4:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_5:.*]] = arith.constant 8 : i32
-// CHECK:             %[[VAL_6:.*]] = arith.constant -7 : i32
-// CHECK:             %[[VAL_7:.*]] = arith.constant 263 : i32
-// CHECK:             %[[VAL_8:.*]] = arith.constant 7 : i32
-// CHECK:             %[[VAL_9:.*]] = llvm.mlir.addressof @_ZZ10stencil_1dPKiPiE4temp : !llvm.ptr<3>
-// CHECK:             %[[VAL_10:.*]] = llvm.addrspacecast %[[VAL_9]] : !llvm.ptr<3> to !llvm.ptr
-// CHECK:             %[[VAL_11:.*]] = nvvm.read.ptx.sreg.tid.x : i32
-// CHECK:             %[[VAL_12:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
-// CHECK:             %[[VAL_13:.*]] = nvvm.read.ptx.sreg.ntid.x : i32
-// CHECK:             %[[VAL_14:.*]] = arith.muli %[[VAL_12]], %[[VAL_13]] : i32
-// CHECK:             %[[VAL_15:.*]] = arith.addi %[[VAL_14]], %[[VAL_11]] : i32
-// CHECK:             %[[VAL_16:.*]] = arith.addi %[[VAL_11]], %[[VAL_8]] : i32
-// CHECK:             %[[VAL_17:.*]] = arith.extsi %[[VAL_15]] : i32 to i64
-// CHECK:             %[[VAL_18:.*]] = llvm.getelementptr inbounds %[[VAL_1]]{{\[}}%[[VAL_17]]] : (!llvm.ptr, i64) -> !llvm.ptr, i32
-// CHECK:             %[[VAL_19:.*]] = llvm.load %[[VAL_18]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
-// CHECK:             %[[VAL_20:.*]] = arith.extui %[[VAL_16]] : i32 to i64
-// CHECK:             %[[VAL_21:.*]] = llvm.getelementptr inbounds %[[VAL_10]][0, %[[VAL_20]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
-// CHECK:             llvm.store %[[VAL_19]], %[[VAL_21]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
-// CHECK:             %[[VAL_22:.*]] = arith.cmpi ult, %[[VAL_11]], %[[VAL_8]] : i32
-// CHECK:             scf.if %[[VAL_22]] {
-// CHECK:               %[[VAL_23:.*]] = arith.cmpi slt, %[[VAL_15]], %[[VAL_8]] : i32
-// CHECK:               %[[VAL_24:.*]] = scf.if %[[VAL_23]] -> (i32) {
-// CHECK:                 scf.yield %[[VAL_4]] : i32
-// CHECK:               } else {
-// CHECK:                 %[[VAL_25:.*]] = arith.extui %[[VAL_15]] : i32 to i64
-// CHECK:                 %[[VAL_26:.*]] = llvm.getelementptr %[[VAL_1]]{{\[}}%[[VAL_25]]] : (!llvm.ptr, i64) -> !llvm.ptr, i32
-// CHECK:                 %[[VAL_27:.*]] = llvm.getelementptr %[[VAL_26]][-28] : (!llvm.ptr) -> !llvm.ptr, i8
-// CHECK:                 %[[VAL_28:.*]] = llvm.load %[[VAL_27]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
-// CHECK:                 scf.yield %[[VAL_28]] : i32
-// CHECK:               }
-// CHECK:               %[[VAL_29:.*]] = arith.extui %[[VAL_11]] : i32 to i64
-// CHECK:               %[[VAL_30:.*]] = llvm.getelementptr inbounds %[[VAL_10]][0, %[[VAL_29]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
-// CHECK:               llvm.store %[[VAL_24]], %[[VAL_30]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
-// CHECK:               %[[VAL_31:.*]] = llvm.getelementptr %[[VAL_18]][1024] : (!llvm.ptr) -> !llvm.ptr, i8
-// CHECK:               %[[VAL_32:.*]] = llvm.load %[[VAL_31]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
-// CHECK:               %[[VAL_33:.*]] = arith.addi %[[VAL_11]], %[[VAL_7]] : i32
-// CHECK:               %[[VAL_34:.*]] = arith.extui %[[VAL_33]] : i32 to i64
-// CHECK:               %[[VAL_35:.*]] = llvm.getelementptr inbounds %[[VAL_10]][0, %[[VAL_34]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
-// CHECK:               llvm.store %[[VAL_32]], %[[VAL_35]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
-// CHECK:             }
-// CHECK:             nvvm.barrier0
-// CHECK:             %[[VAL_36:.*]] = scf.for %[[VAL_37:.*]] = %[[VAL_6]] to %[[VAL_5]] step %[[VAL_3]] iter_args(%[[VAL_38:.*]] = %[[VAL_4]]) -> (i32)  : i32 {
-// CHECK:               %[[VAL_39:.*]] = arith.addi %[[VAL_37]], %[[VAL_16]] : i32
-// CHECK:               %[[VAL_40:.*]] = arith.extsi %[[VAL_39]] : i32 to i64
-// CHECK:               %[[VAL_41:.*]] = llvm.getelementptr inbounds %[[VAL_10]][0, %[[VAL_40]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
-// CHECK:               %[[VAL_42:.*]] = llvm.load %[[VAL_41]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
-// CHECK:               %[[VAL_43:.*]] = arith.addi %[[VAL_42]], %[[VAL_38]] : i32
-// CHECK:               scf.yield %[[VAL_43]] : i32
-// CHECK:             }
-// CHECK:             %[[VAL_44:.*]] = llvm.getelementptr inbounds %[[VAL_2]]{{\[}}%[[VAL_17]]] : (!llvm.ptr, i64) -> !llvm.ptr, i32
-// CHECK:             llvm.store %[[VAL_36]], %[[VAL_44]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
+// CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z10stencil_1dPKiPi(%[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i64, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_9:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly})
+// CHECK:             %[[VAL_10:.*]] = arith.constant 7 : i32
+// CHECK:             %[[VAL_11:.*]] = arith.constant 263 : i32
+// CHECK:             %[[VAL_12:.*]] = arith.constant -7 : i32
+// CHECK:             %[[VAL_13:.*]] = arith.constant 8 : i32
+// CHECK:             %[[VAL_14:.*]] = arith.constant 0 : i32
+// CHECK:             %[[VAL_15:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_16:.*]] = arith.index_cast %[[VAL_6]] : i64 to index
+// CHECK:             %[[VAL_17:.*]] = arith.index_cast %[[VAL_5]] : i64 to index
+// CHECK:             %[[VAL_18:.*]] = arith.index_cast %[[VAL_4]] : i64 to index
+// CHECK:             %[[VAL_19:.*]] = arith.index_cast %[[VAL_3]] : i64 to index
+// CHECK:             %[[VAL_20:.*]] = arith.index_cast %[[VAL_1]] : i64 to index
+// CHECK:             affine.parallel (%[[VAL_21:.*]], %[[VAL_22:.*]], %[[VAL_23:.*]]) = (0, 0, 0) to (symbol(%[[VAL_20]]), 1, symbol(%[[VAL_19]])) {
+// CHECK:               %[[VAL_24:.*]] = llvm.alloca %[[VAL_15]] x !llvm.array<270 x i32> : (i32) -> !llvm.ptr<3>
+// CHECK:               affine.parallel (%[[VAL_25:.*]], %[[VAL_26:.*]], %[[VAL_27:.*]]) = (0, 0, 0) to (symbol(%[[VAL_18]]), symbol(%[[VAL_17]]), symbol(%[[VAL_16]])) {
+// CHECK:                 %[[VAL_28:.*]] = llvm.addrspacecast %[[VAL_24]] : !llvm.ptr<3> to !llvm.ptr
+// CHECK:                 %[[VAL_29:.*]] = arith.index_cast %[[VAL_27]] : index to i32
+// CHECK:                 %[[VAL_30:.*]] = arith.index_cast %[[VAL_23]] : index to i32
+// CHECK:                 %[[VAL_31:.*]] = arith.trunci %[[VAL_4]] : i64 to i32
+// CHECK:                 %[[VAL_32:.*]] = arith.muli %[[VAL_30]], %[[VAL_31]] : i32
+// CHECK:                 %[[VAL_33:.*]] = arith.addi %[[VAL_32]], %[[VAL_29]] : i32
+// CHECK:                 %[[VAL_34:.*]] = arith.addi %[[VAL_29]], %[[VAL_10]] : i32
+// CHECK:                 %[[VAL_35:.*]] = arith.extsi %[[VAL_33]] : i32 to i64
+// CHECK:                 %[[VAL_36:.*]] = llvm.getelementptr inbounds %[[VAL_8]]{{\[}}%[[VAL_35]]] : (!llvm.ptr, i64) -> !llvm.ptr, i32
+// CHECK:                 %[[VAL_37:.*]] = llvm.load %[[VAL_36]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
+// CHECK:                 %[[VAL_38:.*]] = arith.extui %[[VAL_34]] : i32 to i64
+// CHECK:                 %[[VAL_39:.*]] = llvm.getelementptr inbounds %[[VAL_28]][0, %[[VAL_38]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
+// CHECK:                 llvm.store %[[VAL_37]], %[[VAL_39]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
+// CHECK:                 %[[VAL_40:.*]] = arith.cmpi ult, %[[VAL_29]], %[[VAL_10]] : i32
+// CHECK:                 scf.if %[[VAL_40]] {
+// CHECK:                   %[[VAL_41:.*]] = arith.cmpi slt, %[[VAL_33]], %[[VAL_10]] : i32
+// CHECK:                   %[[VAL_42:.*]] = scf.if %[[VAL_41]] -> (i32) {
+// CHECK:                     scf.yield %[[VAL_14]] : i32
+// CHECK:                   } else {
+// CHECK:                     %[[VAL_43:.*]] = arith.extui %[[VAL_33]] : i32 to i64
+// CHECK:                     %[[VAL_44:.*]] = llvm.getelementptr %[[VAL_8]]{{\[}}%[[VAL_43]]] : (!llvm.ptr, i64) -> !llvm.ptr, i32
+// CHECK:                     %[[VAL_45:.*]] = llvm.getelementptr %[[VAL_44]][-28] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK:                     %[[VAL_46:.*]] = llvm.load %[[VAL_45]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
+// CHECK:                     scf.yield %[[VAL_46]] : i32
+// CHECK:                   }
+// CHECK:                   %[[VAL_47:.*]] = arith.extui %[[VAL_29]] : i32 to i64
+// CHECK:                   %[[VAL_48:.*]] = llvm.getelementptr inbounds %[[VAL_28]][0, %[[VAL_47]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
+// CHECK:                   llvm.store %[[VAL_42]], %[[VAL_48]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
+// CHECK:                   %[[VAL_49:.*]] = llvm.getelementptr %[[VAL_36]][1024] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK:                   %[[VAL_50:.*]] = llvm.load %[[VAL_49]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
+// CHECK:                   %[[VAL_51:.*]] = arith.addi %[[VAL_29]], %[[VAL_11]] : i32
+// CHECK:                   %[[VAL_52:.*]] = arith.extui %[[VAL_51]] : i32 to i64
+// CHECK:                   %[[VAL_53:.*]] = llvm.getelementptr inbounds %[[VAL_28]][0, %[[VAL_52]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
+// CHECK:                   llvm.store %[[VAL_50]], %[[VAL_53]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
+// CHECK:                 }
+// CHECK:                 "affine.barrier"(%[[VAL_25]], %[[VAL_26]], %[[VAL_27]]) : (index, index, index) -> ()
+// CHECK:                 %[[VAL_54:.*]] = scf.for %[[VAL_55:.*]] = %[[VAL_12]] to %[[VAL_13]] step %[[VAL_15]] iter_args(%[[VAL_56:.*]] = %[[VAL_14]]) -> (i32)  : i32 {
+// CHECK:                   %[[VAL_57:.*]] = arith.addi %[[VAL_55]], %[[VAL_34]] : i32
+// CHECK:                   %[[VAL_58:.*]] = arith.extsi %[[VAL_57]] : i32 to i64
+// CHECK:                   %[[VAL_59:.*]] = llvm.getelementptr inbounds %[[VAL_28]][0, %[[VAL_58]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<270 x i32>
+// CHECK:                   %[[VAL_60:.*]] = llvm.load %[[VAL_59]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : !llvm.ptr -> i32
+// CHECK:                   %[[VAL_61:.*]] = arith.addi %[[VAL_60]], %[[VAL_56]] : i32
+// CHECK:                   scf.yield %[[VAL_61]] : i32
+// CHECK:                 }
+// CHECK:                 %[[VAL_62:.*]] = llvm.getelementptr inbounds %[[VAL_9]]{{\[}}%[[VAL_35]]] : (!llvm.ptr, i64) -> !llvm.ptr, i32
+// CHECK:                 llvm.store %[[VAL_54]], %[[VAL_62]] {alignment = 4 : i64, tbaa = [#[[$ATTR_3]]]} : i32, !llvm.ptr
+// CHECK:               } {gpu.par.block}
+// CHECK:             } {gpu.par.grid}
 // CHECK:             llvm.return
 // CHECK:           }
-// CHECK:         }
 
 // CHECK-LABEL:   llvm.func local_unnamed_addr @foo(
 // CHECK-SAME:                                      %[[VAL_0:[^:]*]]: i64,
@@ -147,7 +157,9 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
 // CHECK-SAME:                                      %[[VAL_6:[^:]*]]: i32,
 // CHECK-SAME:                                      %[[VAL_7:[^:]*]]: !llvm.ptr,
 // CHECK-SAME:                                      %[[VAL_8:[^:]*]]: !llvm.ptr) {
-// CHECK:           gpu.launch_func  @__mlir_gpu_module::@_Z10stencil_1dPKiPi blocks in (%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) threads in (%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) : i64 dynamic_shared_memory_size %[[VAL_6]] args(%[[VAL_7]] : !llvm.ptr, %[[VAL_8]] : !llvm.ptr)
+// CHECK:           %[[VAL_9:.*]] = arith.constant 0 : i32
+// CHECK:           %[[VAL_10:.*]] = arith.constant 1 : i64
+// CHECK:           "gpu.call"(%[[VAL_0]], %[[VAL_10]], %[[VAL_2]], %[[VAL_3]], %[[VAL_4]], %[[VAL_5]], %[[VAL_9]], %[[VAL_7]], %[[VAL_8]]) <{kernel = @__mlir_gpu_module::@__mlir.par.kernel._Z10stencil_1dPKiPi, operandSegmentSizes = array<i32: 0, 9, 0>}> : (i64, i64, i64, i64, i64, i64, i32, !llvm.ptr, !llvm.ptr) -> ()
 // CHECK:           llvm.return
 // CHECK:         }
 
