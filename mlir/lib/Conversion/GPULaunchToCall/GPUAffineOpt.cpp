@@ -369,6 +369,256 @@ void optGlobalSharedMemCopiesWithBarriersIntact(Operation *root) {
   }
 }
 
+void optGlobalSharedMemCopies(Operation *root) {
+  SmallVector<memref::AllocaOp> shmemAllocas;
+  llvm::SmallSetVector<MemrefValue, 4> shmemMemrefs;
+  root->walk([&](memref::AllocaOp alloca) {
+    if (nvgpu::NVGPUDialect::isSharedMemoryAddressSpace(
+            alloca.getType().getMemorySpace())) {
+      shmemAllocas.push_back(alloca);
+      shmemMemrefs.insert(cast<MemrefValue>(alloca.getMemref()));
+    }
+  });
+
+  auto isGlobalMemref = [&](MemrefValue m) {
+    return !nvgpu::NVGPUDialect::isSharedMemoryAddressSpace(
+               m.getType().getMemorySpace()) &&
+           m.getParentRegion()->getParentOp() == root;
+  };
+
+  affine::AffineParallelOp gridPar = nullptr;
+  SmallVector<affine::AffineParallelOp> gridPars;
+  root->walk([&](affine::AffineParallelOp par) {
+    if (par->hasAttr("gpu.par.grid")) {
+      assert(!gridPar);
+      gridPar = par;
+    }
+  });
+  unsigned numGridLoops = 1;
+
+  llvm::SmallSetVector<Operation *, 4> syncsInserted;
+
+  for (auto alloca : shmemAllocas) {
+    LLVM_DEBUG(llvm::dbgs() << "Handling " << *alloca << ":\n");
+    SmallVector<Copy> copies;
+    bool allAffineAccesses = true;
+    for (auto opInst : alloca.getMemref().getUsers()) {
+      if (auto load = dyn_cast<affine::AffineReadOpInterface>(opInst)) {
+        // These can't be optimized, copy_async only supports global->shared
+        continue;
+      }
+      if (auto writeOp = dyn_cast<affine::AffineWriteOpInterface>(opInst)) {
+        if (auto store = dyn_cast<affine::AffineStoreOp>(opInst)) {
+          if (auto vectorStore = isVectorStore(store)) {
+            if (!vectorStore->val.hasOneUse())
+              continue;
+            auto parLoad = dyn_cast_or_null<affine::AffineParallelOp>(
+                vectorStore->val.getDefiningOp());
+            if (!parLoad)
+              continue;
+            auto vectorLoad = isVectorLoad(parLoad);
+            if (!vectorLoad)
+              continue;
+            if (isGlobalMemref(cast<MemrefValue>(vectorLoad->load.getMemRef())))
+              copies.push_back({vectorLoad->load, vectorStore->store,
+                  vectorLoad->par, vectorStore->par});
+          } else {
+            if (!store.getValueToStore().hasOneUse())
+              continue;
+            auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
+                store.getValueToStore().getDefiningOp());
+            if (!load)
+              continue;
+            if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
+              copies.push_back({load, store, load, store});
+          }
+        } else if (auto store = dyn_cast<affine::AffineVectorStoreOp>(opInst)) {
+          if (!store.getValueToStore().hasOneUse())
+            continue;
+          auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
+              store.getValueToStore().getDefiningOp());
+          if (!load)
+            continue;
+          if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
+            copies.push_back({load, store, load, store});
+        }
+      } else {
+        allAffineAccesses = false;
+      }
+    }
+    LLVM_DEBUG(llvm::dbgs() << "all affine: " << allAffineAccesses << "\n");
+
+    auto handleAccess = [&](RewriterBase &rewriter,
+                            Operation *access) -> std::optional<AccessInfo> {
+      affine::MemRefRegion region(access->getLoc());
+      SmallVector<Value> accessIVs;
+      affine::getAffineIVs(*access, accessIVs);
+      AccessInfo info;
+      unsigned loopDepth = numGridLoops;
+      if (failed(region.compute(access, loopDepth,
+                                /*sliceState=*/nullptr,
+                                /*addMemRefDimBounds=*/false))) {
+        LLVM_DEBUG(llvm::dbgs() << "Could not compute memref region for "
+                                << *access << "\n");
+        return {};
+      }
+      LLVM_DEBUG(llvm::dbgs() << "Got memref region for " << *access
+                              << " with rank " << region.getRank() << "\n");
+      LLVM_DEBUG(region.getConstraints()->dump());
+      unsigned rank = region.getRank();
+      const affine::FlatAffineValueConstraints *cst = region.getConstraints();
+      info.lbMaps.append(rank, {});
+      info.ubMaps.append(rank, {});
+      cst->getValues(rank, cst->getNumVars(), &info.regionSymbols);
+      for (unsigned i = 0; i < rank; ++i) {
+        region.getLowerAndUpperBound(i, info.lbMaps[i], info.ubMaps[i]);
+        LLVM_DEBUG(llvm::dbgs() << "lb " << info.lbMaps[i] << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "ub " << info.ubMaps[i] << "\n");
+        auto lb = computeMap<affine::AffineMaxOp>(
+            rewriter, access->getLoc(), info.lbMaps[i], info.regionSymbols);
+        auto ub = computeMap<affine::AffineMinOp>(
+            rewriter, access->getLoc(), info.ubMaps[i], info.regionSymbols);
+        info.lbs.push_back(lb);
+        info.ubs.push_back(ub);
+      }
+      info.rank = rank;
+      return info;
+    };
+
+    for (auto copy : copies) {
+
+      auto blockPar = copy.store->getParentOfType<affine::AffineParallelOp>();
+      assert(blockPar->getAttr("gpu.par.block"));
+
+      IRRewriter rewriter(copy.storeOp);
+
+      LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
+      auto loadBounds = handleAccess(rewriter, copy.load);
+      if (!loadBounds)
+        continue;
+      auto storeBounds = handleAccess(rewriter, copy.store);
+      if (!storeBounds)
+        continue;
+
+      // TODO assert ranges of the load = ranges of the store
+
+      // TODO we support only memrefs of i8's for now, check that.
+
+      // TODO need to align stuff to 4, 8, or 16-byte chunks
+
+      // TODO currently we may also have copies in nested (non-affine)
+      // control flow... need to analyse those
+
+      int64_t copySize = 16;
+      for (const AccessInfo &info : {*loadBounds, *storeBounds}) {
+        unsigned lastDim = info.rank - 1;
+        // TODO is step=1 correct here?
+        auto tempFor = rewriter.create<affine::AffineForOp>(
+            copy.load->getLoc(), info.regionSymbols, info.lbMaps[lastDim],
+            info.regionSymbols, info.ubMaps[lastDim], 1, ValueRange(), nullptr);
+
+        auto largestDivisor = affine::getLargestDivisorOfTripCount(tempFor);
+
+        int64_t thisCopySize = 0;
+        if (largestDivisor % 4 == 0)
+          thisCopySize = 4;
+        if (largestDivisor % 8 == 0)
+          thisCopySize = 8;
+        if (largestDivisor % 16 == 0)
+          thisCopySize = 16;
+
+        copySize = thisCopySize < copySize ? thisCopySize : copySize;
+
+        rewriter.eraseOp(tempFor);
+
+        if (!thisCopySize) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Region span was not divisible by 4, 8, or 16\n");
+        }
+      }
+      if (copySize == 0)
+        continue;
+
+      if (loadBounds->rank != storeBounds->rank) {
+        LLVM_DEBUG(llvm::dbgs() << "store and load rank not equal\n");
+        continue;
+      }
+
+      // TODO this if construction does not always work. Consider this case:
+      //
+      // affine.parallel %i = 0 to 10 {
+      //   affine.if %i > 5 {
+      //     // The constructed if:
+      //     affine.if %i == 0 {
+      //       ...
+      //     }
+      //   }
+      // }
+      //
+      // The intention is to execute this once per block _when_ it would be
+      // executed anyways.
+      //
+      // To achieve that, instead, it should pick one point from the domain of
+      // copy.storeOp and compare the IVs against that instead of 0.
+      Location loc = copy.load.getLoc();
+      SmallVector<AffineExpr> ifExprs;
+      SmallVector<bool> ifEqs;
+      SmallVector<Value> ifOperands;
+      MLIRContext *ctx = copy.load.getContext();
+      // TODO assert that the block loops actually start at zero because this if
+      // checks for iv == 0
+      ifOperands.append(llvm::map_to_vector(
+          blockPar.getIVs(), [&](auto ba) -> Value { return ba; }));
+      for (unsigned i = 0; i < blockPar.getNumDims(); i++) {
+        ifExprs.push_back(getAffineDimExpr(i, ctx));
+        ifEqs.push_back(true);
+      }
+      IntegerSet set =
+          IntegerSet::get(blockPar.getNumDims(), 0, ifExprs, ifEqs);
+      auto affineIfOp =
+          rewriter.create<affine::AffineIfOp>(loc, TypeRange(), set, ifOperands,
+                                              /*hasElse=*/false);
+      rewriter.setInsertionPointToStart(affineIfOp.getThenBlock());
+
+      // TODO need to check if the iteration num over each dim is the same
+
+      SmallVector<Value> storeIdxs;
+      SmallVector<Value> loadIdxs;
+      for (unsigned dim = 0; dim < storeBounds->rank; dim++) {
+        int64_t step = dim == storeBounds->rank - 1 ? copySize : 1;
+        auto forOp = rewriter.create<affine::AffineForOp>(
+            copy.load->getLoc(), storeBounds->regionSymbols,
+            storeBounds->lbMaps[dim], storeBounds->regionSymbols,
+            storeBounds->ubMaps[dim], step, ValueRange());
+        rewriter.setInsertionPointToStart(forOp.getBody());
+        Value iv = forOp.getInductionVar();
+        // loadIdx = storeIdx - storeLB + loadLB
+        Value loadIdx =
+            rewriter.create<arith::SubIOp>(loc, iv, storeBounds->lbs[dim]);
+        loadIdx =
+            rewriter.create<arith::AddIOp>(loc, loadIdx, loadBounds->lbs[dim]);
+        storeIdxs.push_back(iv);
+        loadIdxs.push_back(loadIdx);
+      }
+      rewriter.create<nvgpu::DeviceAsyncCopyOp>(
+          loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(),
+          loadIdxs, rewriter.getIndexAttr(copySize), nullptr, nullptr);
+
+      rewriter.eraseOp(copy.storeOp);
+      rewriter.eraseOp(copy.loadOp);
+
+      Operation *synchronisationPt = blockPar->getNextNode();
+      if (!syncsInserted.contains(synchronisationPt)) {
+        rewriter.setInsertionPoint(synchronisationPt);
+        auto token = rewriter.create<nvgpu::DeviceAsyncCreateGroupOp>(
+            loc, nvgpu::DeviceAsyncTokenType::get(ctx), ValueRange());
+        rewriter.create<nvgpu::DeviceAsyncWaitOp>(loc, token, nullptr);
+        syncsInserted.insert(synchronisationPt);
+      }
+    }
+  }
+}
+
 } // namespace affine_opt
 } // namespace gpu
 } // namespace mlir
@@ -386,6 +636,11 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         }
       });
       distributeParallelLoops(gpuModule, "distribute", &getContext());
+      gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
+        if (func->getAttr("gpu.par.kernel")) {
+          mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+        }
+      });
     });
   }
 };
