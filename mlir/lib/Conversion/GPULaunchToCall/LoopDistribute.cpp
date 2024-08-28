@@ -754,6 +754,7 @@ splitSubLoop(affine::AffineParallelOp op, PatternRewriter &rewriter,
   if (!innerLower.size())
     return failure();
   if (outerLower.size()) {
+    llvm_unreachable("when?");
     outerLoop = rewriter.create<affine::AffineParallelOp>(
         op.getLoc(), TypeRange(), ArrayRef<AtomicRMWKind>(), outerLower,
         op.getLowerBoundsOperands(), outerUpper, op.getUpperBoundsOperands(),
@@ -761,12 +762,13 @@ splitSubLoop(affine::AffineParallelOp op, PatternRewriter &rewriter,
     rewriter.eraseOp(&outerLoop.getBody()->back());
     outerBlock = outerLoop.getBody();
   } else {
-    outerEx = rewriter.create<memref::AllocaScopeOp>(op.getLoc(), TypeRange());
-    outerBlock = new Block();
-    outerEx.getRegion().push_back(outerBlock);
+    outerBlock = op->getBlock();
+    // outerEx = rewriter.create<memref::AllocaScopeOp>(op.getLoc(), TypeRange());
+    // outerBlock = new Block();
+    // outerEx.getRegion().push_back(outerBlock);
   }
 
-  rewriter.setInsertionPointToEnd(outerBlock);
+  rewriter.setInsertionPoint(op);
   for (auto tup : llvm::zip(innerLower, innerUpper, innerStep)) {
     auto expr = (std::get<1>(tup).getResult(0) -
                  std::get<0>(tup)
@@ -1071,8 +1073,6 @@ distributeAroundBarrier(T op, affine::AffineBarrierOp barrier, T &preLoop,
       assert(isa<affine::AffineParallelOp>(outerLoop));
       rewriter.create<affine::AffineYieldOp>(op.getLoc());
     }
-  } else {
-    rewriter.create<memref::AllocaScopeReturnOp>(op.getLoc());
   }
 
   // Recreate the operations in the new loop with new values.
