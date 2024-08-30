@@ -34,6 +34,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include <cmath>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 #include "llvm/ADT/STLExtras.h"
@@ -65,6 +66,9 @@ static std::optional<int64_t> getConstant(Operation *op) {
     return cst.value();
   } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
     return cst.value();
+  } else if (auto cst = dyn_cast_or_null<LLVM::ConstantOp>(op)) {
+    if (auto intAttr = dyn_cast<IntegerAttr>(cst.getValue()))
+      return intAttr.getValue().getSExtValue();
   }
   return {};
 }
@@ -333,14 +337,32 @@ struct AffineExprBuilder {
     return failure();
   }
 
+  // TODO test this
+  FailureOr<AffineExpr> buildShift(Operation *op) {
+    if (op->getNumOperands() != 2)
+      return failure();
+    auto rhs = getConstant(op->getOperand(1));
+    if (!rhs)
+      return failure();
+    auto lhs = buildExpr(op->getOperand(0));
+    if (failed(lhs))
+      return failure();
+    if (isa<arith::ShLIOp, LLVM::ShlOp>(op)) {
+      return (*lhs) * getAffineConstantExpr(1 << (*rhs), op->getContext());
+    } else if (isa<arith::ShRUIOp, arith::ShRSIOp, LLVM::LShrOp, LLVM::AShrOp>(
+                   op)) {
+      return (*lhs).floorDiv(
+          getAffineConstantExpr(1 << (*rhs), op->getContext()));
+    }
+    return failure();
+  }
+
   FailureOr<AffineExpr> buildExpr(Value v) {
     auto context = v.getContext();
     Operation *op = v.getDefiningOp();
-    if (auto cst = dyn_cast_or_null<arith::ConstantIntOp>(op)) {
-      return getAffineConstantExpr(cst.value(), context);
-    } else if (auto cst = dyn_cast_or_null<arith::ConstantIndexOp>(op)) {
-      return getAffineConstantExpr(cst.value(), context);
-    }
+    auto cst = getConstant(op);
+    if (cst)
+      return getAffineConstantExpr(*cst, context);
     bool isIndexTy = v.getType().isIndex();
     Value oldV = v;
     if (!isIndexTy)
@@ -374,6 +396,7 @@ struct AffineExprBuilder {
            LLVM::ZExtOp, LLVM::SExtOp, LLVM::TruncOp,
            arith::ExtSIOp, arith::ExtUIOp, arith::TruncIOp,
            arith::IndexCastOp, arith::IndexCastUIOp>(op)));
+      RIS((buildShift(op)));
 #undef RIS
       // clang-format on
     }
