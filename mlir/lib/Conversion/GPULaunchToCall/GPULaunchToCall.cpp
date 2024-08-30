@@ -164,7 +164,7 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     auto st = SymbolTable::getNearestSymbolTable(gpuKernelFunc);
     if (!st)
       return failure();
-    if (!generateNewKernel) {
+    if (generateNewKernel) {
       newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
       unsigned counter;
       newSymName = SymbolTable::generateSymbolName<128>(
