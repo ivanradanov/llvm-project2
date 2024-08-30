@@ -17,6 +17,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
@@ -27,6 +28,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 
@@ -538,7 +540,7 @@ static void findValuesUsedBelow(affine::AffineBarrierOp op,
               origUser->hasTrait<OpTrait::IsTerminator>()) {
             preserveAllocas.insert(current.second);
           }
-          if (!isa<LLVM::LoadOp, memref::LoadOp, affine::AffineLoadOp>(
+          if (!isa<LLVM::LoadOp, affine::AffineLoadOp, affine::AffineLoadOp>(
                   origUser)) {
             for (auto res : origUser->getResults()) {
               if (crossing.contains(res)) {
@@ -763,8 +765,8 @@ splitSubLoop(affine::AffineParallelOp op, PatternRewriter &rewriter,
     outerBlock = outerLoop.getBody();
   } else {
     outerBlock = op->getBlock();
-    // outerEx = rewriter.create<memref::AllocaScopeOp>(op.getLoc(), TypeRange());
-    // outerBlock = new Block();
+    // outerEx = rewriter.create<memref::AllocaScopeOp>(op.getLoc(),
+    // TypeRange()); outerBlock = new Block();
     // outerEx.getRegion().push_back(outerBlock);
   }
 
@@ -972,22 +974,49 @@ distributeAroundBarrier(T op, affine::AffineBarrierOp barrier, T &preLoop,
       for (auto &u : llvm::make_early_inc_range(ao.getResult().getUses())) {
         rewriter.setInsertionPoint(u.getOwner());
         auto buf = alloc;
-        for (auto idx : preLoop.getBody()->getArguments()) {
-          llvm_unreachable("subindex");
-          // auto mt0 = buf.getType().cast<MemRefType>();
-          // std::vector<int64_t> shape(mt0.getShape());
-          // assert(shape.size() > 0);
-          // shape.erase(shape.begin());
-          // auto mt = MemRefType::get(shape, mt0.getElementType(),
-          //                           MemRefLayoutAttrInterface(),
-          //                           // mt0.getLayout(),
-          //                           mt0.getMemorySpace());
-          // auto subidx =
-          // rewriter.create<polygeist::SubIndexOp>(alloc.getLoc(),
-          //                                                      mt, buf, idx);
-          // buf = subidx;
+
+        AffineMap map;
+        ValueRange operands;
+        if (auto affineLoad = dyn_cast<affine::AffineLoadOp>(u.getOwner())) {
+          map = affineLoad.getAffineMap();
+          operands = affineLoad.getMapOperands();
+        } else if (auto affineStore =
+                       dyn_cast<affine::AffineStoreOp>(u.getOwner())) {
+          map = affineStore.getAffineMap();
+          operands = affineStore.getMapOperands();
+        } else {
+          llvm_unreachable("unexpected");
         }
-        u.set(buf);
+
+        SmallVector<AffineExpr> newExprs;
+        for (unsigned idx = 0; idx < preLoop.getBody()->getNumArguments();
+             idx++)
+          newExprs.push_back(
+              getAffineDimExpr(map.getNumDims() + idx, op->getContext()));
+        newExprs.insert(newExprs.end(), map.getResults().begin(),
+                        map.getResults().end());
+
+        auto newMap = AffineMap::get(
+            map.getNumDims() + preLoop.getBody()->getNumArguments(),
+            map.getNumSymbols(), newExprs, op->getContext());
+        SmallVector<Value> newOperands;
+        newOperands.append(
+            SmallVector<Value>(llvm::drop_end(operands, map.getNumSymbols())));
+        newOperands.append(
+            SmallVector<Value>(preLoop.getBody()->getArguments()));
+        newOperands.append(
+            SmallVector<Value>(llvm::drop_begin(operands, map.getNumDims())));
+        if (auto affineLoad = dyn_cast<affine::AffineLoadOp>(u.getOwner())) {
+          rewriter.replaceOpWithNewOp<affine::AffineLoadOp>(
+              affineLoad, alloc, newMap, ValueRange(newOperands));
+        } else if (auto affineStore =
+                       dyn_cast<affine::AffineStoreOp>(u.getOwner())) {
+          rewriter.replaceOpWithNewOp<affine::AffineStoreOp>(
+              affineStore, affineStore.getValue(), alloc, newMap,
+              ValueRange(newOperands));
+        } else {
+          llvm_unreachable("unexpected");
+        }
       }
       rewriter.eraseOp(ao);
     } else if (auto ao = dyn_cast<LLVM::AllocaOp>(o)) {
@@ -1739,12 +1768,13 @@ struct InterchangeWhilePFor : public OpRewritePattern<T> {
       auto ifOp =
           rewriter.create<scf::IfOp>(conditionDefiningOp->getLoc(), cond);
       rewriter.setInsertionPointToStart(ifOp.thenBlock());
-      rewriter.create<memref::StoreOp>(conditionDefiningOp->getLoc(),
-                                       conditionOp.getCondition(), allocated);
+      rewriter.create<affine::AffineStoreOp>(conditionDefiningOp->getLoc(),
+                                             conditionOp.getCondition(),
+                                             allocated, ValueRange());
 
       rewriter.setInsertionPoint(conditionOp);
 
-      Value reloaded = rewriter.create<memref::LoadOp>(
+      Value reloaded = rewriter.create<affine::AffineLoadOp>(
           conditionDefiningOp->getLoc(), allocated);
       rewriter.replaceOpWithNewOp<scf::ConditionOp>(conditionOp, reloaded,
                                                     ValueRange());
@@ -2271,12 +2301,13 @@ struct DistributeIfAroundBarrier : public OpRewritePattern<IfOpType> {
         if (!isRegisterLoad(v.getDefiningOp())) {
           // Store
           rewriter.setInsertionPointAfter(v.getDefiningOp());
-          rewriter.create<memref::StoreOp>(v.getLoc(), v, alloc, ValueRange());
+          rewriter.create<affine::AffineStoreOp>(v.getLoc(), v, alloc,
+                                                 ValueRange());
         }
         // Reload
         rewriter.setInsertionPointAfter(barrier);
-        Value reloaded =
-            rewriter.create<memref::LoadOp>(v.getLoc(), alloc, ValueRange());
+        Value reloaded = rewriter.create<affine::AffineLoadOp>(
+            v.getLoc(), alloc, ValueRange());
         for (auto &u : llvm::make_early_inc_range(v.getUses())) {
           auto *user = u.getOwner();
           while (user->getBlock() != barrier->getBlock())
@@ -2309,7 +2340,7 @@ struct DistributeIfAroundBarrier : public OpRewritePattern<IfOpType> {
   }
 };
 
-template <typename T = memref::LoadOp>
+template <typename T = affine::AffineLoadOp>
 static void loadValues(Location loc, ArrayRef<Value> pointers,
                        PatternRewriter &rewriter,
                        SmallVectorImpl<Value> &loaded) {
@@ -2340,16 +2371,16 @@ struct Reg2MemFor : public OpRewritePattern<T> {
           ValueRange());
       allocated.push_back(alloc);
       if (!isUndef(operand))
-        rewriter.create<memref::StoreOp>(op.getLoc(), operand, alloc,
-                                         ValueRange());
+        rewriter.create<affine::AffineStoreOp>(op.getLoc(), operand, alloc,
+                                               ValueRange());
     }
 
     auto newOp = cloneWithoutResults(op, rewriter);
     rewriter.setInsertionPointToStart(newOp.getBody());
     SmallVector<Value> newRegionArguments;
     newRegionArguments.push_back(newOp.getInductionVar());
-    loadValues<memref::LoadOp>(op.getLoc(), allocated, rewriter,
-                               newRegionArguments);
+    loadValues<affine::AffineLoadOp>(op.getLoc(), allocated, rewriter,
+                                     newRegionArguments);
 
     auto oldTerminator = op.getBody()->getTerminator();
     rewriter.inlineBlockBefore(op.getBody(), newOp.getBody()->getTerminator(),
@@ -2368,15 +2399,16 @@ struct Reg2MemFor : public OpRewritePattern<T> {
     rewriter.setInsertionPoint(IP);
     for (auto en : llvm::enumerate(oldOps)) {
       if (!isUndef(en.value()))
-        rewriter.create<memref::StoreOp>(op.getLoc(), en.value(),
-                                         allocated[en.index()], ValueRange());
+        rewriter.create<affine::AffineStoreOp>(
+            op.getLoc(), en.value(), allocated[en.index()], ValueRange());
     }
 
     rewriter.setInsertionPointAfter(op);
     SmallVector<Value> loaded;
     for (Value alloc : allocated) {
       loaded.push_back(
-          rewriter.create<memref::LoadOp>(op.getLoc(), alloc, ValueRange())
+          rewriter
+              .create<affine::AffineLoadOp>(op.getLoc(), alloc, ValueRange())
               ->getResult(0));
     }
     rewriter.replaceOp(op, loaded);
@@ -2416,7 +2448,7 @@ struct Reg2MemIf : public OpRewritePattern<T> {
       Type opType = res.getType();
       bool usesMustStore = false;
       for (auto user : res.getUsers()) {
-        if (auto storeOp = dyn_cast<memref::StoreOp>(user)) {
+        if (auto storeOp = dyn_cast<affine::AffineStoreOp>(user)) {
           if (storeOp.getMemref() == res) {
             usesMustStore = true;
             break;
@@ -2527,7 +2559,7 @@ struct Reg2MemIf : public OpRewritePattern<T> {
       auto res = std::get<2>(pair);
       if (!alloc) {
         for (auto user : llvm::make_early_inc_range(res.getUsers())) {
-          auto storeOp = dyn_cast<memref::StoreOp>(user);
+          auto storeOp = dyn_cast<affine::AffineStoreOp>(user);
           assert(storeOp);
           if (equivThenStores.count(storeOp))
             continue;
@@ -2562,12 +2594,13 @@ struct Reg2MemIf : public OpRewritePattern<T> {
           for (auto ind : storeOp.getIndices())
             inds.push_back(map.lookupOrDefault(ind));
           // Only erase during the else, since we need that there
-          rewriter.create<memref::StoreOp>(
+          rewriter.create<affine::AffineStoreOp>(
               storeOp.getLoc(), val, map.lookupOrDefault(storeOp.getMemref()),
               inds);
         }
       } else if (!isUndef(val)) {
-        rewriter.create<memref::StoreOp>(op.getLoc(), val, alloc, ValueRange());
+        rewriter.create<affine::AffineStoreOp>(op.getLoc(), val, alloc,
+                                               ValueRange());
       }
     }
     rewriter.setInsertionPoint(thenYield);
@@ -2584,7 +2617,7 @@ struct Reg2MemIf : public OpRewritePattern<T> {
       auto res = std::get<2>(pair);
       if (!alloc) {
         for (auto user : llvm::make_early_inc_range(res.getUsers())) {
-          auto storeOp = dyn_cast<memref::StoreOp>(user);
+          auto storeOp = dyn_cast<affine::AffineStoreOp>(user);
           assert(storeOp);
           if (equivElseStores.count(storeOp)) {
             rewriter.eraseOp(storeOp);
@@ -2622,11 +2655,12 @@ struct Reg2MemIf : public OpRewritePattern<T> {
           for (auto ind : storeOp.getIndices())
             inds.push_back(map.lookupOrDefault(ind));
 
-          rewriter.replaceOpWithNewOp<memref::StoreOp>(
+          rewriter.replaceOpWithNewOp<affine::AffineStoreOp>(
               storeOp, val, map.lookupOrDefault(storeOp.getMemref()), inds);
         }
       } else if (!isUndef(val)) {
-        rewriter.create<memref::StoreOp>(op.getLoc(), val, alloc, ValueRange());
+        rewriter.create<affine::AffineStoreOp>(op.getLoc(), val, alloc,
+                                               ValueRange());
       }
     }
     rewriter.setInsertionPoint(elseYield);
@@ -2647,7 +2681,8 @@ struct Reg2MemIf : public OpRewritePattern<T> {
       auto alloc = std::get<1>(pair);
       if (alloc) {
         std::get<0>(pair).replaceAllUsesWith(
-            rewriter.create<memref::LoadOp>(op.getLoc(), alloc, ValueRange())
+            rewriter
+                .create<affine::AffineLoadOp>(op.getLoc(), alloc, ValueRange())
                 ->getResult(0));
       }
     }
@@ -2661,8 +2696,8 @@ static void storeValues(Location loc, ValueRange values, ValueRange pointers,
                         PatternRewriter &rewriter) {
   for (auto pair : llvm::zip(values, pointers)) {
     if (!isUndef(std::get<0>(pair)))
-      rewriter.create<memref::StoreOp>(loc, std::get<0>(pair),
-                                       std::get<1>(pair), ValueRange());
+      rewriter.create<affine::AffineStoreOp>(loc, std::get<0>(pair),
+                                             std::get<1>(pair), ValueRange());
   }
 }
 
