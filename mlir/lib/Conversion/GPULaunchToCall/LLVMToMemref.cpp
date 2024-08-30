@@ -638,8 +638,11 @@ public:
 
   struct Constraint {
     arith::CmpIPredicate pred;
-    Value lhs;
-    Value rhs;
+    struct Side {
+      Value val;
+      AffineExprBuilder builder;
+    };
+    Side rhs, lhs;
   };
 
   struct SetAndOperands {
@@ -647,46 +650,77 @@ public:
     SmallVector<Value> operands;
   } sao;
 
-  SmallVector<AffineExprBuilder, 0> builders;
+  SmallVector<Constraint, 0> constraints;
 
   LogicalResult build() {
     Value cond = ifOp.getCondition();
 
-    SmallVector<Constraint> constraints;
     if (failed(getConstraints(cond, constraints)))
       return failure();
 
-    SmallVector<AffineExpr> exprs;
+    for (auto &c : constraints) {
+      for (auto side : {&c.lhs, &c.rhs}) {
+        auto &builder = side->builder;
+        if (failed(builder.build(side->val)))
+          return failure();
+      }
+    }
+
+    return success();
+  }
+
+  void collectSymbolsForScope(Region *region, SmallPtrSetImpl<Value> &symbols) {
+    for (auto &c : constraints) {
+      c.lhs.builder.collectSymbolsForScope(region, symbols);
+      c.rhs.builder.collectSymbolsForScope(region, symbols);
+    }
+  }
+
+  SmallPtrSet<Value, 4> getIllegalSymbols() {
+    SmallPtrSet<Value, 4> set;
+    for (auto &c : constraints) {
+      set.insert(c.lhs.builder.illegalSymbols.begin(),
+                 c.lhs.builder.illegalSymbols.end());
+      set.insert(c.rhs.builder.illegalSymbols.begin(),
+                 c.rhs.builder.illegalSymbols.end());
+    }
+    return set;
+  }
+
+  void rescope(affine::AffineScopeOp scope) {
+    if (!scope->isAncestor(ifOp))
+      return;
+    SmallVector<AffineExpr> newExprs;
+
+    for (auto &c : constraints) {
+      c.lhs.builder.rescopeExpr(scope);
+      c.rhs.builder.rescopeExpr(scope);
+    }
+  }
+
+  SetAndOperands getSet() {
     SmallVector<bool> eqs;
+    SmallVector<AffineExpr> exprs;
     unsigned numDims = 0;
     unsigned numSymbols = 0;
     SmallVector<Value> dimOperands;
     SmallVector<Value> symbolOperands;
-    for (auto c : constraints) {
 
-      builders.push_back({ifOp, legalizeSymbols});
-      AffineExprBuilder &blhs = builders.back();
-      if (failed(blhs.build(c.lhs)))
-        return failure();
-      auto lhs = blhs.getExpr();
-      lhs = lhs.shiftDims(blhs.dimOperands.size(), numDims);
-      lhs = lhs.shiftSymbols(blhs.symbolOperands.size(), numSymbols);
-      numDims += blhs.dimOperands.size();
-      numSymbols += blhs.symbolOperands.size();
-      dimOperands.append(blhs.dimOperands);
-      symbolOperands.append(blhs.symbolOperands);
+    auto getExpr = [&](AffineExprBuilder &builder) {
+      auto lhs = builder.getExpr();
+      lhs = lhs.shiftDims(builder.dimOperands.size(), numDims);
+      lhs = lhs.shiftSymbols(builder.symbolOperands.size(), numSymbols);
+      numDims += builder.dimOperands.size();
+      numSymbols += builder.symbolOperands.size();
+      dimOperands.append(builder.dimOperands);
+      symbolOperands.append(builder.symbolOperands);
+      return lhs;
+    };
 
-      builders.push_back({ifOp, legalizeSymbols});
-      AffineExprBuilder &brhs = builders.back();
-      if (failed(brhs.build(c.rhs)))
-        return failure();
-      auto rhs = brhs.getExpr();
-      rhs = rhs.shiftDims(brhs.dimOperands.size(), numDims);
-      rhs = rhs.shiftSymbols(brhs.symbolOperands.size(), numSymbols);
-      numDims += brhs.dimOperands.size();
-      numSymbols += brhs.symbolOperands.size();
-      dimOperands.append(brhs.dimOperands);
-      symbolOperands.append(brhs.symbolOperands);
+    for (auto &c : constraints) {
+
+      auto lhs = getExpr(c.lhs.builder);
+      auto rhs = getExpr(c.rhs.builder);
 
       AffineExpr expr = getAffineConstantExpr(0, ifOp->getContext());
       switch (c.pred) {
@@ -727,32 +761,8 @@ public:
     sao.operands = dimOperands;
     sao.operands.append(symbolOperands);
     affine::canonicalizeSetAndOperands(&sao.set, &sao.operands);
-
-    return success();
+    return sao;
   }
-
-  void collectSymbolsForScope(Region *region, SmallPtrSetImpl<Value> &symbols) {
-    for (auto &builder : builders)
-      builder.collectSymbolsForScope(region, symbols);
-  }
-
-  SmallPtrSet<Value, 4> getIllegalSymbols() {
-    SmallPtrSet<Value, 4> set;
-    for (auto &builder : builders)
-      set.insert(builder.illegalSymbols.begin(), builder.illegalSymbols.end());
-    return set;
-  }
-
-  void rescope(affine::AffineScopeOp scope) {
-    if (!scope->isAncestor(ifOp))
-      return;
-    SmallVector<AffineExpr> newExprs;
-
-    for (auto &builder : builders)
-      builder.rescopeExpr(scope);
-  }
-
-  SetAndOperands getSet() { return sao; }
 
   LogicalResult getConstraints(Value conjunction,
                                SmallVectorImpl<Constraint> &constraints) {
@@ -769,11 +779,10 @@ public:
         return failure();
     }
     if (auto cmp = dyn_cast<arith::CmpIOp>(op)) {
-      Constraint c;
-      c.pred = cmp.getPredicate();
-      c.lhs = cmp.getLhs();
-      c.rhs = cmp.getRhs();
-      constraints.push_back(c);
+      constraints.emplace_back(
+          Constraint{cmp.getPredicate(),
+                     {cmp.getLhs(), AffineExprBuilder(ifOp, legalizeSymbols)},
+                     {cmp.getRhs(), AffineExprBuilder(ifOp, legalizeSymbols)}});
       return success();
     }
     return failure();
