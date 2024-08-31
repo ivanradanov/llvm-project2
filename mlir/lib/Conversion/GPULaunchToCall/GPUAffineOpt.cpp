@@ -635,30 +635,26 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
     Operation *op = getOperation();
     auto context = &getContext();
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
-      RewritePatternSet patterns(context);
-      populateRemoveIVPatterns(patterns);
-      GreedyRewriteConfig config;
-      if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                              config))) {
-        signalPassFailure();
-        return;
-      }
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
         if (func->getAttr("gpu.par.kernel")) {
+          RewritePatternSet patterns(context);
+          populateRemoveIVPatterns(patterns);
+          GreedyRewriteConfig config;
+          if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                                  config))) {
+            signalPassFailure();
+            return;
+          }
           (void)mlir::convertLLVMToAffineAccess(func, dl, false);
-        }
-      });
-      (void)distributeParallelLoops(gpuModule, "distribute.mincut",
-                                    &getContext());
-      PassManager pm(&getContext());
-      pm.addPass(createCanonicalizerPass());
-      if (failed(pm.run(gpuModule))) {
-        signalPassFailure();
-        return;
-      }
-      gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
-        if (func->getAttr("gpu.par.kernel")) {
+          (void)distributeParallelLoops(func, "distribute.mincut",
+                                        &getContext());
+          PassManager pm(&getContext());
+          pm.addPass(createCanonicalizerPass());
+          if (failed(pm.run(func))) {
+            signalPassFailure();
+            return;
+          }
           (void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
         }
       });
