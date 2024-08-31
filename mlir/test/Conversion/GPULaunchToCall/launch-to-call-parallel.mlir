@@ -83,7 +83,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
 // CHECK:             %[[VAL_0:.*]] = llvm.mlir.undef : !llvm.array<270 x i32>
 // CHECK:             llvm.return %[[VAL_0]] : !llvm.array<270 x i32>
 // CHECK:           }
-// CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z10stencil_1dPKiPi_32764(%[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i64, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_9:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly})
+// CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z10stencil_1dPKiPi_32765(%[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i64, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_9:.*]]: !llvm.ptr {llvm.noalias, llvm.nocapture, llvm.noundef, llvm.writeonly})
 // CHECK:             %[[VAL_10:.*]] = arith.constant 256 : i32
 // CHECK:             %[[VAL_11:.*]] = arith.constant 7 : i32
 // CHECK:             %[[VAL_12:.*]] = arith.constant 263 : i32
@@ -96,8 +96,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
 // CHECK:               %[[VAL_21:.*]] = llvm.alloca %[[VAL_16]] x !llvm.array<270 x i32> : (i32) -> !llvm.ptr<3>
 // CHECK:               affine.parallel (%[[VAL_22:.*]], %[[VAL_23:.*]], %[[VAL_24:.*]]) = (0, 0, 0) to (256, 1, 1) {
 // CHECK:                 %[[VAL_25:.*]] = llvm.addrspacecast %[[VAL_21]] : !llvm.ptr<3> to !llvm.ptr
-// CHECK:                 %[[VAL_26:.*]] = arith.index_cast %[[VAL_24]] : index to i32
-// CHECK:                 %[[VAL_27:.*]] = arith.index_cast %[[VAL_20]] : index to i32
+// CHECK:                 %[[VAL_26:.*]] = arith.index_cast %[[VAL_22]] : index to i32
+// CHECK:                 %[[VAL_27:.*]] = arith.index_cast %[[VAL_18]] : index to i32
 // CHECK:                 %[[VAL_28:.*]] = arith.muli %[[VAL_27]], %[[VAL_10]] : i32
 // CHECK:                 %[[VAL_29:.*]] = arith.addi %[[VAL_28]], %[[VAL_26]] : i32
 // CHECK:                 %[[VAL_30:.*]] = arith.addi %[[VAL_26]], %[[VAL_11]] : i32
@@ -158,7 +158,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f64, dense<64> : 
 // CHECK:           %[[VAL_9:.*]] = arith.constant 0 : i32
 // CHECK:           %[[VAL_10:.*]] = arith.constant 1 : i64
 // CHECK:           %[[VAL_11:.*]] = arith.constant 256 : i64
-// CHECK:           "gpu.call"(%[[VAL_0]], %[[VAL_10]], %[[VAL_10]], %[[VAL_11]], %[[VAL_10]], %[[VAL_10]], %[[VAL_9]], %[[VAL_7]], %[[VAL_8]]) <{kernel = @__mlir_gpu_module::@__mlir.par.kernel._Z10stencil_1dPKiPi_32764, operandSegmentSizes = array<i32: 0, 9, 0>}> : (i64, i64, i64, i64, i64, i64, i32, !llvm.ptr, !llvm.ptr) -> ()
+// CHECK:           "gpu.call"(%[[VAL_0]], %[[VAL_10]], %[[VAL_10]], %[[VAL_11]], %[[VAL_10]], %[[VAL_10]], %[[VAL_9]], %[[VAL_7]], %[[VAL_8]]) <{kernel = @__mlir_gpu_module::@__mlir.par.kernel._Z10stencil_1dPKiPi_32765, operandSegmentSizes = array<i32: 0, 9, 0>}> : (i64, i64, i64, i64, i64, i64, i32, !llvm.ptr, !llvm.ptr) -> ()
 // CHECK:           llvm.return
 // CHECK:         }
 
