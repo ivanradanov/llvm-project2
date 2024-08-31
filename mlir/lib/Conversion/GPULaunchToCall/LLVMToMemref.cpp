@@ -37,6 +37,8 @@
 #include <cmath>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
@@ -1197,15 +1199,141 @@ convertLLVMToAffineAccess(Operation *op,
 }
 } // namespace mlir
 
+struct RemoveIVs : public OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
+                                PatternRewriter &rewriter) const override {
+    if (!forOp.getRegion().hasOneBlock())
+      return failure();
+    unsigned numIterArgs = forOp.getNumRegionIterArgs();
+    auto loc = forOp->getLoc();
+    bool changed = false;
+    llvm::SetVector<unsigned> removed;
+    llvm::MapVector<unsigned, Value> steps;
+    auto yield = cast<scf::YieldOp>(forOp.getBody()->getTerminator());
+    for (unsigned i = 0; i < numIterArgs; i++) {
+      auto ba = forOp.getRegionIterArgs()[i];
+      auto init = forOp.getInits()[i];
+      auto next = yield->getOperand(i);
+
+      auto increment = next.getDefiningOp<arith::AddIOp>();
+      if (!increment)
+        continue;
+
+      Value step = nullptr;
+      if (increment.getLhs() == ba) {
+        step = increment.getRhs();
+      } else {
+        step = increment.getLhs();
+      }
+      if (!step)
+        continue;
+
+      // If it dominates the loop entry
+      if (!step.getParentRegion()->isProperAncestor(&forOp.getRegion()))
+        continue;
+
+      rewriter.setInsertionPointToStart(forOp.getBody());
+      Value iterNum = rewriter.create<arith::SubIOp>(
+          loc, forOp.getInductionVar(), forOp.getLowerBound());
+      iterNum = rewriter.create<arith::DivSIOp>(loc, iterNum, forOp.getStep());
+
+      Value replacementIV = rewriter.create<arith::MulIOp>(loc, iterNum, step);
+      replacementIV = rewriter.create<arith::AddIOp>(loc, replacementIV, init);
+
+      rewriter.replaceAllUsesWith(ba, replacementIV);
+
+      removed.insert(i);
+      steps.insert({i, step});
+      changed = true;
+    }
+
+    if (!changed)
+      return failure();
+
+    SmallVector<Value> newInits;
+    for (unsigned i = 0; i < numIterArgs; i++)
+      if (!removed.contains(i))
+        newInits.push_back(forOp.getInits()[i]);
+
+    rewriter.setInsertionPoint(forOp);
+    auto newForOp = rewriter.create<scf::ForOp>(loc, forOp.getLowerBound(),
+                                                forOp.getUpperBound(),
+                                                forOp.getStep(), newInits);
+    rewriter.inlineRegionBefore(forOp.getRegion(), newForOp.getRegion(),
+                                newForOp.getRegion().begin());
+
+    SmallVector<Value> newYields;
+    for (unsigned i = 0; i < numIterArgs; i++)
+      if (!removed.contains(i))
+        newYields.push_back(yield->getOperand(i));
+
+    rewriter.setInsertionPoint(yield);
+    rewriter.replaceOpWithNewOp<scf::YieldOp>(yield, newYields);
+
+    llvm::BitVector toDelete(numIterArgs + 1);
+    for (unsigned i = 0; i < numIterArgs; i++)
+      if (removed.contains(i))
+        toDelete[i + 1] = true;
+    newForOp.getBody()->eraseArguments(toDelete);
+
+    rewriter.setInsertionPoint(newForOp);
+    unsigned curNewRes = 0;
+    for (unsigned i = 0; i < numIterArgs; i++) {
+      auto result = forOp->getResult(i);
+      if (removed.contains(i)) {
+        if (result.use_empty())
+          continue;
+
+        rewriter.setInsertionPointToStart(forOp.getBody());
+        Value iterNum = rewriter.create<arith::SubIOp>(
+            loc, forOp.getUpperBound(), forOp.getLowerBound());
+        iterNum =
+            rewriter.create<arith::DivSIOp>(loc, iterNum, forOp.getStep());
+
+        Value afterLoop =
+            rewriter.create<arith::MulIOp>(loc, iterNum, steps[i]);
+        afterLoop =
+            rewriter.create<arith::AddIOp>(loc, afterLoop, forOp.getInits()[i]);
+
+        rewriter.replaceAllUsesWith(result, afterLoop);
+      } else {
+        rewriter.replaceAllUsesWith(result, newForOp->getResult(curNewRes++));
+      }
+    }
+
+    rewriter.eraseOp(forOp);
+
+    return success();
+  }
+};
+
+namespace mlir {
+void populateRemoveIVPatterns(RewritePatternSet &patterns) {
+  patterns.insert<RemoveIVs>(patterns.getContext());
+}
+}
+
 // This should scheduled on individual functions
 struct LLVMToAffineAccessPass
     : public impl::LLVMToAffineAccessPassBase<LLVMToAffineAccessPass> {
   using Base::Base;
   void runOnOperation() override {
+    auto context = &getContext();
+    RewritePatternSet patterns(context);
+    populateRemoveIVPatterns(patterns);
+    GreedyRewriteConfig config;
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                            config))) {
+      signalPassFailure();
+      return;
+    }
     Operation *op = getOperation();
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
-    if (failed(convertLLVMToAffineAccess(op, dataLayoutAnalysis, true)))
+    if (failed(convertLLVMToAffineAccess(op, dataLayoutAnalysis, true))) {
       signalPassFailure();
+      return;
+    }
   }
 };
 
