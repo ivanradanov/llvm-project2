@@ -24,6 +24,8 @@
 #include "llvm/Support/ErrorHandling.h"
 
 #include "LoopDistribute.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
 
@@ -623,22 +625,41 @@ void optGlobalSharedMemCopies(Operation *root) {
 } // namespace gpu
 } // namespace mlir
 
+namespace mlir {
+void populateRemoveIVPatterns(RewritePatternSet &patterns);
+}
+
 struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
   using Base::Base;
   void runOnOperation() override {
     Operation *op = getOperation();
+    auto context = &getContext();
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
+      RewritePatternSet patterns(context);
+      populateRemoveIVPatterns(patterns);
+      GreedyRewriteConfig config;
+      if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                              config))) {
+        signalPassFailure();
+        return;
+      }
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
         if (func->getAttr("gpu.par.kernel")) {
           (void)mlir::convertLLVMToAffineAccess(func, dl, false);
-          // mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
         }
       });
-      distributeParallelLoops(gpuModule, "distribute", &getContext());
+      (void)distributeParallelLoops(gpuModule, "distribute.mincut",
+                                    &getContext());
+      PassManager pm(&getContext());
+      pm.addPass(createCanonicalizerPass());
+      if (failed(pm.run(gpuModule))) {
+        signalPassFailure();
+        return;
+      }
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
         if (func->getAttr("gpu.par.kernel")) {
-          mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+          (void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
         }
       });
     });
