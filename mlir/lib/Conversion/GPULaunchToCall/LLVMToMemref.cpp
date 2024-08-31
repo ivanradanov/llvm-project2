@@ -1260,6 +1260,9 @@ struct RemoveIVs : public OpRewritePattern<scf::ForOp> {
     auto newForOp = rewriter.create<scf::ForOp>(loc, forOp.getLowerBound(),
                                                 forOp.getUpperBound(),
                                                 forOp.getStep(), newInits);
+    if (!newForOp.getRegion().empty())
+      newForOp.getRegion().front().erase();
+    assert(newForOp.getRegion().empty());
     rewriter.inlineRegionBefore(forOp.getRegion(), newForOp.getRegion(),
                                 newForOp.getRegion().begin());
 
