@@ -53,12 +53,11 @@ public:
   IslScopBuilder() {}
 
   /// Build a scop from a common FuncOp.
-  std::unique_ptr<IslScop> build(mlir::func::FuncOp f);
+  std::unique_ptr<IslScop> build(Operation *f);
 
 private:
   /// Find all statements that calls a scop.stmt.
-  void buildScopStmtMap(mlir::func::FuncOp f,
-                        IslScop::ScopStmtNames *scopStmtNames,
+  void buildScopStmtMap(Operation *f, IslScop::ScopStmtNames *scopStmtNames,
                         IslScop::ScopStmtMap *scopStmtMap) const;
 
   /// Build the scop context. The domain of each scop stmt will be updated, by
@@ -79,7 +78,7 @@ static void sanityCheckDomain(affine::FlatAffineValueConstraints &dom) {
 }
 
 /// Build IslScop from a given FuncOp.
-std::unique_ptr<IslScop> IslScopBuilder::build(mlir::func::FuncOp f) {
+std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
   /// Context constraints.
   affine::FlatAffineValueConstraints ctx;
@@ -156,18 +155,18 @@ std::unique_ptr<IslScop> IslScopBuilder::build(mlir::func::FuncOp f) {
   }
 
   scop->buildSchedule(scop->getSequenceScheduleOpList(
-      &f.getBody().front().front(), &f.getBody().front().back()));
+      &f->getRegion(0).front().front(), &f->getRegion(0).front().back()));
 
   return scop;
 }
 
 /// Find all statements that calls a scop.stmt.
-void IslScopBuilder::buildScopStmtMap(mlir::func::FuncOp f,
+void IslScopBuilder::buildScopStmtMap(Operation *f,
                                       IslScop::ScopStmtNames *scopStmtNames,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
   mlir::ModuleOp m = cast<mlir::ModuleOp>(f->getParentOp());
 
-  f.walk([&](mlir::Operation *op) {
+  f->walk([&](mlir::Operation *op) {
     if (mlir::func::CallOp caller = dyn_cast<mlir::func::CallOp>(op)) {
       llvm::StringRef calleeName = caller.getCallee();
       mlir::func::FuncOp callee =
@@ -304,6 +303,6 @@ void IslScopBuilder::buildScopContext(
   }
 }
 
-std::unique_ptr<IslScop> polymer::createIslFromFuncOp(mlir::func::FuncOp f) {
+std::unique_ptr<IslScop> polymer::createIslFromFuncOp(Operation *f) {
   return IslScopBuilder().build(f);
 }

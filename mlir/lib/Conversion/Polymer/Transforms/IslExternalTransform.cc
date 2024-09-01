@@ -42,70 +42,73 @@ using llvm::dbgs;
 
 namespace polymer {
 
-mlir::func::FuncOp islexternalTransform(mlir::func::FuncOp f,
-                                        OpBuilder &rewriter,
-                                        std::optional<std::string> ClIslExternalDumpSchedules,
-                                        std::optional<std::string> ClIslExternalDumpAccesses,
-                                        std::optional<std::string> ClIslExternalImportSchedules) {
+Operation *
+islexternalTransform(Operation *f, OpBuilder &rewriter,
+                     std::optional<std::string> ClIslExternalDumpSchedules,
+                     std::optional<std::string> ClIslExternalDumpAccesses,
+                     std::optional<std::string> ClIslExternalImportSchedules) {
   LLVM_DEBUG(dbgs() << "IslExternal transforming: \n");
-  LLVM_DEBUG(f.dump());
+  LLVM_DEBUG(f->dump());
 
-  StringRef funcName = f.getName();
+  // StringRef funcName = f.getName();
 
-  std::unique_ptr<IslScop> scop = createIslFromFuncOp(f);
+  // std::unique_ptr<IslScop> scop = createIslFromFuncOp(f);
 
-  std::error_code EC;
-  if (ClIslExternalDumpSchedules) {
-    std::string fname = (*ClIslExternalDumpSchedules + "/" + funcName).str();
-    llvm::raw_fd_ostream ScheduleOut(fname, EC);
-    if (EC) {
-      llvm::errs() << "Can't open " << fname << "\n";
-      abort();
-    }
-    scop->dumpSchedule(ScheduleOut);
-  }
-  if (ClIslExternalDumpAccesses) {
-    std::string fname = (*ClIslExternalDumpAccesses + "/" + funcName).str();
-    llvm::raw_fd_ostream AccessesOut(fname, EC);
-    if (EC) {
-      llvm::errs() << "Can't open " << fname << "\n";
-      abort();
-    }
-    scop->dumpAccesses(AccessesOut);
-  }
+  // std::error_code EC;
+  // if (ClIslExternalDumpSchedules) {
+  //   std::string fname = (*ClIslExternalDumpSchedules + "/" + funcName).str();
+  //   llvm::raw_fd_ostream ScheduleOut(fname, EC);
+  //   if (EC) {
+  //     llvm::errs() << "Can't open " << fname << "\n";
+  //     abort();
+  //   }
+  //   scop->dumpSchedule(ScheduleOut);
+  // }
+  // if (ClIslExternalDumpAccesses) {
+  //   std::string fname = (*ClIslExternalDumpAccesses + "/" + funcName).str();
+  //   llvm::raw_fd_ostream AccessesOut(fname, EC);
+  //   if (EC) {
+  //     llvm::errs() << "Can't open " << fname << "\n";
+  //     abort();
+  //   }
+  //   scop->dumpAccesses(AccessesOut);
+  // }
 
-  isl_schedule *newSchedule = nullptr;
-  if (ClIslExternalImportSchedules) {
-    // Do a round trip
-    newSchedule = isl_schedule_copy(scop->getSchedule());
-  } else {
-    std::string fname = (*ClIslExternalImportSchedules + "/" + funcName).str();
-    auto ScheduleIn = llvm::MemoryBuffer::getFileAsStream(fname);
-    if (std::error_code EC = ScheduleIn.getError()) {
-      llvm::errs() << "Can't open " << fname << "\n";
-      abort();
-    }
-    newSchedule =
-        isl_schedule_read_from_str(isl_schedule_get_ctx(scop->getSchedule()),
-                                   ScheduleIn->get()->getBufferStart());
-    if (!newSchedule) {
-      llvm::errs() << "Could not read valid isl schedule from " << fname
-                   << "\n";
-      abort();
-    }
-  }
-  assert(newSchedule);
+  // isl_schedule *newSchedule = nullptr;
+  // if (ClIslExternalImportSchedules) {
+  //   // Do a round trip
+  //   newSchedule = isl_schedule_copy(scop->getSchedule());
+  // } else {
+  //   std::string fname = (*ClIslExternalImportSchedules + "/" +
+  //   funcName).str(); auto ScheduleIn =
+  //   llvm::MemoryBuffer::getFileAsStream(fname); if (std::error_code EC =
+  //   ScheduleIn.getError()) {
+  //     llvm::errs() << "Can't open " << fname << "\n";
+  //     abort();
+  //   }
+  //   newSchedule =
+  //       isl_schedule_read_from_str(isl_schedule_get_ctx(scop->getSchedule()),
+  //                                  ScheduleIn->get()->getBufferStart());
+  //   if (!newSchedule) {
+  //     llvm::errs() << "Could not read valid isl schedule from " << fname
+  //                  << "\n";
+  //     abort();
+  //   }
+  // }
+  // assert(newSchedule);
 
-  mlir::func::FuncOp g = scop->applySchedule(newSchedule, f);
-  assert(mlir::verify(g).succeeded());
+  // Operation *g = scop->applySchedule(newSchedule, f);
+  // assert(mlir::verify(g).succeeded());
 
-  if (g) {
-    SmallVector<DictionaryAttr> argAttrs;
-    f.getAllArgAttrs(argAttrs);
-    g.setAllArgAttrs(argAttrs);
-  }
+  // if (g) {
+  //   SmallVector<DictionaryAttr> argAttrs;
+  //   f->getAllArgAttrs(argAttrs);
+  //   g->setAllArgAttrs(argAttrs);
+  // }
 
-  return g;
+  // return g;
+
+  return nullptr;
 }
 
 mlir::func::FuncOp plutoTransform(mlir::func::FuncOp f,
