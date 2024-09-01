@@ -17,6 +17,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Block.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/ErrorHandling.h"
 
 std::pair<mlir::Block *, mlir::Block::iterator>
 findInsertionPointAfterLoopOperands(mlir::scf::ParallelOp op);
@@ -48,7 +49,13 @@ template <typename T>
 static mlir::Value
 allocateTemporaryBuffer(mlir::OpBuilder &rewriter, mlir::Value value,
                         mlir::ValueRange iterationCounts, bool alloca = true,
-                        mlir::DataLayout *DLI = nullptr) {
+                        mlir::DataLayout *DLI = nullptr,
+                        mlir::Attribute memorySpace = nullptr);
+template <>
+mlir::Value allocateTemporaryBuffer<mlir::memref::AllocaOp>(
+    mlir::OpBuilder &rewriter, mlir::Value value,
+    mlir::ValueRange iterationCounts, bool alloca, mlir::DataLayout *DLI,
+    mlir::Attribute memorySpace) {
   using namespace mlir;
   SmallVector<int64_t> bufferSize(iterationCounts.size(), ShapedType::kDynamic);
   mlir::Type elty = value.getType();
@@ -73,14 +80,18 @@ allocateTemporaryBuffer(mlir::OpBuilder &rewriter, mlir::Value value,
       bufferSize.push_back(DLI->getTypeSize(elty));
     }
   }
-  auto type = MemRefType::get(bufferSize, ty);
-  return rewriter.create<T>(value.getLoc(), type, iterationCounts);
+  auto type =
+      MemRefType::get(bufferSize, ty, MemRefLayoutAttrInterface{}, memorySpace);
+  return rewriter.create<memref::AllocaOp>(value.getLoc(), type,
+                                           iterationCounts);
 }
 
 template <>
 mlir::Value allocateTemporaryBuffer<mlir::LLVM::AllocaOp>(
     mlir::OpBuilder &rewriter, mlir::Value value,
-    mlir::ValueRange iterationCounts, bool alloca, mlir::DataLayout *DLI) {
+    mlir::ValueRange iterationCounts, bool alloca, mlir::DataLayout *DLI,
+    mlir::Attribute memorySpace) {
+  llvm_unreachable("llvm alloca");
   using namespace mlir;
   auto val = value.getDefiningOp<LLVM::AllocaOp>();
   auto sz = val.getArraySize();

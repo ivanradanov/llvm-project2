@@ -63,6 +63,13 @@ using namespace mlir;
 using PtrVal = TypedValue<LLVM::LLVMPointerType>;
 using MemRefVal = MemrefValue;
 
+static mlir::Value createConstantInt(RewriterBase &rewriter, Location loc,
+                                     Type ty, int64_t v) {
+  if (ty.isIndex())
+    return rewriter.create<arith::ConstantIndexOp>(loc, v);
+  else
+    return rewriter.create<arith::ConstantIntOp>(loc, v, ty);
+}
 static std::optional<int64_t> getConstant(Operation *op) {
   if (auto cst = dyn_cast_or_null<arith::ConstantIntOp>(op)) {
     return cst.value();
@@ -1199,6 +1206,62 @@ convertLLVMToAffineAccess(Operation *op,
 }
 } // namespace mlir
 
+/// Returns `true` if the loop has a form expected by interchange patterns.
+static bool isNormalized(scf::ForOp op) {
+  auto lb = getConstant(op.getLowerBound());
+  auto step = getConstant(op.getStep());
+  if (!lb || !step)
+    return false;
+  return *lb == 0 && *step == 1;
+}
+
+#define DBGS llvm::dbgs
+
+struct NormalizeLoop : public OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp op,
+                                PatternRewriter &rewriter) const override {
+    using namespace arith;
+    if (isNormalized(op) ||
+        !isa<scf::ParallelOp, affine::AffineParallelOp>(op->getParentOp())) {
+      LLVM_DEBUG(DBGS() << "[normalize-loop] loop already normalized\n");
+      return failure();
+    }
+
+    OpBuilder::InsertPoint point = rewriter.saveInsertionPoint();
+    rewriter.setInsertionPoint(op->getParentOp());
+    Value zero = createConstantInt(rewriter, op.getLoc(),
+                                   op.getInductionVar().getType(), 0);
+    Value one = createConstantInt(rewriter, op.getLoc(),
+                                  op.getInductionVar().getType(), 1);
+    rewriter.restoreInsertionPoint(point);
+
+    Value difference = rewriter.create<SubIOp>(op.getLoc(), op.getUpperBound(),
+                                               op.getLowerBound());
+    Value tripCount = rewriter.create<AddIOp>(
+        op.getLoc(),
+        rewriter.create<DivUIOp>(
+            op.getLoc(), rewriter.create<SubIOp>(op.getLoc(), difference, one),
+            op.getStep()),
+        one);
+    // rewriter.create<CeilDivSIOp>(op.getLoc(), difference, op.getStep());
+    auto newForOp = rewriter.create<scf::ForOp>(op.getLoc(), zero, tripCount,
+                                                one, op.getInits());
+    rewriter.setInsertionPointToStart(newForOp.getBody());
+    Value scaled = rewriter.create<MulIOp>(
+        op.getLoc(), newForOp.getInductionVar(), op.getStep());
+    Value iv = rewriter.create<AddIOp>(op.getLoc(), op.getLowerBound(), scaled);
+    SmallVector<Value> newArgs(newForOp.getRegion().args_begin(),
+                               newForOp.getRegion().args_end());
+    newArgs[0] = iv;
+    rewriter.inlineBlockBefore(op.getBody(), newForOp.getBody(),
+                               newForOp.getBody()->end(), newArgs);
+    rewriter.replaceOp(op, newForOp->getResults());
+    return success();
+  }
+};
+
 struct RemoveIVs : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(scf::ForOp forOp,
@@ -1313,7 +1376,7 @@ struct RemoveIVs : public OpRewritePattern<scf::ForOp> {
 
 namespace mlir {
 void populateRemoveIVPatterns(RewritePatternSet &patterns) {
-  patterns.insert<RemoveIVs>(patterns.getContext());
+  patterns.insert<NormalizeLoop, RemoveIVs>(patterns.getContext());
 }
 }
 

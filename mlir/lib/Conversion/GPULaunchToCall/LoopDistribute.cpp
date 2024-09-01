@@ -13,17 +13,21 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -43,18 +47,43 @@ using namespace mlir;
 using namespace mlir::arith;
 
 static constexpr int64_t registerMemorySpace = 15;
+static constexpr int64_t crossingRegisterMemorySpace = 16;
+static constexpr char crossingLoadAttr[] = "loop.distribute.crossing.load";
 
 static bool isUndef(Value v) {
   return v.getDefiningOp<ub::PoisonOp>() || v.getDefiningOp<LLVM::UndefOp>();
 }
 
-static affine::AffineLoadOp isRegisterLoad(Operation *op) {
+struct CrossingLoad {
+
+  TypedValue<MemRefType> memref;
+  SmallVector<Value, 3> indices;
+  Operation *op;
+  TypedValue<MemRefType> getMemref() { return memref; }
+  ValueRange getIndices() { return indices; }
+  explicit operator bool() const { return !!memref; }
+  Operation *operator->() const { return op; }
+};
+
+static CrossingLoad isCrossingLoad(Operation *op) {
   if (!op)
-    return nullptr;
-  if (auto load = dyn_cast<affine::AffineLoadOp>(op))
-    if (load.getMemref().getType().getMemorySpaceAsInt() == registerMemorySpace)
-      return load;
-  return nullptr;
+    return {nullptr};
+  // Follow through casts until the load
+  while (isa<LLVM::BitcastOp, LLVM::IntToPtrOp>(op)) {
+    op = op->getOperand(0).getDefiningOp();
+  }
+  affine::AffineVectorLoadOp vecLoad = dyn_cast<affine::AffineVectorLoadOp>(op);
+  affine::AffineLoadOp load = dyn_cast<affine::AffineLoadOp>(op);
+  if (!(vecLoad || load))
+    return {nullptr};
+  CrossingLoad cl;
+  cl.memref = load ? load.getMemref() : vecLoad.getMemref();
+  if (cl.memref.getType().getMemorySpaceAsInt() != crossingRegisterMemorySpace)
+    return {nullptr};
+  // Not sure if we need the final `0` in the vecload operands
+  cl.indices = load ? load.getMapOperands() : vecLoad.getMapOperands();
+  cl.op = load ? load : vecLoad;
+  return cl;
 }
 
 static bool couldWrite(Operation *op) {
@@ -820,6 +849,36 @@ splitSubLoop(affine::AffineParallelOp op, PatternRewriter &rewriter,
   return success();
 }
 
+Value createCrossingLoad(RewriterBase &rewriter, mlir::DataLayout &dl,
+                         mlir::Location loc, Value v, Value alloc,
+                         SmallVector<Value> idxs) {
+  unsigned rank = cast<MemRefType>(alloc.getType()).getRank();
+  if (idxs.size() == rank) {
+    return rewriter.create<affine::AffineLoadOp>(loc, alloc, idxs);
+  } else if (idxs.size() == rank - 1) {
+    idxs.push_back(rewriter.create<arith::ConstantIndexOp>(v.getLoc(), 0));
+    return createAffineVectorLoad(rewriter, dl, v.getLoc(), v.getType(), alloc,
+                                  ValueRange(idxs));
+  } else {
+    llvm_unreachable("wrong number of operands");
+  }
+}
+
+void createCrossingStore(RewriterBase &rewriter, mlir::DataLayout &dl,
+                         mlir::Location loc, Value v, Value alloc,
+                         SmallVector<Value> idxs) {
+  unsigned rank = cast<MemRefType>(alloc.getType()).getRank();
+  if (idxs.size() == rank) {
+    rewriter.create<affine::AffineStoreOp>(loc, v, alloc, idxs);
+  } else if (idxs.size() == rank - 1) {
+    idxs.push_back(rewriter.create<arith::ConstantIndexOp>(v.getLoc(), 0));
+    createAffineVectorStore(rewriter, dl, v.getLoc(), v, alloc,
+                            ValueRange(idxs));
+  } else {
+    llvm_unreachable("wrong number of operands");
+  }
+}
+
 template <typename T, bool UseMinCut>
 static LogicalResult
 distributeAroundBarrier(T op, affine::AffineBarrierOp barrier, T &preLoop,
@@ -952,13 +1011,14 @@ distributeAroundBarrier(T op, affine::AffineBarrierOp barrier, T &preLoop,
   assert(mod);
   DataLayout DLI(mod);
   auto addToAllocations = [&](Value v, SmallVector<Value> &allocations) {
-    if (auto cl = isRegisterLoad(v.getDefiningOp())) {
+    if (auto cl = isCrossingLoad(v.getDefiningOp())) {
       allocations.push_back(cl.getMemref());
     } else if (auto ao = v.getDefiningOp<LLVM::AllocaOp>()) {
       llvm_unreachable("no");
     } else {
       allocations.push_back(allocateTemporaryBuffer<memref::AllocaOp>(
-          rewriter, v, iterCounts, true, &DLI));
+          rewriter, v, iterCounts, true, &DLI,
+          rewriter.getI64IntegerAttr(crossingRegisterMemorySpace)));
     }
   };
   for (Value v : crossingCache)
@@ -1060,20 +1120,18 @@ distributeAroundBarrier(T op, affine::AffineBarrierOp barrier, T &preLoop,
     Value alloc = std::get<1>(pair);
 
     // No need to store cache loads
-    if (!isRegisterLoad(v.getDefiningOp())) {
+    // TODO need to fix this
+    if (!isCrossingLoad(v.getDefiningOp())) {
       // Store
       rewriter.setInsertionPointAfter(v.getDefiningOp());
       SmallVector<Value> idxs = ValueRange(preLoop.getBody()->getArguments());
-      idxs.push_back(rewriter.create<arith::ConstantIndexOp>(v.getLoc(), 0));
-      createAffineVectorStore(rewriter, DLI, v.getLoc(), v, alloc,
-                              ValueRange(idxs));
+      createCrossingStore(rewriter, DLI, v.getLoc(), v, alloc, idxs);
     }
     // Reload
     rewriter.setInsertionPointAfter(barrier);
     SmallVector<Value> idxs = ValueRange(preLoop.getBody()->getArguments());
-    idxs.push_back(rewriter.create<arith::ConstantIndexOp>(v.getLoc(), 0));
-    Value reloaded = createAffineVectorLoad(
-        rewriter, DLI, v.getLoc(), v.getType(), alloc, ValueRange(idxs));
+    Value reloaded =
+        createCrossingLoad(rewriter, DLI, v.getLoc(), v, alloc, idxs);
     for (auto &u : llvm::make_early_inc_range(v.getUses())) {
       auto *user = u.getOwner();
       while (user->getBlock() != barrier->getBlock())
@@ -1752,7 +1810,8 @@ struct InterchangeWhilePFor : public OpRewritePattern<T> {
       rewriter.setInsertionPoint(beforeParallelOp);
       Value allocated = rewriter.create<memref::AllocaOp>(
           conditionDefiningOp->getLoc(),
-          MemRefType::get({}, rewriter.getI1Type()));
+          MemRefType::get({}, rewriter.getI1Type(), MemRefLayoutAttrInterface{},
+                          rewriter.getI64IntegerAttr(registerMemorySpace)));
       rewriter.setInsertionPointAfter(conditionDefiningOp);
       Value cond = rewriter.create<ConstantIntOp>(conditionDefiningOp->getLoc(),
                                                   true, 1);
@@ -2283,11 +2342,14 @@ struct DistributeIfAroundBarrier : public OpRewritePattern<IfOpType> {
       assert(mod);
       DataLayout DLI(mod);
       for (Value v : crossingCache) {
-        if (auto cl = isRegisterLoad(v.getDefiningOp())) {
+        if (auto cl = isCrossingLoad(v.getDefiningOp())) {
           cacheAllocations.push_back(cl.getMemref());
         } else {
           cacheAllocations.push_back(rewriter.create<memref::AllocaOp>(
-              ifOp->getLoc(), MemRefType::get({}, v.getType())));
+              ifOp->getLoc(),
+              MemRefType::get(
+                  {}, v.getType(), MemRefLayoutAttrInterface{},
+                  rewriter.getI64IntegerAttr(registerMemorySpace))));
         }
       }
 
@@ -2298,7 +2360,7 @@ struct DistributeIfAroundBarrier : public OpRewritePattern<IfOpType> {
         Value alloc = std::get<1>(pair);
 
         // No need to store cache loads
-        if (!isRegisterLoad(v.getDefiningOp())) {
+        if (!isCrossingLoad(v.getDefiningOp())) {
           // Store
           rewriter.setInsertionPointAfter(v.getDefiningOp());
           rewriter.create<affine::AffineStoreOp>(v.getLoc(), v, alloc,
@@ -2367,7 +2429,10 @@ struct Reg2MemFor : public OpRewritePattern<T> {
     allocated.reserve(op.getInits().size());
     for (Value operand : op.getInits()) {
       Value alloc = rewriter.create<memref::AllocaOp>(
-          op.getLoc(), MemRefType::get(ArrayRef<int64_t>(), operand.getType()),
+          op.getLoc(),
+          MemRefType::get(ArrayRef<int64_t>(), operand.getType(),
+                          MemRefLayoutAttrInterface{},
+                          rewriter.getI64IntegerAttr(registerMemorySpace)),
           ValueRange());
       allocated.push_back(alloc);
       if (!isUndef(operand))
@@ -2494,7 +2559,7 @@ struct Reg2MemIf : public OpRewritePattern<T> {
           }
           if (!usesMustStore) {
             Value val = std::get<1>(tup);
-            if (auto cl = isRegisterLoad(val.getDefiningOp())) {
+            if (auto cl = isCrossingLoad(val.getDefiningOp())) {
               if (isEquivalent(cl.getMemref(), storeOp.getMemref()) &&
                   cl->getBlock() == storeOp->getBlock() &&
                   llvm::all_of(llvm::zip(cl.getIndices(), storeOp.getIndices()),
@@ -2515,7 +2580,7 @@ struct Reg2MemIf : public OpRewritePattern<T> {
               }
             }
             val = std::get<2>(tup);
-            if (auto cl = isRegisterLoad(val.getDefiningOp())) {
+            if (auto cl = isCrossingLoad(val.getDefiningOp())) {
               if (isEquivalent(cl.getMemref(), storeOp.getMemref()) &&
                   cl->getBlock() == storeOp->getBlock() &&
                   llvm::all_of(llvm::zip(cl.getIndices(), storeOp.getIndices()),
@@ -2543,7 +2608,10 @@ struct Reg2MemIf : public OpRewritePattern<T> {
       Value alloc = nullptr;
       if (usesMustStore) {
         alloc = rewriter.create<memref::AllocaOp>(
-            op.getLoc(), MemRefType::get(ArrayRef<int64_t>(), opType),
+            op.getLoc(),
+            MemRefType::get(ArrayRef<int64_t>(), opType,
+                            MemRefLayoutAttrInterface{},
+                            rewriter.getI64IntegerAttr(registerMemorySpace)),
             ValueRange());
       }
       allocated.push_back(alloc);
@@ -2707,7 +2775,10 @@ static void allocaValues(Location loc, ValueRange values,
   allocated.reserve(values.size());
   for (Value value : values) {
     Value alloc = rewriter.create<memref::AllocaOp>(
-        loc, MemRefType::get(ArrayRef<int64_t>(), value.getType()),
+        loc,
+        MemRefType::get(ArrayRef<int64_t>(), value.getType(),
+                        MemRefLayoutAttrInterface{},
+                        rewriter.getI64IntegerAttr(registerMemorySpace)),
         ValueRange());
     allocated.push_back(alloc);
   }
