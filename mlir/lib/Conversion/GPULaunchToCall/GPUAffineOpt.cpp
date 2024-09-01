@@ -30,6 +30,7 @@
 using namespace mlir;
 
 #define DEBUG_TYPE "gpu-affine-opt"
+#define DBGS (llvm::dbgs() << "gpu-affine-opt: ")
 
 namespace mlir {
 #define GEN_PASS_DEF_GPUAFFINEOPTPASS
@@ -629,6 +630,22 @@ namespace mlir {
 void populateRemoveIVPatterns(RewritePatternSet &patterns);
 }
 
+// TODO we shuold not loop distribute non-affine ops, as we cannot reason about
+// them.
+//
+// e.g.
+//
+// affine.parallel {
+//   scf.for {
+//     A
+//     barrier
+//     B
+//   }
+// } {gpu.par.block}
+//
+// In this case we should _not_ interchange and distribute as that would leave
+// us with non-affine code (when considering block parallels as statements.
+
 struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
   using Base::Base;
   void runOnOperation() override {
@@ -638,6 +655,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
         if (func->getAttr("gpu.par.kernel")) {
+          LLVM_DEBUG(DBGS << "Before opt:\n" << func << "\n");
           RewritePatternSet patterns(context);
           populateRemoveIVPatterns(patterns);
           GreedyRewriteConfig config;
@@ -646,16 +664,22 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
             signalPassFailure();
             return;
           }
+          LLVM_DEBUG(DBGS << "Removed IVs:\n" << func << "\n");
           (void)mlir::convertLLVMToAffineAccess(func, dl, false);
+          LLVM_DEBUG(DBGS << "To Affine:\n" << func << "\n");
           (void)distributeParallelLoops(func, "distribute.mincut",
                                         &getContext());
+          LLVM_DEBUG(DBGS << "Distributed:\n" << func << "\n");
           PassManager pm(&getContext());
+          pm.addPass(createCSEPass());
           pm.addPass(createCanonicalizerPass());
           if (failed(pm.run(func))) {
             signalPassFailure();
             return;
           }
-          (void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+          LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
+          //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+          LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
         }
       });
     });
