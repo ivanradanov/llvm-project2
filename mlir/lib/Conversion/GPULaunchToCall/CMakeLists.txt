@@ -22,4 +22,7 @@ add_mlir_conversion_library(MLIRGPULaunchToCall
   MLIRAffineDialect
   MLIRSCFDialect
   MLIRPass
+  PolymerTransforms
+  PolymerSupport
+  PolymerTargetISL
   )
