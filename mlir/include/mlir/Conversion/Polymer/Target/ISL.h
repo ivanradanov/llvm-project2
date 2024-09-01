@@ -36,13 +36,13 @@ namespace polymer {
 class IslScop;
 class PolymerSymbolTable;
 
-std::unique_ptr<IslScop> createIslFromFuncOp(mlir::func::FuncOp funcOp);
+std::unique_ptr<IslScop> createIslFromFuncOp(mlir::Operation *funcOp);
 
 /// Create a function (FuncOp) from the given OpenScop object in the given
 /// module (ModuleOp).
-mlir::func::FuncOp createFuncOpFromIsl(std::unique_ptr<IslScop> scop,
-                                       mlir::func::FuncOp f,
-                                       __isl_give isl_schedule *newSchedule);
+mlir::Operation *createFuncOpFromIsl(std::unique_ptr<IslScop> scop,
+                                     mlir::Operation *f,
+                                     __isl_give isl_schedule *newSchedule);
 
 } // namespace polymer
 

@@ -392,7 +392,7 @@ IslScop::addAccessRelation(int stmtId, bool isRead, mlir::Value memref,
   return success();
 }
 
-void IslScop::initializeSymbolTable(mlir::func::FuncOp f,
+void IslScop::initializeSymbolTable(Operation *f,
                                     affine::FlatAffineValueConstraints *cst) {
   symbolTable.clear();
 
@@ -427,7 +427,7 @@ void IslScop::initializeSymbolTable(mlir::func::FuncOp f,
   }
   // constants
   unsigned numConstants = 0;
-  for (mlir::Value arg : f.getBody().begin()->getArguments()) {
+  for (mlir::Value arg : f->getRegion(0).begin()->getArguments()) {
     if (valueTable.find(arg) == valueTable.end()) {
       std::string sym(formatv("C{0}", numConstants++));
       symbolTable.insert(std::make_pair(sym, arg));
@@ -1122,18 +1122,18 @@ public:
 };
 } // namespace polymer
 
-func::FuncOp IslScop::applySchedule(isl_schedule *newSchedule,
-                                    func::FuncOp originalFunc) {
+Operation *IslScop::applySchedule(isl_schedule *newSchedule,
+                                  Operation *originalFunc) {
   IRMapping oldToNewMapping;
   OpBuilder moduleBuilder(originalFunc);
-  func::FuncOp f =
+  Operation *f =
       cast<func::FuncOp>(moduleBuilder.clone(*originalFunc, oldToNewMapping));
 
-  assert(f.getFunctionBody().getBlocks().size() == 1);
+  assert(f->getRegion(0).getBlocks().size() == 1);
 
   // Cleanup body. Leave only scratchpad allocations and tarminator.
   // TODO is there anything else we need to keep?
-  Operation *op = &f.getFunctionBody().front().front();
+  Operation *op = &f->getRegion(0).front().front();
   while (true) {
     if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
       assert(alloca->getAttr("scop.scratchpad"));
@@ -1153,7 +1153,7 @@ func::FuncOp IslScop::applySchedule(isl_schedule *newSchedule,
   // TODO we also need to allocate new arrays which may have been introduced,
   // see polly::NodeBuilder::allocateNewArrays, buildAliasScopes
 
-  OpBuilder b(f.getFunctionBody().front().getTerminator());
+  OpBuilder b(f->getRegion(0).front().getTerminator());
 
   LLVM_DEBUG({
     llvm::dbgs() << "Applying new schedule to scop:\n";
@@ -1167,7 +1167,7 @@ func::FuncOp IslScop::applySchedule(isl_schedule *newSchedule,
 
   bc.mapParams(domain);
   bc.create(node);
-  LLVM_DEBUG(llvm::dbgs() << f << "\n");
+  LLVM_DEBUG(llvm::dbgs() << *f << "\n");
 
   isl_ast_build_free(build);
   isl_schedule_free(newSchedule);

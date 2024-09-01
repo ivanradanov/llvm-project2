@@ -80,7 +80,7 @@ public:
                     mlir::affine::FlatAffineValueConstraints &cst);
 
   /// Initialize the symbol table.
-  void initializeSymbolTable(mlir::func::FuncOp f,
+  void initializeSymbolTable(mlir::Operation *f,
                              mlir::affine::FlatAffineValueConstraints *cst);
 
   /// Get the symbol table object.
@@ -112,8 +112,8 @@ public:
 
   isl_schedule *getSchedule() { return schedule; }
 
-  mlir::func::FuncOp applySchedule(__isl_take isl_schedule *newSchedule,
-                                   mlir::func::FuncOp f);
+  mlir::Operation *applySchedule(__isl_take isl_schedule *newSchedule,
+                                 mlir::Operation *f);
 
 private:
   struct IslStmt {
