@@ -132,7 +132,7 @@ private:
                         unsigned depth);
   __isl_give isl_schedule *buildForSchedule(mlir::affine::AffineForOp forOp,
                                             unsigned depth);
-  __isl_give isl_schedule *buildLeafSchedule(mlir::func::CallOp callOp);
+  __isl_give isl_schedule *buildLeafSchedule(mlir::Operation *);
   __isl_give isl_schedule *
   buildSequenceSchedule(llvm::SmallVector<mlir::Operation *> ops,
                         unsigned depth = 0);

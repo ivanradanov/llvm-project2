@@ -117,7 +117,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     const ScopStmt &stmt = scopStmtMap->find(scopStmtName)->second;
     LLVM_DEBUG({
       dbgs() << "Adding relations to statement: \n";
-      stmt.getCaller().dump();
+      stmt.getCaller()->dump();
     });
 
     // Collet the domain
@@ -133,31 +133,33 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     llvm::SmallVector<mlir::Operation *, 8> enclosingOps;
     stmt.getEnclosingOps(enclosingOps);
     // Get the callee.
-    mlir::func::FuncOp callee = stmt.getCallee();
+    Operation *callee = stmt.getCallee();
 
     LLVM_DEBUG({
       dbgs() << "Callee:\n";
-      callee.dump();
+      callee->dump();
     });
 
     // Create a statement in IslScop and setup relations in it.
     scop->createStatement();
     scop->addDomainRelation(stmtId, domain);
-    callee.walk([&](mlir::Operation *op) {
-      if (isa<mlir::affine::AffineReadOpInterface>(op) ||
-          isa<mlir::affine::AffineWriteOpInterface>(op)) {
-        LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
+    // TODO this needs to be rethinked in our new gpu.par.block as stmt context
+    // callee->walk([&](mlir::Operation *op) {
+    //   if (isa<mlir::affine::AffineReadOpInterface>(op) ||
+    //       isa<mlir::affine::AffineWriteOpInterface>(op)) {
+    //     LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op <<
+    //     '\n');
 
-        bool isRead = isa<mlir::affine::AffineReadOpInterface>(op);
-        affine::AffineValueMap vMap;
-        mlir::Value memref;
+    //     bool isRead = isa<mlir::affine::AffineReadOpInterface>(op);
+    //     affine::AffineValueMap vMap;
+    //     mlir::Value memref;
 
-        stmt.getAccessMapAndMemRef(op, &vMap, &memref);
-        [[maybe_unused]] auto ret =
-            scop->addAccessRelation(stmtId, isRead, memref, vMap, domain);
-        assert(succeeded(ret));
-      }
-    });
+    //     stmt.getAccessMapAndMemRef(op, &vMap, &memref);
+    //     [[maybe_unused]] auto ret =
+    //         scop->addAccessRelation(stmtId, isRead, memref, vMap, domain);
+    //     assert(succeeded(ret));
+    //   }
+    // });
 
     stmtId++;
   }
@@ -172,14 +174,14 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 void IslScopBuilder::buildScopStmtMap(Operation *f,
                                       IslScop::ScopStmtNames *scopStmtNames,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
-  mlir::ModuleOp m = cast<mlir::ModuleOp>(f->getParentOp());
-
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
     if (gpu::affine_opt::isBlockPar(op)) {
       llvm::StringRef calleeName = "S" + std::to_string(stmtId++);
+      op->setAttr("polymer.stmt.name",
+                  StringAttr::get(f->getContext(), calleeName));
       scopStmtNames->push_back(std::string(calleeName));
-      scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op, op)));
+      scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op)));
     }
   });
 }
@@ -202,9 +204,9 @@ void IslScopBuilder::buildScopContext(
       // Find the insertion position.
       auto it = symbols.begin();
       while (it != symbols.end()) {
-        auto lhs = it->cast<BlockArgument>();
-        auto rhs = sym.cast<BlockArgument>();
-        if (lhs.getArgNumber() >= rhs.getArgNumber())
+        auto lhs = it->getAsOpaquePointer();
+        auto rhs = sym.getAsOpaquePointer();
+        if (lhs >= rhs)
           break;
         ++it;
       }
@@ -227,8 +229,8 @@ void IslScopBuilder::buildScopContext(
     affine::FlatAffineValueConstraints cst(*domain);
 
     LLVM_DEBUG(dbgs() << "Statement:\n");
-    LLVM_DEBUG(it.second.getCaller().dump());
-    LLVM_DEBUG(it.second.getCallee().dump());
+    LLVM_DEBUG(it.second.getCaller()->dump());
+    LLVM_DEBUG(it.second.getCallee()->dump());
     LLVM_DEBUG(dbgs() << "Target domain: \n");
     LLVM_DEBUG(domain->dump());
 

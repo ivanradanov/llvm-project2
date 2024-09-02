@@ -262,6 +262,10 @@ void optGlobalSharedMemCopies(Operation *root) {
 
 void transform(LLVM::LLVMFuncOp f) {
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
+  LLVM_DEBUG({
+    scop->dumpSchedule(llvm::dbgs());
+    scop->dumpAccesses(llvm::dbgs());
+  });
 }
 
 } // namespace affine_opt
@@ -446,9 +450,9 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           }
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+          (void)mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           gpuify(func);
-          //(void)mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
         }
       });

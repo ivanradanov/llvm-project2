@@ -34,12 +34,9 @@ class ScopStmtImpl {
 public:
   using EnclosingOpList = SmallVector<Operation *, 8>;
 
-  ScopStmtImpl(llvm::StringRef name, mlir::func::CallOp caller,
-               mlir::func::FuncOp callee)
-      : name(name), caller(caller), callee(callee) {}
+  ScopStmtImpl(llvm::StringRef name, Operation *op) : name(name), op(op) {}
 
-  static std::unique_ptr<ScopStmtImpl> get(mlir::Operation *callerOp,
-                                           mlir::Operation *calleeOp);
+  static std::unique_ptr<ScopStmtImpl> get(Operation *op);
 
   /// A helper function that builds the domain constraints of the
   /// caller, and find and insert all enclosing for/if ops to enclosingOps.
@@ -50,10 +47,8 @@ public:
   /// Name of the callee, as well as the scop.stmt. It will also be the
   /// symbol in the OpenScop representation.
   llvm::StringRef name;
-  /// The caller to the scop.stmt func.
-  mlir::func::CallOp caller;
-  /// The scop.stmt callee.
-  mlir::func::FuncOp callee;
+  /// The statment operation
+  mlir::Operation *op;
   /// The domain of the caller.
   affine::FlatAffineValueConstraints domain;
   /// Enclosing for/if operations for the caller.
@@ -63,16 +58,14 @@ public:
 } // namespace polymer
 
 /// Create ScopStmtImpl from only the caller/callee pair.
-std::unique_ptr<ScopStmtImpl> ScopStmtImpl::get(mlir::Operation *callerOp,
-                                                mlir::Operation *calleeOp) {
+std::unique_ptr<ScopStmtImpl> ScopStmtImpl::get(Operation *op) {
   // We assume that the callerOp is of type mlir::func::CallOp, and the calleeOp
   // is a mlir::func::FuncOp. If not, these two cast lines will raise error.
-  mlir::func::CallOp caller = cast<mlir::func::CallOp>(callerOp);
-  mlir::func::FuncOp callee = cast<mlir::func::FuncOp>(calleeOp);
-  llvm::StringRef name = caller.getCallee();
+  llvm::StringRef name =
+      cast<StringAttr>(op->getAttr("polymer.stmt.name")).getValue();
 
   // Create the stmt instance.
-  auto stmt = std::make_unique<ScopStmtImpl>(name, caller, callee);
+  auto stmt = std::make_unique<ScopStmtImpl>(name, op);
 
   // Initialize the domain constraints around the caller. The enclosing ops will
   // be figured out as well in this process.
@@ -115,9 +108,9 @@ static void reorderSymbolsByOperandId(affine::FlatAffineValueConstraints &cst) {
   // bubble sort
   for (unsigned i = cst.getNumDimVars(); i < cst.getNumDimAndSymbolVars(); ++i)
     for (unsigned j = i + 1; j < cst.getNumDimAndSymbolVars(); ++j) {
-      auto fst = cst.getValue(i).cast<BlockArgument>();
-      auto snd = cst.getValue(j).cast<BlockArgument>();
-      if (fst.getArgNumber() > snd.getArgNumber())
+      auto fst = cst.getValue(i).getAsOpaquePointer();
+      auto snd = cst.getValue(j).getAsOpaquePointer();
+      if (fst > snd)
         cst.swapVar(i, j);
     }
 }
@@ -125,24 +118,11 @@ static void reorderSymbolsByOperandId(affine::FlatAffineValueConstraints &cst) {
 void ScopStmtImpl::initializeDomainAndEnclosingOps() {
   // Extract the affine for/if ops enclosing the caller and insert them into the
   // enclosingOps list.
-  affine::getEnclosingAffineOps(*caller, &enclosingOps);
+  affine::getEnclosingAffineOps(*op, &enclosingOps);
 
   // The domain constraints can then be collected from the enclosing ops.
   auto res = succeeded(getIndexSet(enclosingOps, &domain));
   assert(res);
-
-  // Add additional indices that are in the top level block arguments.
-  for (Value arg : caller->getOperands()) {
-    if (!arg.getType().isIndex())
-      continue;
-    unsigned pos;
-    if (domain.findVar(arg, &pos))
-      continue;
-
-    domain.appendSymbolVar(1);
-    domain.dump();
-    domain.setValue(domain.getNumDimAndSymbolVars() - 1, arg);
-  }
 
   // Symbol values, which could be a BlockArgument, or the result of DimOp or
   // IndexCastOp, or even an affine.apply. Here we limit the cases to be either
@@ -152,25 +132,14 @@ void ScopStmtImpl::initializeDomainAndEnclosingOps() {
   llvm::DenseMap<mlir::Value, mlir::Value> symMap;
   domain.getValues(domain.getNumDimVars(), domain.getNumDimAndSymbolVars(),
                    &symValues);
-  for (mlir::Value val : symValues)
-    promoteSymbolToTopLevel(val, domain, symMap);
 
   // Without this things like swapped-bounds.mlir in test cannot work.
   reorderSymbolsByOperandId(domain);
 }
 
-void ScopStmtImpl::getArgsValueMapping(IRMapping &argMap) {
-  auto callerArgs = caller.getArgOperands();
-  auto calleeArgs = callee.getArguments();
-  unsigned numArgs = callerArgs.size();
+void ScopStmtImpl::getArgsValueMapping(IRMapping &argMap) {}
 
-  argMap.clear();
-  for (unsigned i = 0; i < numArgs; i++)
-    argMap.map(calleeArgs[i], callerArgs[i]);
-}
-
-ScopStmt::ScopStmt(Operation *caller, Operation *callee)
-    : impl{ScopStmtImpl::get(caller, callee)} {}
+ScopStmt::ScopStmt(Operation *op) : impl{ScopStmtImpl::get(op)} {}
 
 ScopStmt::~ScopStmt() = default;
 ScopStmt::ScopStmt(ScopStmt &&) = default;
@@ -187,8 +156,8 @@ void ScopStmt::getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
       ops.push_back(op);
 }
 
-mlir::func::FuncOp ScopStmt::getCallee() const { return impl->callee; }
-mlir::func::CallOp ScopStmt::getCaller() const { return impl->caller; }
+Operation *ScopStmt::getCallee() const { return impl->op; }
+Operation *ScopStmt::getCaller() const { return impl->op; }
 
 static mlir::Value findBlockArg(mlir::Value v) {
   mlir::Value r = v;
@@ -240,8 +209,8 @@ void ScopStmt::getAccessMapAndMemRef(mlir::Operation *op,
     mlir::Value origArg = findBlockArg(argMap.lookupOrDefault(operand));
     assert(origArg && "The original value cannot be found as a block argument "
                       "of the top function. Try -canonicalize.");
-    assert(origArg != operand &&
-           "The found original value shouldn't be the same as the operand.");
+    // assert(origArg != operand &&
+    //        "The found original value shouldn't be the same as the operand.");
 
     operands.push_back(origArg);
   }
@@ -249,5 +218,5 @@ void ScopStmt::getAccessMapAndMemRef(mlir::Operation *op,
   // Set the access affine::AffineValueMap.
   vMap->reset(aMap.getAffineMap(), operands);
   // Set the memref.
-  *memref = argMap.lookup(*memref);
+  *memref = argMap.lookupOrDefault(*memref);
 }
