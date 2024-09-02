@@ -189,9 +189,13 @@ isl_schedule *IslScop::buildForSchedule(affine::AffineForOp forOp,
   return schedule;
 }
 
-isl_schedule *IslScop::buildLeafSchedule(func::CallOp callOp) {
+StringRef getStmtName(Operation *op) {
+  return cast<StringAttr>(op->getAttr("polymer.stmt.name")).getValue();
+}
+
+isl_schedule *IslScop::buildLeafSchedule(Operation *op) {
   // TODO check that we are really calling a statement
-  auto &stmt = getIslStmt(callOp.getCallee().str());
+  auto &stmt = getIslStmt(getStmtName(op).str());
   isl_schedule *schedule = isl_schedule_from_domain(
       isl_union_set_from_basic_set(isl_basic_set_copy(stmt.domain)));
   LLVM_DEBUG({
@@ -229,16 +233,20 @@ SmallVector<Operation *> IslScop::getSequenceScheduleOpList(Block *block) {
 isl_schedule *IslScop::buildSequenceSchedule(SmallVector<Operation *> ops,
                                              unsigned depth) {
   auto buildOpSchedule = [&](Operation *op) {
-    if (auto forOp = dyn_cast<affine::AffineForOp>(op)) {
+    if (op->getAttr("polymer.stmt.name")) {
+      return buildLeafSchedule(op);
+    } else if (auto forOp = dyn_cast<affine::AffineForOp>(op)) {
       return buildForSchedule(forOp, depth);
     } else if (auto parallelOp = dyn_cast<affine::AffineParallelOp>(op)) {
       return buildParallelSchedule(parallelOp, depth);
     } else if (auto callOp = dyn_cast<func::CallOp>(op)) {
-      return buildLeafSchedule(callOp);
+      llvm_unreachable("??");
+      // return buildLeafSchedule(callOp);
     } else if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
       return (isl_schedule *)nullptr;
     } else {
-      llvm_unreachable("unhandled op");
+      assert(isMemoryEffectFree(op));
+      return (isl_schedule *)nullptr;
     }
   };
 
@@ -828,54 +836,58 @@ public:
     }
 
     ScopStmt &stmt = scop.scopStmtMap.at(std::string(CalleeName));
-    func::CallOp origCaller = stmt.getCaller();
-    SmallVector<Value> args;
-    for (Value origArg : origCaller.getArgOperands()) {
-      auto ba = origArg.dyn_cast<BlockArgument>();
-      if (ba) {
-        Operation *owner = ba.getOwner()->getParentOp();
-        if (isa<func::FuncOp>(owner)) {
-          args.push_back(funcMapping.lookup(ba));
-        } else if (isa<affine::AffineForOp, affine::AffineParallelOp>(owner)) {
-          SmallVector<Operation *> enclosing;
-          stmt.getEnclosingOps(enclosing);
-          unsigned ivId = 0;
-          for (auto *op : enclosing) {
-            if (isa<affine::AffineIfOp>(op)) {
-              continue;
-            } else if (isa<affine::AffineForOp, affine::AffineParallelOp>(op)) {
-              if (owner == op)
-                break;
-              ivId++;
-            } else {
-              llvm_unreachable("non-affine enclosing op");
-            }
-          }
-          Value arg = ivs[ivId];
-          if (arg.getType() != origArg.getType()) {
-            // This can only happen to index types as we may have replaced them
-            // with the target system width
-            assert(origArg.getType().isa<IndexType>());
-            arg = b.create<arith::IndexCastOp>(loc, origArg.getType(), arg);
-          }
-          args.push_back(arg);
-        } else {
-          llvm_unreachable("unexpected");
-        }
-      } else {
-        Operation *op = origArg.getDefiningOp();
-        assert(op);
-        if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
-          assert(alloca->getAttr("scop.scratchpad"));
-          auto newAlloca = funcMapping.lookup(op)->getResult(0);
-          args.push_back(newAlloca);
-        } else {
-          assert("unexpected");
-        }
-      }
-    }
+    llvm_unreachable("TODO");
+    // func::CallOp origCaller = stmt.getCaller();
+    // SmallVector<Value> args;
+    // for (Value origArg : origCaller.getArgOperands()) {
+    //   auto ba = origArg.dyn_cast<BlockArgument>();
+    //   if (ba) {
+    //     Operation *owner = ba.getOwner()->getParentOp();
+    //     if (isa<func::FuncOp>(owner)) {
+    //       args.push_back(funcMapping.lookup(ba));
+    //     } else if (isa<affine::AffineForOp, affine::AffineParallelOp>(owner))
+    //     {
+    //       SmallVector<Operation *> enclosing;
+    //       stmt.getEnclosingOps(enclosing);
+    //       unsigned ivId = 0;
+    //       for (auto *op : enclosing) {
+    //         if (isa<affine::AffineIfOp>(op)) {
+    //           continue;
+    //         } else if (isa<affine::AffineForOp,
+    //         affine::AffineParallelOp>(op)) {
+    //           if (owner == op)
+    //             break;
+    //           ivId++;
+    //         } else {
+    //           llvm_unreachable("non-affine enclosing op");
+    //         }
+    //       }
+    //       Value arg = ivs[ivId];
+    //       if (arg.getType() != origArg.getType()) {
+    //         // This can only happen to index types as we may have replaced
+    //         them
+    //         // with the target system width
+    //         assert(origArg.getType().isa<IndexType>());
+    //         arg = b.create<arith::IndexCastOp>(loc, origArg.getType(), arg);
+    //       }
+    //       args.push_back(arg);
+    //     } else {
+    //       llvm_unreachable("unexpected");
+    //     }
+    //   } else {
+    //     Operation *op = origArg.getDefiningOp();
+    //     assert(op);
+    //     if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
+    //       assert(alloca->getAttr("scop.scratchpad"));
+    //       auto newAlloca = funcMapping.lookup(op)->getResult(0);
+    //       args.push_back(newAlloca);
+    //     } else {
+    //       assert("unexpected");
+    //     }
+    //   }
+    // }
 
-    b.create<func::CallOp>(loc, StringRef(CalleeName), TypeRange(), args);
+    // b.create<func::CallOp>(loc, StringRef(CalleeName), TypeRange(), args);
 
     isl_ast_expr_free(Expr);
     isl_ast_node_free(User);

@@ -32,7 +32,7 @@ class ScopStmtImpl;
 /// of them.
 class ScopStmt {
 public:
-  ScopStmt(mlir::Operation *caller, mlir::Operation *callee);
+  ScopStmt(mlir::Operation *op);
   ~ScopStmt();
 
   ScopStmt(ScopStmt &&);
@@ -46,9 +46,9 @@ public:
   void getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
                        bool forOnly = false) const;
   /// Get the callee of this scop stmt.
-  mlir::func::FuncOp getCallee() const;
+  mlir::Operation *getCallee() const;
   /// Get the caller of this scop stmt.
-  mlir::func::CallOp getCaller() const;
+  mlir::Operation *getCaller() const;
   /// Get the access affine::AffineValueMap of an op in the callee and the
   /// memref in the caller scope that this op is using.
   void getAccessMapAndMemRef(mlir::Operation *op,
