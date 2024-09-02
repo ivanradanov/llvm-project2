@@ -415,6 +415,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       }
     };
     auto gpuify = [&](Operation *op) {
+      // TODO need to forward register stores to loads
       RewritePatternSet patterns(context);
       patterns.insert<FuseBlockPars, Interchange>(context);
       GreedyRewriteConfig config;
