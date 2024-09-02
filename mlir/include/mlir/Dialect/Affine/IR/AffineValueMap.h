@@ -84,6 +84,11 @@ public:
   /// and/or operands have been modified.
   LogicalResult canonicalize();
 
+  bool operator==(AffineValueMap &&other) {
+    return map.getAffineMap() == other.map.getAffineMap() &&
+           operands == other.operands;
+  }
+
 private:
   // A mutable affine map.
   MutableAffineMap map;
