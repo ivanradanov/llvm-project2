@@ -45,6 +45,14 @@ using namespace polymer;
 
 #define DEBUG_TYPE "islscop"
 
+namespace mlir {
+namespace gpu {
+namespace affine_opt {
+affine::AffineParallelOp isBlockPar(Operation *op);
+}
+} // namespace gpu
+} // namespace mlir
+
 namespace {
 
 /// Build IslScop from FuncOp.
@@ -166,18 +174,12 @@ void IslScopBuilder::buildScopStmtMap(Operation *f,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
   mlir::ModuleOp m = cast<mlir::ModuleOp>(f->getParentOp());
 
+  unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
-    if (mlir::func::CallOp caller = dyn_cast<mlir::func::CallOp>(op)) {
-      llvm::StringRef calleeName = caller.getCallee();
-      mlir::func::FuncOp callee =
-          m.lookupSymbol<mlir::func::FuncOp>(calleeName);
-
-      // If the callee is of scop.stmt, we create a new instance in the map
-      if (callee->getAttr(SCOP_STMT_ATTR_NAME)) {
-        scopStmtNames->push_back(std::string(calleeName));
-        scopStmtMap->insert(
-            std::make_pair(calleeName, ScopStmt(caller, callee)));
-      }
+    if (gpu::affine_opt::isBlockPar(op)) {
+      llvm::StringRef calleeName = "S" + std::to_string(stmtId++);
+      scopStmtNames->push_back(std::string(calleeName));
+      scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op, op)));
     }
   });
 }

@@ -70,7 +70,15 @@ struct VectorLoad {
   Value val;
 };
 
-static affine::AffineParallelOp isBlockPar(Operation *op) {
+affine::AffineParallelOp isGridPar(Operation *op) {
+  auto gridPar = dyn_cast_or_null<affine::AffineParallelOp>(op);
+  if (!gridPar)
+    return nullptr;
+  if (gridPar->getAttr("gpu.par.grid"))
+    return gridPar;
+  return nullptr;
+}
+affine::AffineParallelOp isBlockPar(Operation *op) {
   auto blockPar = dyn_cast_or_null<affine::AffineParallelOp>(op);
   if (!blockPar)
     return nullptr;
@@ -268,11 +276,67 @@ static bool areEquiv(affine::AffineParallelOp a, affine::AffineParallelOp b) {
 
 namespace {
 
+struct Interchange : public OpRewritePattern<affine::AffineParallelOp> {
+  using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(affine::AffineParallelOp parOp,
+                                PatternRewriter &rewriter) const override {
+    if (!gpu::affine_opt::isBlockPar(parOp))
+      return rewriter.notifyMatchFailure(parOp, "op is not block par");
+    Operation *parent = parOp->getParentOp();
+    if (gpu::affine_opt::isGridPar(parent))
+      return rewriter.notifyMatchFailure(parent, "Parent op is grid par");
+    if (parOp->getBlock()->getOperations().size() != 2)
+      return rewriter.notifyMatchFailure(parOp, "imperfectly nested");
+    auto forOp = dyn_cast<affine::AffineForOp>(parent);
+    if (!forOp)
+      return rewriter.notifyMatchFailure(parent,
+                                         "Parent op is not affine for op");
+
+    auto loc = parOp->getLoc();
+
+    // affine.for
+    //   affine.parallel
+    //
+    // to
+    //
+    // affine.parallel
+    //   affine.for
+    rewriter.setInsertionPoint(forOp);
+    auto newPar =
+        cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*parOp));
+    rewriter.createBlock(&newPar.getRegion(), newPar.getRegion().begin(),
+                         parOp.getBody()->getArgumentTypes(),
+                         parOp.getBody()->getArgumentLocs());
+    auto newFor =
+        cast<affine::AffineForOp>(rewriter.cloneWithoutRegions(*forOp));
+    rewriter.createBlock(&newFor.getRegion(), newFor.getRegion().begin(),
+                         forOp.getBody()->getArgumentTypes(),
+                         forOp.getBody()->getArgumentLocs());
+    rewriter.inlineBlockBefore(parOp.getBody(), newFor.getBody(),
+                               newFor.getBody()->begin(),
+                               newPar.getBody()->getArguments());
+    assert(newFor.getBody()->getTerminator()->getNumResults() == 0);
+    rewriter.eraseOp(newFor.getBody()->getTerminator());
+    rewriter.setInsertionPointToEnd(newFor.getBody());
+    rewriter.create<affine::AffineYieldOp>(loc);
+    rewriter.setInsertionPointToEnd(newPar.getBody());
+    rewriter.create<affine::AffineYieldOp>(loc);
+
+    for (auto [oldArg, newArg] : llvm::zip(forOp.getBody()->getArguments(),
+                                           newFor.getBody()->getArguments()))
+      rewriter.replaceAllUsesWith(oldArg, newArg);
+
+    rewriter.eraseOp(forOp);
+
+    return success();
+  }
+};
+
 struct FuseBlockPars : public OpRewritePattern<affine::AffineParallelOp> {
   using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(affine::AffineParallelOp par,
                                 PatternRewriter &rewriter) const override {
-    if (gpu::affine_opt::isBlockPar(par))
+    if (!gpu::affine_opt::isBlockPar(par))
       return rewriter.notifyMatchFailure(par, "op is not block par");
     auto nextPar = gpu::affine_opt::isBlockPar(par->getNextNode());
     if (!nextPar)
@@ -351,60 +415,13 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       }
     };
     auto gpuify = [&](Operation *op) {
-      SmallPtrSet<Block *, 8> blocksWithBlockPars;
-      op->walk([&](Operation *op) {
-        if (isBlockPar(op))
-          blocksWithBlcokPars.insert(op->getBlock());
-      });
-      IRRewriter rewriter(context);
-      for (auto block : blocksWithBlockPars) {
-        SmallVector<std::variant<SingleRegion, Operation *>> regions;
-        auto it = block.begin();
-        auto getOneRegion = [&]() {
-          if (&*it == terminator)
-            return false;
-          if (isBlockPar(&*it)) {
-            regions.push_back(&*it);
-            it++;
-            return true;
-          }
-          SingleRegion sr;
-          sr.begin = it;
-          while (&*it != terminator && !isBlockPar(&*it))
-            it++;
-          sr.end = it;
-          assert(sr.begin != sr.end);
-          regions.push_back(sr);
-          return true;
-        };
-        while (getOneRegion())
-          ;
-
-        affine::AffineParallelOp first;
-        for (auto [i, opOrSingle] : llvm::enumerate(regions)) {
-          bool isLast = i + 1 == regions.size();
-          if (std::holds_alternative<SingleRegion>(opOrSingle)) {
-            auto sr = std::get<SingleRegion>(opOrSingle);
-
-          } else {
-            auto op = std::get<Operation *>(opOrSingle);
-            first = isBlockPar(op);
-            assert(first);
-            break;
-          }
-        }
-        assert(first);
-
-        rewriter.createBlock(
-
-        for (auto [i, opOrSingle] : llvm::enumerate(regions)) {
-          bool isLast = i + 1 == regions.size();
-          if (std::holds_alternative<SingleRegion>(opOrSingle)) {
-            auto sr = std::get<SingleRegion>(opOrSingle);
-
-          } else {
-          }
-        }
+      RewritePatternSet patterns(context);
+      patterns.insert<FuseBlockPars, Interchange>(context);
+      GreedyRewriteConfig config;
+      if (failed(
+              applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+        signalPassFailure();
+        return;
       }
     };
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
@@ -427,7 +444,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
             return;
           }
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
-          (void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
+          //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           gpuify(func);
           //(void)mlir::gpu::affine_opt::transform(func);
