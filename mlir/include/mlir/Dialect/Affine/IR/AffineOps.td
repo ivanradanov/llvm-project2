@@ -345,6 +345,16 @@ def AffineForOp : Affine_Op<"for",
   let hasRegionVerifier = 1;
 }
 
+def AffineLoadVar : Affine_Op<"load_var", [Pure]> {
+  let arguments = (ins Variadic<AnyType>:$variables);
+  let summary = "Fake load an SSA value for conversion to ISL";
+}
+
+def AffineStoreVar : Affine_Op<"store_var", [Pure]> {
+  let arguments = (ins Variadic<AnyType>:$variables);
+  let summary = "Fake load an SSA value for conversion to ISL";
+}
+
 def AffineBarrierOp : Affine_Op<"barrier"> {
   let arguments = (ins Variadic<Index>:$indices);
   let summary = "barrier for parallel loops";

@@ -153,12 +153,13 @@ static bool isParallelLoopMark(isl_id *id) {
 isl_schedule *
 IslScop::buildParallelSchedule(affine::AffineParallelOp parallelOp,
                                unsigned depth) {
+  assert(parallelOp->getNumResults() == 0 && "no parallel reductions");
   isl_schedule *schedule = buildLoopSchedule(parallelOp, depth);
   isl_schedule_node *node = isl_schedule_get_root(schedule);
   schedule = isl_schedule_free(schedule);
   node = isl_schedule_node_first_child(node);
   node = isl_schedule_node_band_set_permutable(node, 1);
-  node = isl_schedule_node_insert_mark(node, getParallelLoopMark(ctx));
+  // node = isl_schedule_node_insert_mark(node, getParallelLoopMark(ctx));
   schedule = isl_schedule_node_get_schedule(node);
   isl_schedule_node_free(node);
   return schedule;
@@ -217,6 +218,8 @@ SmallVector<Operation *> IslScop::getSequenceScheduleOpList(Operation *begin,
         ops.insert(ops.end(), elseOps.begin(), elseOps.end());
       }
       ops.insert(ops.end(), thenOps.begin(), thenOps.end());
+      // This statement will "store" the result of the `ifOp` if it exists
+      ops.push_back(op);
     } else {
       ops.push_back(op);
     }
@@ -225,25 +228,23 @@ SmallVector<Operation *> IslScop::getSequenceScheduleOpList(Operation *begin,
 }
 
 SmallVector<Operation *> IslScop::getSequenceScheduleOpList(Block *block) {
-  // We cannot be yielding anything
-  assert(block->back().getNumOperands() == 0);
-  return getSequenceScheduleOpList(&block->front(), &block->back());
+  return getSequenceScheduleOpList(&block->front(), nullptr);
 }
 
 isl_schedule *IslScop::buildSequenceSchedule(SmallVector<Operation *> ops,
                                              unsigned depth) {
   auto buildOpSchedule = [&](Operation *op) {
-    if (op->getAttr("polymer.stmt.name")) {
-      return buildLeafSchedule(op);
-    } else if (auto forOp = dyn_cast<affine::AffineForOp>(op)) {
+    if (auto forOp = dyn_cast<affine::AffineForOp>(op)) {
       return buildForSchedule(forOp, depth);
     } else if (auto parallelOp = dyn_cast<affine::AffineParallelOp>(op)) {
       return buildParallelSchedule(parallelOp, depth);
+    } else if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
+      return (isl_schedule *)nullptr;
+    } else if (op->getAttr("polymer.stmt.name")) {
+      return buildLeafSchedule(op);
     } else if (auto callOp = dyn_cast<func::CallOp>(op)) {
       llvm_unreachable("??");
       // return buildLeafSchedule(callOp);
-    } else if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
-      return (isl_schedule *)nullptr;
     } else {
       assert(isMemoryEffectFree(op));
       return (isl_schedule *)nullptr;
@@ -902,6 +903,7 @@ public:
     auto Child = isl_ast_node_mark_get_node(Node);
     isl_ast_node_free(Node);
 
+    // TODO this needs to check for "permutable" instead
     if (isParallelLoopMark(Id)) {
       assert(isl_ast_node_get_type(Child) == isl_ast_node_for);
       createFor<scf::ParallelOp>(Child);

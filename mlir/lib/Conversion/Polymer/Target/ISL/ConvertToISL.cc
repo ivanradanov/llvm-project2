@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -40,8 +41,10 @@
 
 using namespace mlir;
 using namespace mlir::func;
-using namespace llvm;
 using namespace polymer;
+using llvm::dbgs;
+using llvm::errs;
+using llvm::outs;
 
 #define DEBUG_TYPE "islscop"
 
@@ -170,19 +173,28 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   return scop;
 }
 
+static void createForReductionAccesses(affine::AffineForOp forOp) {
+  auto builder = OpBuilder::atBlockBegin(forOp.getBody());
+  for (auto ba : forOp.getRegionIterArgs())
+    builder.create<affine::AffineLoadVar>(forOp.getLoc(), ValueRange{ba});
+  builder.setInsertionPoint(forOp.getBody()->getTerminator());
+  for (auto opr : forOp.getBody()->getTerminator()->getOperands())
+    builder.create<affine::AffineStoreVar>(forOp.getLoc(), ValueRange{opr});
+}
+
 /// Find all statements that calls a scop.stmt.
 void IslScopBuilder::buildScopStmtMap(Operation *f,
                                       IslScop::ScopStmtNames *scopStmtNames,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
+  f->walk(
+      [&](affine::AffineForOp forOp) { createForReductionAccesses(forOp); });
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
-    if (gpu::affine_opt::isBlockPar(op)) {
-      llvm::StringRef calleeName = "S" + std::to_string(stmtId++);
-      op->setAttr("polymer.stmt.name",
-                  StringAttr::get(f->getContext(), calleeName));
-      scopStmtNames->push_back(std::string(calleeName));
-      scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op)));
-    }
+    llvm::StringRef calleeName = "S" + std::to_string(stmtId++);
+    op->setAttr("polymer.stmt.name",
+                StringAttr::get(f->getContext(), calleeName));
+    scopStmtNames->push_back(std::string(calleeName));
+    scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op)));
   });
 }
 
