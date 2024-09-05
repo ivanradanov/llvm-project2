@@ -73,7 +73,8 @@ private:
 
   /// Build the scop context. The domain of each scop stmt will be updated, by
   /// merging and aligning its IDs with the context as well.
-  void buildScopContext(IslScop *scop, IslScop::ScopStmtMap *scopStmtMap,
+  void buildScopContext(Operation *f, IslScop *scop,
+                        IslScop::ScopStmtMap *scopStmtMap,
                         affine::FlatAffineValueConstraints &ctx) const;
 };
 
@@ -110,7 +111,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     return nullptr;
 
   // Build context in it.
-  buildScopContext(scop.get(), scopStmtMap, ctx);
+  buildScopContext(f, scop.get(), scopStmtMap, ctx);
 
   scop->initializeSymbolTable(f, &ctx);
 
@@ -120,7 +121,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     const ScopStmt &stmt = scopStmtMap->find(scopStmtName)->second;
     LLVM_DEBUG({
       dbgs() << "Adding relations to statement: \n";
-      stmt.getCaller()->dump();
+      stmt.getOperation()->dump();
     });
 
     // Collet the domain
@@ -136,33 +137,66 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     llvm::SmallVector<mlir::Operation *, 8> enclosingOps;
     stmt.getEnclosingOps(enclosingOps);
     // Get the callee.
-    Operation *callee = stmt.getCallee();
+    Operation *op = stmt.getOperation();
 
     LLVM_DEBUG({
-      dbgs() << "Callee:\n";
-      callee->dump();
+      dbgs() << "op:\n";
+      op->dump();
     });
 
     // Create a statement in IslScop and setup relations in it.
     scop->createStatement();
     scop->addDomainRelation(stmtId, domain);
-    // TODO this needs to be rethinked in our new gpu.par.block as stmt context
-    // callee->walk([&](mlir::Operation *op) {
-    //   if (isa<mlir::affine::AffineReadOpInterface>(op) ||
-    //       isa<mlir::affine::AffineWriteOpInterface>(op)) {
-    //     LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op <<
-    //     '\n');
 
-    //     bool isRead = isa<mlir::affine::AffineReadOpInterface>(op);
-    //     affine::AffineValueMap vMap;
-    //     mlir::Value memref;
+    {
+      LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
+      bool needToLoadOperands = true;
+      if (!isMemoryEffectFree(op)) {
+        if (isa<mlir::affine::AffineReadOpInterface>(op) ||
+            isa<mlir::affine::AffineWriteOpInterface>(op)) {
 
-    //     stmt.getAccessMapAndMemRef(op, &vMap, &memref);
-    //     [[maybe_unused]] auto ret =
-    //         scop->addAccessRelation(stmtId, isRead, memref, vMap, domain);
-    //     assert(succeeded(ret));
-    //   }
-    // });
+          bool isRead = isa<mlir::affine::AffineReadOpInterface>(op);
+          affine::AffineValueMap vMap;
+          mlir::Value memref;
+
+          AffineMap map;
+          SmallVector<Value, 4> indices;
+          if (auto loadOp = dyn_cast<affine::AffineReadOpInterface>(op)) {
+            memref = loadOp.getMemRef();
+            llvm::append_range(indices, loadOp.getMapOperands());
+            map = loadOp.getAffineMap();
+          } else {
+            assert(isa<affine::AffineWriteOpInterface>(op) &&
+                   "Affine read/write op expected");
+            auto storeOp = cast<affine::AffineWriteOpInterface>(op);
+            memref = storeOp.getMemRef();
+            llvm::append_range(indices, storeOp.getMapOperands());
+            map = cast<affine::AffineWriteOpInterface>(op).getAffineMap();
+          }
+          vMap.reset(map, indices);
+
+          [[maybe_unused]] auto ret =
+              scop->addAccessRelation(stmtId, isRead, memref, vMap, domain);
+          assert(succeeded(ret));
+          needToLoadOperands = false;
+        }
+      }
+      auto unitMap = AffineMap::get(op->getContext());
+      for (auto res : op->getResults()) {
+        affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
+        auto ret =
+            scop->addAccessRelation(stmtId, /*isRead=*/false, res, map, domain);
+        assert(succeeded(ret));
+      }
+      if (needToLoadOperands) {
+        for (auto opr : op->getOperands()) {
+          affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
+          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/true, opr, map,
+                                             domain);
+          assert(succeeded(ret));
+        }
+      }
+    }
 
     stmtId++;
   }
@@ -210,19 +244,14 @@ void IslScopBuilder::buildScopStmtMap(Operation *f,
 }
 
 void IslScopBuilder::buildScopContext(
-    IslScop *scop, IslScop::ScopStmtMap *scopStmtMap,
+    Operation *f, IslScop *scop, IslScop::ScopStmtMap *scopStmtMap,
     affine::FlatAffineValueConstraints &ctx) const {
   LLVM_DEBUG(dbgs() << "--- Building SCoP context ...\n");
 
   // First initialize the symbols of the ctx by the order of arg number.
   // This simply aims to make mergeAndAlignVarsWithOthers work.
   SmallVector<Value> symbols;
-  for (const auto &it : *scopStmtMap) {
-    auto domain = it.second.getDomain();
-    SmallVector<Value> syms;
-    domain->getValues(domain->getNumDimVars(), domain->getNumDimAndSymbolVars(),
-                      &syms);
-
+  auto insertSyms = [&](auto syms) {
     for (Value sym : syms) {
       // Find the insertion position.
       auto it = symbols.begin();
@@ -236,7 +265,24 @@ void IslScopBuilder::buildScopContext(
       if (it == symbols.end() || *it != sym)
         symbols.insert(it, sym);
     }
+  };
+  for (const auto &it : *scopStmtMap) {
+    auto domain = it.second.getDomain();
+    SmallVector<Value> syms;
+    domain->getValues(domain->getNumDimVars(), domain->getNumDimAndSymbolVars(),
+                      &syms);
+
+    insertSyms(syms);
   }
+  f->walk([&](Operation *op) {
+    if (auto loadOp = dyn_cast<affine::AffineReadOpInterface>(op)) {
+      insertSyms(loadOp.getMapOperands().drop_front(
+          loadOp.getAffineMap().getNumDims()));
+    } else if (auto storeOp = dyn_cast<affine::AffineWriteOpInterface>(op)) {
+      insertSyms(storeOp.getMapOperands().drop_front(
+          storeOp.getAffineMap().getNumDims()));
+    }
+  });
 
   ctx = affine::FlatAffineValueConstraints(/*numDims=*/0,
                                            /*numSymbols=*/symbols.size());
@@ -252,8 +298,7 @@ void IslScopBuilder::buildScopContext(
     affine::FlatAffineValueConstraints cst(*domain);
 
     LLVM_DEBUG(dbgs() << "Statement:\n");
-    LLVM_DEBUG(it.second.getCaller()->dump());
-    LLVM_DEBUG(it.second.getCallee()->dump());
+    LLVM_DEBUG(it.second.getOperation()->dump());
     LLVM_DEBUG(dbgs() << "Target domain: \n");
     LLVM_DEBUG(domain->dump());
 

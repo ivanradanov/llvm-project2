@@ -359,44 +359,45 @@ IslScop::addAccessRelation(int stmtId, bool isRead, mlir::Value memref,
                            affine::AffineValueMap &vMap,
                            affine::FlatAffineValueConstraints &domain) {
   affine::FlatAffineValueConstraints cst;
-  // Insert the address dims and put constraints in it.
-  if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
-    LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
-    return failure();
-  }
-
+  isl_basic_map *bmap;
   // Create a new dim of memref and set its value to its corresponding ID.
   memRefIdMap.try_emplace(memref, "A" + std::to_string(memRefIdMap.size() + 1));
 
-  isl_mat *eqMat = createConstraintRows(cst, /*isEq=*/true);
-  isl_mat *ineqMat = createConstraintRows(cst, /*isEq=*/false);
+  if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
+    LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
+    bmap =
+        isl_basic_map_from_domain(isl_basic_set_copy(islStmts[stmtId].domain));
+  } else {
+    isl_space *space = isl_space_alloc(
+        ctx, cst.getNumSymbolVars(), cst.getNumDimVars() - vMap.getNumResults(),
+        vMap.getNumResults());
+    space = setupSpace(space, cst, memRefIdMap[memref]);
 
-  LLVM_DEBUG({
-    llvm::errs() << "Adding access relation\n";
-    dbgs() << "Resolved MLIR access constraints:\n";
-    cst.dump();
-    llvm::errs() << " ISL eq mat:\n";
-    isl_mat_dump(eqMat);
-    llvm::errs() << " ISL ineq mat:\n";
-    isl_mat_dump(ineqMat);
-    llvm::errs() << "\n";
-  });
+    isl_mat *eqMat = createConstraintRows(cst, /*isEq=*/true);
+    isl_mat *ineqMat = createConstraintRows(cst, /*isEq=*/false);
 
-  assert(cst.getNumInequalities() == 0);
-  isl_space *space = isl_space_alloc(ctx, cst.getNumSymbolVars(),
-                                     cst.getNumDimVars() - vMap.getNumResults(),
-                                     vMap.getNumResults());
-  space = setupSpace(space, cst, memRefIdMap[memref]);
+    LLVM_DEBUG({
+      llvm::errs() << "Adding access relation\n";
+      dbgs() << "Resolved MLIR access constraints:\n";
+      cst.dump();
+      llvm::errs() << " ISL eq mat:\n";
+      isl_mat_dump(eqMat);
+      llvm::errs() << " ISL ineq mat:\n";
+      isl_mat_dump(ineqMat);
+      llvm::errs() << "\n";
+    });
 
-  isl_basic_map *bmap = isl_basic_map_from_constraint_matrices(
-      space, eqMat, ineqMat, isl_dim_out, isl_dim_in, isl_dim_div,
-      isl_dim_param, isl_dim_cst);
+    assert(cst.getNumInequalities() == 0);
+    bmap = isl_basic_map_from_constraint_matrices(
+        space, eqMat, ineqMat, isl_dim_out, isl_dim_in, isl_dim_div,
+        isl_dim_param, isl_dim_cst);
+  }
+  ISL_DEBUG("Created relation: ", isl_basic_map_dump(bmap));
+
   if (isRead)
     islStmts[stmtId].readRelations.push_back(bmap);
   else
     islStmts[stmtId].writeRelations.push_back(bmap);
-
-  ISL_DEBUG("Created relation: ", isl_basic_map_dump(bmap));
 
   return success();
 }
