@@ -46,9 +46,7 @@ public:
   void getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
                        bool forOnly = false) const;
   /// Get the callee of this scop stmt.
-  mlir::Operation *getCallee() const;
-  /// Get the caller of this scop stmt.
-  mlir::Operation *getCaller() const;
+  mlir::Operation *getOperation() const;
   /// Get the access affine::AffineValueMap of an op in the callee and the
   /// memref in the caller scope that this op is using.
   void getAccessMapAndMemRef(mlir::Operation *op,
