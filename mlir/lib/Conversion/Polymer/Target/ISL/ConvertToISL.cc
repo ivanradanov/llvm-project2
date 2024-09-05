@@ -173,7 +173,18 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   return scop;
 }
 
-static void createForReductionAccesses(affine::AffineForOp forOp) {
+static void createIfYieldAccesses(affine::AffineIfOp ifOp) {
+  auto builder = OpBuilder(ifOp.getThenBlock()->getTerminator());
+  for (auto opr : ifOp.getThenBlock()->getTerminator()->getOperands())
+    builder.create<affine::AffineStoreVar>(ifOp.getLoc(), ValueRange{opr});
+  if (ifOp.hasElse()) {
+    builder.setInsertionPoint(ifOp.getElseBlock()->getTerminator());
+    for (auto opr : ifOp.getElseBlock()->getTerminator()->getOperands())
+      builder.create<affine::AffineStoreVar>(ifOp.getLoc(), ValueRange{opr});
+  }
+}
+
+static void createForIterArgAccesses(affine::AffineForOp forOp) {
   auto builder = OpBuilder::atBlockBegin(forOp.getBody());
   for (auto ba : forOp.getRegionIterArgs())
     builder.create<affine::AffineLoadVar>(forOp.getLoc(), ValueRange{ba});
@@ -186,8 +197,8 @@ static void createForReductionAccesses(affine::AffineForOp forOp) {
 void IslScopBuilder::buildScopStmtMap(Operation *f,
                                       IslScop::ScopStmtNames *scopStmtNames,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
-  f->walk(
-      [&](affine::AffineForOp forOp) { createForReductionAccesses(forOp); });
+  f->walk([&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp); });
+  f->walk([&](affine::AffineIfOp ifOp) { createIfYieldAccesses(ifOp); });
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
     llvm::StringRef calleeName = "S" + std::to_string(stmtId++);
