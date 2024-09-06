@@ -68,7 +68,7 @@ private:
 
 class IslAstInfo {
 public:
-  using MemoryAccessSet = SmallPtrSet<MemoryAccessInterface *, 4>;
+  using MemoryAccessSet = SmallPtrSet<MemoryAccess *, 4>;
 
   /// Payload information used to annotate an AST node.
   struct IslAstUserPayload {

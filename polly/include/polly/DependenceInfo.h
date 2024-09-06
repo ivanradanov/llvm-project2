@@ -22,7 +22,6 @@
 #ifndef POLLY_DEPENDENCE_INFO_H
 #define POLLY_DEPENDENCE_INFO_H
 
-#include "ScopInterfaces.h"
 #include "polly/ScopPass.h"
 #include "isl/ctx.h"
 #include "isl/isl-noexceptions.h"
@@ -36,12 +35,22 @@ namespace polly {
 /// query only specific parts.
 class Dependences final {
 public:
+  // Granularities of the current dependence analysis
+  enum AnalysisLevel {
+    AL_Statement = 0,
+    // Distinguish accessed memory references in the same statement
+    AL_Reference,
+    // Distinguish memory access instances in the same statement
+    AL_Access,
+
+    NumAnalysisLevels
+  };
 
   /// Map type for reduction dependences.
-  using ReductionDependencesMapTy = DenseMap<MemoryAccessInterface *, isl_map *>;
+  using ReductionDependencesMapTy = DenseMap<MemoryAccess *, isl_map *>;
 
   /// Map type to associate statements with schedules.
-  using StatementToIslMapTy = DenseMap<ScopStmtInterface *, isl::map>;
+  using StatementToIslMapTy = DenseMap<ScopStmt *, isl::map>;
 
   /// The type of the dependences.
   ///
@@ -86,7 +95,7 @@ public:
   /// Return the reduction dependences caused by @p MA.
   ///
   /// @return The reduction dependences caused by @p MA or nullptr if none.
-  __isl_give isl_map *getReductionDependences(MemoryAccessInterface *MA) const;
+  __isl_give isl_map *getReductionDependences(MemoryAccess *MA) const;
 
   /// Return all reduction dependences.
   const ReductionDependencesMapTy &getReductionDependences() const {
@@ -114,11 +123,11 @@ public:
   ///
   /// @return True if the new schedule is valid, false if it reverses
   ///         dependences.
-  bool isValidSchedule(ScopInterface &S, const StatementToIslMapTy &NewSchedules) const;
+  bool isValidSchedule(Scop &S, const StatementToIslMapTy &NewSchedules) const;
 
   /// Return true of the schedule @p NewSched is a schedule for @S that does not
   /// violate any dependences.
-  bool isValidSchedule(ScopInterface &S, isl::schedule NewSched) const;
+  bool isValidSchedule(Scop &S, isl::schedule NewSched) const;
 
   /// Print the stored dependence information.
   void print(llvm::raw_ostream &OS) const;
@@ -127,7 +136,7 @@ public:
   void dump() const;
 
   /// Return the granularity of this dependence analysis.
-  DependencesAnalysisLevel getDependenceLevel() { return Level; }
+  AnalysisLevel getDependenceLevel() { return Level; }
 
   /// Allow the DependenceInfo access to private members and methods.
   ///
@@ -144,7 +153,7 @@ public:
 private:
   /// Create an empty dependences struct.
   explicit Dependences(const std::shared_ptr<isl_ctx> &IslCtx,
-                       DependencesAnalysisLevel Level)
+                       AnalysisLevel Level)
       : RAW(nullptr), WAR(nullptr), WAW(nullptr), RED(nullptr), TC_RED(nullptr),
         IslCtx(IslCtx), Level(Level) {}
 
@@ -152,10 +161,10 @@ private:
   void addPrivatizationDependences();
 
   /// Calculate the dependences for a certain SCoP @p S.
-  void calculateDependences(ScopInterface &S);
+  void calculateDependences(Scop &S);
 
   /// Set the reduction dependences for @p MA to @p Deps.
-  void setReductionDependences(MemoryAccessInterface *MA, __isl_take isl_map *Deps);
+  void setReductionDependences(MemoryAccess *MA, __isl_take isl_map *Deps);
 
   /// Free the objects associated with this Dependences struct.
   ///
@@ -180,14 +189,14 @@ private:
   std::shared_ptr<isl_ctx> IslCtx;
 
   /// Granularity of this dependence analysis.
-  const DependencesAnalysisLevel Level;
+  const AnalysisLevel Level;
 };
 
 struct DependenceAnalysis final : public AnalysisInfoMixin<DependenceAnalysis> {
   static AnalysisKey Key;
   struct Result {
     Scop &S;
-    std::unique_ptr<Dependences> D[NumAnalysisLevels];
+    std::unique_ptr<Dependences> D[Dependences::NumAnalysisLevels];
 
     /// Return the dependence information for the current SCoP.
     ///
@@ -195,10 +204,10 @@ struct DependenceAnalysis final : public AnalysisInfoMixin<DependenceAnalysis> {
     ///
     /// @return The dependence analysis result
     ///
-    const Dependences &getDependences(DependencesAnalysisLevel Level);
+    const Dependences &getDependences(Dependences::AnalysisLevel Level);
 
     /// Recompute dependences from schedule and memory accesses.
-    const Dependences &recomputeDependences(DependencesAnalysisLevel Level);
+    const Dependences &recomputeDependences(Dependences::AnalysisLevel Level);
 
     /// Invalidate the dependence information and recompute it when needed
     /// again.
@@ -236,10 +245,10 @@ public:
   ///
   /// @return The dependence analysis result
   ///
-  const Dependences &getDependences(DependencesAnalysisLevel Level);
+  const Dependences &getDependences(Dependences::AnalysisLevel Level);
 
   /// Recompute dependences from schedule and memory accesses.
-  const Dependences &recomputeDependences(DependencesAnalysisLevel Level);
+  const Dependences &recomputeDependences(Dependences::AnalysisLevel Level);
 
   /// Invalidate the dependence information and recompute it when needed again.
   /// May be required when the underlaying Scop was changed in a way that would
@@ -267,7 +276,7 @@ private:
   Scop *S;
 
   /// Dependences struct for the current SCoP.
-  std::unique_ptr<Dependences> D[NumAnalysisLevels];
+  std::unique_ptr<Dependences> D[Dependences::NumAnalysisLevels];
 };
 
 llvm::Pass *createDependenceInfoPass();
@@ -288,11 +297,11 @@ public:
   ///
   /// @return The dependence analysis result
   ///
-  const Dependences &getDependences(Scop *S, DependencesAnalysisLevel Level);
+  const Dependences &getDependences(Scop *S, Dependences::AnalysisLevel Level);
 
   /// Recompute dependences from schedule and memory accesses.
   const Dependences &recomputeDependences(Scop *S,
-                                          DependencesAnalysisLevel Level);
+                                          Dependences::AnalysisLevel Level);
 
   /// Compute the dependence information on-the-fly for the function.
   bool runOnFunction(Function &F) override;

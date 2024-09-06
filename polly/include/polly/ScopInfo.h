@@ -17,7 +17,6 @@
 #ifndef POLLY_SCOPINFO_H
 #define POLLY_SCOPINFO_H
 
-#include "polly/ScopInterfaces.h"
 #include "polly/ScopDetection.h"
 #include "polly/Support/SCEVAffinator.h"
 #include "polly/Support/ScopHelper.h"
@@ -429,7 +428,7 @@ private:
 };
 
 /// Represent memory accesses in statements.
-class MemoryAccess final : public MemoryAccessInterface {
+class MemoryAccess final {
   friend class Scop;
   friend class ScopStmt;
   friend class ScopBuilder;
@@ -448,8 +447,7 @@ public:
   ///
   /// A certain set of memory locations is definitely written. The old value is
   /// replaced by a newly calculated value. The old value is not read or used at
-  /// all.#include "polly/DependenceInfo.h"
-
+  /// all.
   ///
   /// * A may-write access
   ///
@@ -756,19 +754,19 @@ public:
   enum AccessType getType() { return AccType; }
 
   /// Is this a reduction like access?
-  bool isReductionLike() const override { return RedType != RT_NONE; }
+  bool isReductionLike() const { return RedType != RT_NONE; }
 
   /// Is this a read memory access?
-  bool isRead() const override { return AccType == MemoryAccess::READ; }
+  bool isRead() const { return AccType == MemoryAccess::READ; }
 
   /// Is this a must-write memory access?
-  bool isMustWrite() const override { return AccType == MemoryAccess::MUST_WRITE; }
+  bool isMustWrite() const { return AccType == MemoryAccess::MUST_WRITE; }
 
   /// Is this a may-write memory access?
-  bool isMayWrite() const override { return AccType == MemoryAccess::MAY_WRITE; }
+  bool isMayWrite() const { return AccType == MemoryAccess::MAY_WRITE; }
 
   /// Is this a write memory access?
-  bool isWrite() const override { return isMustWrite() || isMayWrite(); }
+  bool isWrite() const { return isMustWrite() || isMayWrite(); }
 
   /// Is this a memory intrinsic access (memcpy, memset, memmove)?
   bool isMemoryIntrinsic() const {
@@ -794,7 +792,7 @@ public:
   }
 
   /// Old name of getLatestAccessRelation().
-  isl::map getAccessRelation() const override { return getLatestAccessRelation(); }
+  isl::map getAccessRelation() const { return getLatestAccessRelation(); }
 
   /// Get an isl map describing the memory address accessed.
   ///
@@ -842,7 +840,7 @@ public:
   isl::id getLatestArrayId() const;
 
   /// Old name of getOriginalArrayId().
-  isl::id getArrayId() const override { return getOriginalArrayId(); }
+  isl::id getArrayId() const { return getOriginalArrayId(); }
 
   /// Get the detection-time ScopArrayInfo object for the base address.
   const ScopArrayInfo *getOriginalScopArrayInfo() const;
@@ -852,7 +850,7 @@ public:
   const ScopArrayInfo *getLatestScopArrayInfo() const;
 
   /// Legacy name of getOriginalScopArrayInfo().
-  const ScopArrayInfo *getScopArrayInfo() const override {
+  const ScopArrayInfo *getScopArrayInfo() const {
     return getOriginalScopArrayInfo();
   }
 
@@ -1071,7 +1069,7 @@ public:
   ///
   /// This identifier is unique for all accesses that belong to the same scop
   /// statement.
-  isl::id getId() const override;
+  isl::id getId() const;
 
   /// Print the MemoryAccess.
   ///
@@ -1139,13 +1137,10 @@ using InvariantEquivClassesTy = SmallVector<InvariantEquivClassTy, 8>;
 /// It is further described by its iteration domain, its schedule and its data
 /// accesses.
 /// At the moment every statement represents a single basic block of LLVM-IR.
-class ScopStmt final : public ScopStmtInterface {
+class ScopStmt final {
   friend class ScopBuilder;
 
 public:
-  SmallVector<MemoryAccessInterface *> getMemoryAccesses() override {
-    return SmallVector<MemoryAccessInterface *>(MemAccs.begin(), MemAccs.end());
-  }
   using MemoryAccessVec = llvm::SmallVector<MemoryAccess *, 8>;
   /// Create the ScopStmt from a BasicBlock.
   ScopStmt(Scop &parent, BasicBlock &bb, StringRef Name, Loop *SurroundingLoop,
@@ -1280,7 +1275,7 @@ public:
   /// Get the iteration domain of this ScopStmt.
   ///
   /// @return The iteration domain of this ScopStmt.
-  isl::set getDomain() const override;
+  isl::set getDomain() const;
 
   /// Get the space of the iteration domain
   ///
@@ -1299,7 +1294,7 @@ public:
   ///
   /// @return The schedule function of this ScopStmt, if it does not contain
   /// extension nodes, and nullptr, otherwise.
-  isl::map getSchedule() const override;
+  isl::map getSchedule() const;
 
   /// Get an isl string representing this schedule.
   ///
@@ -1632,15 +1627,8 @@ raw_ostream &operator<<(raw_ostream &OS, const ScopStmt &S);
 ///   * A context
 ///   This context contains information about the values the parameters
 ///   can take and relations between different parameters.
-class Scop final : public ScopInterface {
+class Scop final {
 public:
-  SmallVector<ScopStmtInterface *> getStmts() override {
-    SmallVector<ScopStmtInterface *> V;
-    for (auto &Stmt : *this)
-      V.push_back(&Stmt);
-    return V;
-  };
-
   /// Type to represent a pair of minimal/maximal access to an array.
   using MinMaxAccessTy = std::pair<isl::pw_multi_aff, isl::pw_multi_aff>;
 
@@ -2191,7 +2179,7 @@ public:
   ///
   /// Returns the set of context parameters that are currently constrained. In
   /// case the full set of parameters is needed, see @getFullParamSpace.
-  isl::space getParamSpace() const override;
+  isl::space getParamSpace() const;
 
   /// Return the full space of parameters.
   ///
@@ -2205,7 +2193,7 @@ public:
   /// Get the assumed context for this Scop.
   ///
   /// @return The assumed context of this Scop.
-  isl::set getAssumedContext() const override;
+  isl::set getAssumedContext() const;
 
   /// Return true if the optimized SCoP can be executed.
   ///
@@ -2486,7 +2474,7 @@ public:
   /// Get the isl context of this static control part.
   ///
   /// @return The isl context of this static control part.
-  isl::ctx getIslCtx() const override;
+  isl::ctx getIslCtx() const;
 
   /// Directly return the shared_ptr of the context.
   const std::shared_ptr<isl_ctx> &getSharedIslCtx() const { return IslCtx; }
@@ -2567,7 +2555,7 @@ public:
   isl::union_map getSchedule() const;
 
   /// Get a schedule tree describing the schedule of all statements.
-  isl::schedule getScheduleTree() const override;
+  isl::schedule getScheduleTree() const;
 
   /// Update the current schedule
   ///
