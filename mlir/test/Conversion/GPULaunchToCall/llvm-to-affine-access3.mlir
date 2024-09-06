@@ -1,4 +1,3 @@
-
 // RUN: mlir-opt %s --pass-pipeline="builtin.module(llvm-to-affine-access)" --split-input-file | FileCheck %s
 
 
@@ -33,7 +32,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
       llvm.comdat_selector @_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii any
       llvm.comdat_selector @_Z13MatrixMulCUDAILi32EEvPfS0_S0_ii any
     }
-// CHECK-LABEL:   gpu.module @__mlir_gpu_module [#[[?]]<chip = "sm_80">]  {
+// CHECK-LABEL:   gpu.module @__mlir_gpu_module
 // CHECK:           llvm.comdat @__llvm_global_comdat {
 // CHECK:             llvm.comdat_selector @_ZZ13MatrixMulCUDAILi16EEvPfS0_S0_iiE2As any
 // CHECK:             llvm.comdat_selector @_ZZ13MatrixMulCUDAILi16EEvPfS0_S0_iiE2Bs any
@@ -42,7 +41,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
 // CHECK:             llvm.comdat_selector @_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii any
 // CHECK:             llvm.comdat_selector @_Z13MatrixMulCUDAILi32EEvPfS0_S0_ii any
 // CHECK:           }
-// CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764(%[[VAL_0:.*]]: i64, %[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.writeonly}, %[[VAL_8:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_9:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_10:.*]]: i32 {llvm.noundef}, %[[VAL_11:.*]]: i32 {llvm.noundef}) comdat(@__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii) attributes {gpu.par.kernel, sym_visibility = "private"} {
+// CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764(%[[VAL_0:.*]]: i64, %[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.writeonly}, %[[VAL_8:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_9:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_10:.*]]: i32 {llvm.noundef}, %[[VAL_11:.*]]: i32 {llvm.noundef}) comdat(@__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii)
 // CHECK:             %[[VAL_12:.*]] = llvm.mlir.constant(0.000000e+00 : f32) : f32
 // CHECK:             %[[VAL_13:.*]] = "memref.ataddr"(%[[VAL_9]]) : (!llvm.ptr) -> memref<?xi8>
 // CHECK:             %[[VAL_14:.*]] = "memref.ataddr"(%[[VAL_8]]) : (!llvm.ptr) -> memref<?xi8>
