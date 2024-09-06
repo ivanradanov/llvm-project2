@@ -20,17 +20,22 @@
 #include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -68,7 +73,7 @@ public:
 
 private:
   /// Find all statements that calls a scop.stmt.
-  void buildScopStmtMap(Operation *f, IslScop::ScopStmtNames *scopStmtNames,
+  void buildScopStmtMap(Operation *f, IRMapping &map, IslScop::ScopStmtNames *scopStmtNames,
                         IslScop::ScopStmtMap *scopStmtMap) const;
 
   /// Build the scop context. The domain of each scop stmt will be updated, by
@@ -106,7 +111,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
   // Find all caller/callee pairs in which the callee has the attribute of name
   // SCOP_STMT_ATTR_NAME.
-  buildScopStmtMap(f, scopStmtNames, scopStmtMap);
+  IRMapping storeMap;
+  buildScopStmtMap(f, storeMap, scopStmtNames, scopStmtMap);
   if (scopStmtMap->empty())
     return nullptr;
 
@@ -151,6 +157,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
       bool needToLoadOperands = true;
+      auto unitMap = AffineMap::get(op->getContext());
+      affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
       if (!isMemoryEffectFree(op)) {
         if (isa<mlir::affine::AffineReadOpInterface>(op) ||
             isa<mlir::affine::AffineWriteOpInterface>(op)) {
@@ -176,22 +184,30 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
           vMap.reset(map, indices);
 
           [[maybe_unused]] auto ret =
-              scop->addAccessRelation(stmtId, isRead, memref, vMap, domain);
+              scop->addAccessRelation(stmtId, isRead, storeMap.lookupOrDefault(memref), vMap, domain);
           assert(succeeded(ret));
           needToLoadOperands = false;
+        } else if (auto storeVar = dyn_cast<affine::AffineStoreVar>(op)) {
+          assert(storeVar->getNumOperands() == 2);
+          Value val = storeMap.lookupOrDefault(storeVar->getOperand(0));
+          Value addr = storeMap.lookupOrDefault(storeVar->getOperand(1));
+          (void)scop->addAccessRelation(stmtId, /*isRead=*/false, val, map,
+                                        domain);
+          (void)scop->addAccessRelation(stmtId, /*isRead=*/false, addr, map,
+                                        domain);
+
+        } else {
+          assert((isa<memref::AllocOp, memref::AllocaOp>(op)));
         }
       }
-      auto unitMap = AffineMap::get(op->getContext());
       for (auto res : op->getResults()) {
-        affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
         auto ret =
-            scop->addAccessRelation(stmtId, /*isRead=*/false, res, map, domain);
+            scop->addAccessRelation(stmtId, /*isRead=*/false, storeMap.lookupOrDefault(res), map, domain);
         assert(succeeded(ret));
       }
       if (needToLoadOperands) {
         for (auto opr : op->getOperands()) {
-          affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
-          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/true, opr, map,
+          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/true, storeMap.lookupOrDefault(opr), map,
                                              domain);
           assert(succeeded(ret));
         }
@@ -207,38 +223,29 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   return scop;
 }
 
-static void createIfYieldAccesses(affine::AffineIfOp ifOp) {
-  auto builder = OpBuilder(ifOp.getThenBlock()->getTerminator());
-  for (auto opr : ifOp.getThenBlock()->getTerminator()->getOperands())
-    builder.create<affine::AffineStoreVar>(ifOp.getLoc(), ValueRange{opr});
-  if (ifOp.hasElse()) {
-    builder.setInsertionPoint(ifOp.getElseBlock()->getTerminator());
-    for (auto opr : ifOp.getElseBlock()->getTerminator()->getOperands())
-      builder.create<affine::AffineStoreVar>(ifOp.getLoc(), ValueRange{opr});
-  }
-}
-
-static void createForIterArgAccesses(affine::AffineForOp forOp) {
-  auto builder = OpBuilder::atBlockBegin(forOp.getBody());
-  for (auto ba : forOp.getRegionIterArgs())
-    builder.create<affine::AffineLoadVar>(forOp.getLoc(), ValueRange{ba});
-  builder.setInsertionPoint(forOp.getBody()->getTerminator());
-  for (auto opr : forOp.getBody()->getTerminator()->getOperands())
-    builder.create<affine::AffineStoreVar>(forOp.getLoc(), ValueRange{opr});
+static void createForIterArgAccesses(affine::AffineForOp forOp, IRMapping &map) {
+  OpBuilder builder(forOp);
+  for (auto [ba, res] : llvm::zip(ValueRange(forOp.getInitsMutable()), ValueRange(forOp.getResults())))
+    builder.create<affine::AffineStoreVar>(forOp.getLoc(), ValueRange{ba, res}, builder.getStringAttr("for.iv.init"));
+  map.map(forOp.getRegionIterArgs(), forOp.getResults());
 }
 
 /// Find all statements that calls a scop.stmt.
-void IslScopBuilder::buildScopStmtMap(Operation *f,
+void IslScopBuilder::buildScopStmtMap(Operation *f, IRMapping &map,
                                       IslScop::ScopStmtNames *scopStmtNames,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
-  f->walk([&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp); });
-  f->walk([&](affine::AffineIfOp ifOp) { createIfYieldAccesses(ifOp); });
+  f->walk([&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
-    llvm::StringRef calleeName = "S" + std::to_string(stmtId++);
+    if (isa<affine::AffineForOp, affine::AffineIfOp, affine::AffineParallelOp>(
+            op))
+      return;
+    if (op == f)
+      return;
+    std::string calleeName = "S" + std::to_string(stmtId++) + "." + op->getName().getStringRef().str();
     op->setAttr("polymer.stmt.name",
                 StringAttr::get(f->getContext(), calleeName));
-    scopStmtNames->push_back(std::string(calleeName));
+    scopStmtNames->push_back(calleeName);
     scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op)));
   });
 }
