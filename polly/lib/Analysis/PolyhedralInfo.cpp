@@ -75,7 +75,7 @@ bool PolyhedralInfo::checkParallel(Loop *L, isl_pw_aff **MinDepDistPtr) const {
   if (!S)
     return false;
   const Dependences &D =
-      DI->getDependences(const_cast<Scop *>(S), AL_Access);
+      DI->getDependences(const_cast<Scop *>(S), Dependences::AL_Access);
   if (!D.hasValidDependences())
     return false;
   POLLY_DEBUG(dbgs() << "Loop :\t" << L->getHeader()->getName() << ":\n");

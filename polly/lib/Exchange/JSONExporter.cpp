@@ -776,7 +776,7 @@ void JSONImporter::printScop(raw_ostream &OS, Scop &S) const {
 
 bool JSONImporter::runOnScop(Scop &S) {
   const Dependences &D =
-      getAnalysis<DependenceInfo>().getDependences(AL_Statement);
+      getAnalysis<DependenceInfo>().getDependences(Dependences::AL_Statement);
   const DataLayout &DL = S.getFunction().getParent()->getDataLayout();
 
   if (!importScop(S, D, DL, &NewAccessStrings))
@@ -800,7 +800,7 @@ PreservedAnalyses JSONImportPass::run(Scop &S, ScopAnalysisManager &SAM,
                                       SPMUpdater &) {
   const Dependences &D =
       SAM.getResult<DependenceAnalysis>(S, SAR).getDependences(
-          AL_Statement);
+          Dependences::AL_Statement);
   const DataLayout &DL = S.getFunction().getParent()->getDataLayout();
 
   if (!importScop(S, D, DL))
