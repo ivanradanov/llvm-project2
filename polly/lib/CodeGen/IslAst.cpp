@@ -638,10 +638,10 @@ isl::ast_build IslAstInfo::getBuild(const isl::ast_node &Node) {
 
 static std::unique_ptr<IslAstInfo> runIslAst(
     Scop &Scop,
-    function_ref<const Dependences &(Dependences::AnalysisLevel)> GetDeps) {
+    function_ref<const Dependences &(DependencesAnalysisLevel)> GetDeps) {
   ScopsProcessed++;
 
-  const Dependences &D = GetDeps(Dependences::AL_Statement);
+  const Dependences &D = GetDeps(AL_Statement);
 
   if (D.getSharedIslCtx() != Scop.getSharedIslCtx()) {
     POLLY_DEBUG(
@@ -661,7 +661,7 @@ static std::unique_ptr<IslAstInfo> runIslAst(
 
 IslAstInfo IslAstAnalysis::run(Scop &S, ScopAnalysisManager &SAM,
                                ScopStandardAnalysisResults &SAR) {
-  auto GetDeps = [&](Dependences::AnalysisLevel Lvl) -> const Dependences & {
+  auto GetDeps = [&](DependencesAnalysisLevel Lvl) -> const Dependences & {
     return SAM.getResult<DependenceAnalysis>(S, SAR).getDependences(Lvl);
   };
 
@@ -779,7 +779,7 @@ PreservedAnalyses IslAstPrinterPass::run(Scop &S, ScopAnalysisManager &SAM,
 void IslAstInfoWrapperPass::releaseMemory() { Ast.reset(); }
 
 bool IslAstInfoWrapperPass::runOnScop(Scop &Scop) {
-  auto GetDeps = [this](Dependences::AnalysisLevel Lvl) -> const Dependences & {
+  auto GetDeps = [this](DependencesAnalysisLevel Lvl) -> const Dependences & {
     return getAnalysis<DependenceInfo>().getDependences(Lvl);
   };
 
