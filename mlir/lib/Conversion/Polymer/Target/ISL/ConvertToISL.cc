@@ -238,11 +238,6 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   scop->buildSchedule(scop->getSequenceScheduleOpList(
       &f->getRegion(0).front().front(), &f->getRegion(0).front().back()));
 
-  polly::Scop S;
-  polly::DependenceInfo DI;
-  DI.runOnScop(S);
-  DI.getDependences(polly::AL_Access);
-
   return scop;
 }
 
