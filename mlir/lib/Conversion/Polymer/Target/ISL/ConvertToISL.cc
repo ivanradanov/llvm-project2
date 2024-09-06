@@ -29,6 +29,7 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "polly/DependenceInfo.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
@@ -157,15 +158,24 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
+      auto addStore = [&](Value memref, affine::AffineValueMap map) {
+        (void)scop->addAccessRelation(stmtId, /*isRead=*/false,
+                                      storeMap.lookupOrDefault(memref), map,
+                                      domain);
+      };
+      auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+        (void)scop->addAccessRelation(stmtId, /*isRead=*/true,
+                                      storeMap.lookupOrDefault(memref), map,
+                                      domain);
+      };
       bool needToLoadOperands = true;
       bool needToStoreResults = true;
       auto unitMap = AffineMap::get(op->getContext());
-      affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
+      affine::AffineValueMap unitVMap(unitMap, ValueRange{}, ValueRange{});
       if (!isMemoryEffectFree(op)) {
         if (isa<mlir::affine::AffineReadOpInterface>(op) ||
             isa<mlir::affine::AffineWriteOpInterface>(op)) {
 
-          bool isRead = isa<mlir::affine::AffineReadOpInterface>(op);
           affine::AffineValueMap vMap;
           mlir::Value memref;
 
@@ -175,6 +185,9 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
             memref = loadOp.getMemRef();
             llvm::append_range(indices, loadOp.getMapOperands());
             map = loadOp.getAffineMap();
+            vMap.reset(map, indices);
+            addLoad(memref, vMap);
+            addStore(loadOp.getValue(), unitVMap);
           } else {
             assert(isa<affine::AffineWriteOpInterface>(op) &&
                    "Affine read/write op expected");
@@ -182,13 +195,12 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
             memref = storeOp.getMemRef();
             llvm::append_range(indices, storeOp.getMapOperands());
             map = cast<affine::AffineWriteOpInterface>(op).getAffineMap();
+            vMap.reset(map, indices);
+            addStore(memref, vMap);
+            addLoad(storeOp.getValueToStore(), unitVMap);
           }
-          vMap.reset(map, indices);
-
-          [[maybe_unused]] auto ret = scop->addAccessRelation(
-              stmtId, isRead, storeMap.lookupOrDefault(memref), vMap, domain);
-          assert(succeeded(ret));
           needToLoadOperands = false;
+          needToStoreResults = false;
         } else {
           assert((isa<memref::AllocOp, memref::AllocaOp>(op)));
           needToLoadOperands = false;
@@ -198,42 +210,26 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         assert(storeVar->getNumOperands() == 2);
         Value val = storeMap.lookupOrDefault(storeVar->getOperand(0));
         Value addr = storeMap.lookupOrDefault(storeVar->getOperand(1));
-        (void)scop->addAccessRelation(stmtId, /*isRead=*/false, val, map,
-                                      domain);
-        (void)scop->addAccessRelation(stmtId, /*isRead=*/false, addr, map,
-                                      domain);
+        addLoad(val, unitVMap);
+        addStore(addr, unitVMap);
         needToLoadOperands = false;
         needToStoreResults = false;
       } else if (auto yield = dyn_cast<affine::AffineYieldOp>(op)) {
         for (auto [res, opr] :
              llvm::zip(ValueRange(yield->getParentOp()->getResults()),
                        ValueRange(yield->getOperands()))) {
-          (void)scop->addAccessRelation(stmtId, /*isRead=*/false,
-                                        storeMap.lookupOrDefault(res), map,
-                                        domain);
-          (void)scop->addAccessRelation(stmtId, /*isRead=*/true,
-                                        storeMap.lookupOrDefault(opr), map,
-                                        domain);
+          addStore(res, unitVMap);
+          addLoad(opr, unitVMap);
         }
         needToLoadOperands = false;
         needToStoreResults = false;
       }
-      if (needToStoreResults) {
-        for (auto res : op->getResults()) {
-          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/false,
-                                             storeMap.lookupOrDefault(res), map,
-                                             domain);
-          assert(succeeded(ret));
-        }
-      }
-      if (needToLoadOperands) {
-        for (auto opr : op->getOperands()) {
-          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/true,
-                                             storeMap.lookupOrDefault(opr), map,
-                                             domain);
-          assert(succeeded(ret));
-        }
-      }
+      if (needToStoreResults)
+        for (auto res : op->getResults())
+          addStore(res, unitVMap);
+      if (needToLoadOperands)
+        for (auto opr : op->getOperands())
+          addLoad(opr, unitVMap);
     }
 
     stmtId++;
@@ -241,6 +237,11 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
   scop->buildSchedule(scop->getSequenceScheduleOpList(
       &f->getRegion(0).front().front(), &f->getRegion(0).front().back()));
+
+  polly::Scop S;
+  polly::DependenceInfo DI;
+  DI.runOnScop(S);
+  DI.getDependences(polly::Dependences::AL_Access);
 
   return scop;
 }
