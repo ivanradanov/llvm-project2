@@ -1,3 +1,9 @@
+
+// RUN: mlir-opt %s --pass-pipeline="builtin.module(llvm-to-affine-access)" --split-input-file | FileCheck %s
+
+
+// CHECK: #[[$ATTR_0:.+]] = affine_map<()[s0] -> ((s0 - 1) floordiv 16 + 1)>
+
 #tbaa_root = #llvm.tbaa_root<id = "Simple C++ TBAA">
 #tbaa_type_desc = #llvm.tbaa_type_desc<id = "omnipotent char", members = {<#tbaa_root, 0>}>
 #tbaa_tag = #llvm.tbaa_tag<base_type = #tbaa_type_desc, access_type = #tbaa_type_desc, offset = 0>
@@ -27,6 +33,58 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
       llvm.comdat_selector @_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii any
       llvm.comdat_selector @_Z13MatrixMulCUDAILi32EEvPfS0_S0_ii any
     }
+// CHECK-LABEL:   gpu.module @__mlir_gpu_module [#[[?]]<chip = "sm_80">]  {
+// CHECK:           llvm.comdat @__llvm_global_comdat {
+// CHECK:             llvm.comdat_selector @_ZZ13MatrixMulCUDAILi16EEvPfS0_S0_iiE2As any
+// CHECK:             llvm.comdat_selector @_ZZ13MatrixMulCUDAILi16EEvPfS0_S0_iiE2Bs any
+// CHECK:             llvm.comdat_selector @_ZZ13MatrixMulCUDAILi32EEvPfS0_S0_iiE2As any
+// CHECK:             llvm.comdat_selector @_ZZ13MatrixMulCUDAILi32EEvPfS0_S0_iiE2Bs any
+// CHECK:             llvm.comdat_selector @_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii any
+// CHECK:             llvm.comdat_selector @_Z13MatrixMulCUDAILi32EEvPfS0_S0_ii any
+// CHECK:           }
+// CHECK:           llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764(%[[VAL_0:.*]]: i64, %[[VAL_1:.*]]: i64, %[[VAL_2:.*]]: i64, %[[VAL_3:.*]]: i64, %[[VAL_4:.*]]: i64, %[[VAL_5:.*]]: i64, %[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.writeonly}, %[[VAL_8:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_9:.*]]: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %[[VAL_10:.*]]: i32 {llvm.noundef}, %[[VAL_11:.*]]: i32 {llvm.noundef}) comdat(@__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii) attributes {gpu.par.kernel, sym_visibility = "private"} {
+// CHECK:             %[[VAL_12:.*]] = llvm.mlir.constant(0.000000e+00 : f32) : f32
+// CHECK:             %[[VAL_13:.*]] = "memref.ataddr"(%[[VAL_9]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:             %[[VAL_14:.*]] = "memref.ataddr"(%[[VAL_8]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:             %[[VAL_15:.*]] = "memref.ataddr"(%[[VAL_7]]) : (!llvm.ptr) -> memref<?xi8>
+// CHECK:             %[[VAL_16:.*]] = arith.index_cast %[[VAL_11]] : i32 to index
+// CHECK:             %[[VAL_17:.*]] = arith.index_cast %[[VAL_11]] : i32 to index
+// CHECK:             %[[VAL_18:.*]] = arith.index_cast %[[VAL_10]] : i32 to index
+// CHECK:             %[[VAL_19:.*]] = arith.index_cast %[[VAL_10]] : i32 to index
+// CHECK:             %[[VAL_20:.*]] = arith.index_cast %[[VAL_11]] : i32 to index
+// CHECK:             %[[VAL_21:.*]] = arith.index_cast %[[VAL_11]] : i32 to index
+// CHECK:             %[[VAL_22:.*]] = arith.index_cast %[[VAL_10]] : i32 to index
+// CHECK:             %[[VAL_23:.*]] = arith.index_cast %[[VAL_1]] : i64 to index
+// CHECK:             %[[VAL_24:.*]] = arith.index_cast %[[VAL_0]] : i64 to index
+// CHECK:             affine.parallel (%[[VAL_25:.*]], %[[VAL_26:.*]], %[[VAL_27:.*]]) = (0, 0, 0) to (symbol(%[[VAL_24]]), symbol(%[[VAL_23]]), 1) {
+// CHECK:               %[[VAL_28:.*]] = memref.alloca() : memref<1024xi8, 3>
+// CHECK:               %[[VAL_29:.*]] = memref.alloca() : memref<1024xi8, 3>
+// CHECK:               affine.parallel (%[[VAL_30:.*]], %[[VAL_31:.*]], %[[VAL_32:.*]]) = (0, 0, 0) to (16, 16, 1) {
+// CHECK:                 %[[VAL_33:.*]] = affine.for %[[VAL_34:.*]] = 0 to #[[$ATTR_0]](){{\[}}%[[VAL_22]]] iter_args(%[[VAL_35:.*]] = %[[VAL_12]]) -> (f32) {
+// CHECK:                   %[[VAL_36:.*]] = affine.vector_load %[[VAL_14]][(%[[VAL_31]] * symbol(%[[VAL_19]])) * 4 + %[[VAL_30]] * 4 + %[[VAL_34]] * 64 + (%[[VAL_26]] * (symbol(%[[VAL_18]]) * 16)) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:                   affine.vector_store %[[VAL_36]], %[[VAL_28]]{{\[}}%[[VAL_31]] * 64 + %[[VAL_30]] * 4] : memref<1024xi8, 3>, vector<4xi8>
+// CHECK:                   %[[VAL_37:.*]] = affine.vector_load %[[VAL_13]][(%[[VAL_31]] * symbol(%[[VAL_17]])) * 4 + %[[VAL_30]] * 4 + %[[VAL_25]] * 64 + (%[[VAL_34]] * (symbol(%[[VAL_16]]) * 16)) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:                   affine.vector_store %[[VAL_37]], %[[VAL_29]]{{\[}}%[[VAL_31]] * 64 + %[[VAL_30]] * 4] : memref<1024xi8, 3>, vector<4xi8>
+// CHECK:                   "affine.barrier"(%[[VAL_30]], %[[VAL_31]], %[[VAL_32]]) : (index, index, index) -> ()
+// CHECK:                   %[[VAL_38:.*]] = affine.for %[[VAL_39:.*]] = 0 to 16 iter_args(%[[VAL_40:.*]] = %[[VAL_35]]) -> (f32) {
+// CHECK:                     %[[VAL_41:.*]] = affine.vector_load %[[VAL_28]]{{\[}}%[[VAL_31]] * 64 + %[[VAL_39]] * 4] : memref<1024xi8, 3>, vector<4xi8>
+// CHECK:                     %[[VAL_42:.*]] = llvm.bitcast %[[VAL_41]] : vector<4xi8> to f32
+// CHECK:                     %[[VAL_43:.*]] = affine.vector_load %[[VAL_29]]{{\[}}%[[VAL_39]] * 64 + %[[VAL_30]] * 4] : memref<1024xi8, 3>, vector<4xi8>
+// CHECK:                     %[[VAL_44:.*]] = llvm.bitcast %[[VAL_43]] : vector<4xi8> to f32
+// CHECK:                     %[[VAL_45:.*]] = llvm.fmul %[[VAL_42]], %[[VAL_44]]  {fastmathFlags = #[[?]]<contract>} : f32
+// CHECK:                     %[[VAL_46:.*]] = llvm.fadd %[[VAL_40]], %[[VAL_45]]  {fastmathFlags = #[[?]]<contract>} : f32
+// CHECK:                     affine.yield %[[VAL_46]] : f32
+// CHECK:                   }
+// CHECK:                   "affine.barrier"(%[[VAL_30]], %[[VAL_31]], %[[VAL_32]]) : (index, index, index) -> ()
+// CHECK:                   affine.yield %[[VAL_38]] : f32
+// CHECK:                 }
+// CHECK:                 %[[VAL_47:.*]] = llvm.bitcast %[[VAL_33]] : f32 to vector<4xi8>
+// CHECK:                 affine.vector_store %[[VAL_47]], %[[VAL_15]]{{\[}}%[[VAL_25]] * 64 + %[[VAL_30]] * 4 + (%[[VAL_31]] * symbol(%[[VAL_21]])) * 4 + (%[[VAL_26]] * (symbol(%[[VAL_20]]) * 16)) * 4] : memref<?xi8>, vector<4xi8>
+// CHECK:               } {gpu.par.block}
+// CHECK:             } {gpu.par.grid}
+// CHECK:             llvm.return
+// CHECK:           }
+// CHECK:         }
     llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: i32, %arg7: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.writeonly}, %arg8: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg9: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg10: i32 {llvm.noundef}, %arg11: i32 {llvm.noundef}) comdat(@__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii) attributes {gpu.par.kernel, sym_visibility = "private"} {
       %c4_i32 = arith.constant 4 : i32
       %0 = llvm.mlir.constant(0.000000e+00 : f32) : f32
