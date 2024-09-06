@@ -13,6 +13,7 @@
 #ifndef AFFINE_OPS
 #define AFFINE_OPS
 
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/Dialect/Arith/IR/ArithBase.td"
 include "mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -345,14 +346,10 @@ def AffineForOp : Affine_Op<"for",
   let hasRegionVerifier = 1;
 }
 
-def AffineLoadVar : Affine_Op<"load_var", [Pure]> {
-  let arguments = (ins Variadic<AnyType>:$variables);
-  let summary = "Fake load an SSA value for conversion to ISL";
-}
-
 def AffineStoreVar : Affine_Op<"store_var", [Pure]> {
-  let arguments = (ins Variadic<AnyType>:$variables);
-  let summary = "Fake load an SSA value for conversion to ISL";
+  let arguments = (ins Variadic<AnyType>:$variables,
+                       Builtin_StringAttr:$type);
+  let summary = "Fake store an SSA value for conversion to ISL";
 }
 
 def AffineBarrierOp : Affine_Op<"barrier"> {
