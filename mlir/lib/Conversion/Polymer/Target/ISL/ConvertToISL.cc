@@ -241,7 +241,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   polly::Scop S;
   polly::DependenceInfo DI;
   DI.runOnScop(S);
-  DI.getDependences(polly::Dependences::AL_Access);
+  DI.getDependences(polly::AL_Access);
 
   return scop;
 }
