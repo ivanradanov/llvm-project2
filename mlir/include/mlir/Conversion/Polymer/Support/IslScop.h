@@ -126,7 +126,8 @@ private:
   unsigned loopId = 0;
 
   template <typename T>
-  __isl_give isl_schedule *buildLoopSchedule(T loopOp, unsigned depth);
+  __isl_give isl_schedule *buildLoopSchedule(T loopOp, unsigned depth,
+                                             unsigned numDims, bool permutable);
   __isl_give isl_schedule *
   buildParallelSchedule(mlir::affine::AffineParallelOp parallelOp,
                         unsigned depth);

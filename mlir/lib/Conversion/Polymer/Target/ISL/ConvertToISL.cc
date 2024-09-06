@@ -73,7 +73,8 @@ public:
 
 private:
   /// Find all statements that calls a scop.stmt.
-  void buildScopStmtMap(Operation *f, IRMapping &map, IslScop::ScopStmtNames *scopStmtNames,
+  void buildScopStmtMap(Operation *f, IRMapping &map,
+                        IslScop::ScopStmtNames *scopStmtNames,
                         IslScop::ScopStmtMap *scopStmtMap) const;
 
   /// Build the scop context. The domain of each scop stmt will be updated, by
@@ -157,6 +158,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
       bool needToLoadOperands = true;
+      bool needToStoreResults = true;
       auto unitMap = AffineMap::get(op->getContext());
       affine::AffineValueMap map(unitMap, ValueRange{}, ValueRange{});
       if (!isMemoryEffectFree(op)) {
@@ -183,31 +185,51 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
           }
           vMap.reset(map, indices);
 
-          [[maybe_unused]] auto ret =
-              scop->addAccessRelation(stmtId, isRead, storeMap.lookupOrDefault(memref), vMap, domain);
+          [[maybe_unused]] auto ret = scop->addAccessRelation(
+              stmtId, isRead, storeMap.lookupOrDefault(memref), vMap, domain);
           assert(succeeded(ret));
           needToLoadOperands = false;
-        } else if (auto storeVar = dyn_cast<affine::AffineStoreVar>(op)) {
-          assert(storeVar->getNumOperands() == 2);
-          Value val = storeMap.lookupOrDefault(storeVar->getOperand(0));
-          Value addr = storeMap.lookupOrDefault(storeVar->getOperand(1));
-          (void)scop->addAccessRelation(stmtId, /*isRead=*/false, val, map,
-                                        domain);
-          (void)scop->addAccessRelation(stmtId, /*isRead=*/false, addr, map,
-                                        domain);
-
         } else {
           assert((isa<memref::AllocOp, memref::AllocaOp>(op)));
+          needToLoadOperands = false;
+          needToStoreResults = false;
         }
+      } else if (auto storeVar = dyn_cast<affine::AffineStoreVar>(op)) {
+        assert(storeVar->getNumOperands() == 2);
+        Value val = storeMap.lookupOrDefault(storeVar->getOperand(0));
+        Value addr = storeMap.lookupOrDefault(storeVar->getOperand(1));
+        (void)scop->addAccessRelation(stmtId, /*isRead=*/false, val, map,
+                                      domain);
+        (void)scop->addAccessRelation(stmtId, /*isRead=*/false, addr, map,
+                                      domain);
+        needToLoadOperands = false;
+        needToStoreResults = false;
+      } else if (auto yield = dyn_cast<affine::AffineYieldOp>(op)) {
+        for (auto [res, opr] :
+             llvm::zip(ValueRange(yield->getParentOp()->getResults()),
+                       ValueRange(yield->getOperands()))) {
+          (void)scop->addAccessRelation(stmtId, /*isRead=*/false,
+                                        storeMap.lookupOrDefault(res), map,
+                                        domain);
+          (void)scop->addAccessRelation(stmtId, /*isRead=*/true,
+                                        storeMap.lookupOrDefault(opr), map,
+                                        domain);
+        }
+        needToLoadOperands = false;
+        needToStoreResults = false;
       }
-      for (auto res : op->getResults()) {
-        auto ret =
-            scop->addAccessRelation(stmtId, /*isRead=*/false, storeMap.lookupOrDefault(res), map, domain);
-        assert(succeeded(ret));
+      if (needToStoreResults) {
+        for (auto res : op->getResults()) {
+          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/false,
+                                             storeMap.lookupOrDefault(res), map,
+                                             domain);
+          assert(succeeded(ret));
+        }
       }
       if (needToLoadOperands) {
         for (auto opr : op->getOperands()) {
-          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/true, storeMap.lookupOrDefault(opr), map,
+          auto ret = scop->addAccessRelation(stmtId, /*isRead=*/true,
+                                             storeMap.lookupOrDefault(opr), map,
                                              domain);
           assert(succeeded(ret));
         }
@@ -223,10 +245,14 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   return scop;
 }
 
-static void createForIterArgAccesses(affine::AffineForOp forOp, IRMapping &map) {
+static void createForIterArgAccesses(affine::AffineForOp forOp,
+                                     IRMapping &map) {
   OpBuilder builder(forOp);
-  for (auto [ba, res] : llvm::zip(ValueRange(forOp.getInitsMutable()), ValueRange(forOp.getResults())))
-    builder.create<affine::AffineStoreVar>(forOp.getLoc(), ValueRange{ba, res}, builder.getStringAttr("for.iv.init"));
+  for (auto [ba, res] : llvm::zip(ValueRange(forOp.getInitsMutable()),
+                                  ValueRange(forOp.getResults())))
+    builder.create<affine::AffineStoreVar>(
+        forOp.getLoc(), ValueRange{ba, res},
+        builder.getStringAttr("for.iv.init"));
   map.map(forOp.getRegionIterArgs(), forOp.getResults());
 }
 
@@ -234,7 +260,8 @@ static void createForIterArgAccesses(affine::AffineForOp forOp, IRMapping &map) 
 void IslScopBuilder::buildScopStmtMap(Operation *f, IRMapping &map,
                                       IslScop::ScopStmtNames *scopStmtNames,
                                       IslScop::ScopStmtMap *scopStmtMap) const {
-  f->walk([&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
+  f->walk(
+      [&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
     if (isa<affine::AffineForOp, affine::AffineIfOp, affine::AffineParallelOp>(
@@ -242,7 +269,8 @@ void IslScopBuilder::buildScopStmtMap(Operation *f, IRMapping &map,
       return;
     if (op == f)
       return;
-    std::string calleeName = "S" + std::to_string(stmtId++) + "." + op->getName().getStringRef().str();
+    std::string calleeName = "S" + std::to_string(stmtId++) + "." +
+                             op->getName().getStringRef().str();
     op->setAttr("polymer.stmt.name",
                 StringAttr::get(f->getContext(), calleeName));
     scopStmtNames->push_back(calleeName);

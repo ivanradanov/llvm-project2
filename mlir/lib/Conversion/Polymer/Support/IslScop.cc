@@ -2,14 +2,14 @@
 
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
 #include "mlir/Analysis/Presburger/PresburgerSpace.h"
+#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
-#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
@@ -150,11 +150,7 @@ static bool isParallelLoopMark(isl_id *id) {
   return std::string(parallelLoopMark) == isl_id_get_name(id);
 }
 
-isl_schedule *
-IslScop::buildParallelSchedule(affine::AffineParallelOp parallelOp,
-                               unsigned depth) {
-  assert(parallelOp->getNumResults() == 0 && "no parallel reductions");
-  isl_schedule *schedule = buildLoopSchedule(parallelOp, depth);
+static isl_schedule *markPermutable(isl_schedule *schedule) {
   isl_schedule_node *node = isl_schedule_get_root(schedule);
   schedule = isl_schedule_free(schedule);
   node = isl_schedule_node_first_child(node);
@@ -165,28 +161,47 @@ IslScop::buildParallelSchedule(affine::AffineParallelOp parallelOp,
   return schedule;
 }
 
+isl_schedule *
+IslScop::buildParallelSchedule(affine::AffineParallelOp parallelOp,
+                               unsigned depth) {
+  assert(parallelOp->getNumResults() == 0 && "no parallel reductions");
+  isl_schedule *schedule =
+      buildLoopSchedule(parallelOp, depth, parallelOp.getNumDims(), true);
+  return markPermutable(schedule);
+}
+
 template <typename T>
-isl_schedule *IslScop::buildLoopSchedule(T loopOp, unsigned depth) {
+isl_schedule *IslScop::buildLoopSchedule(T loopOp, unsigned depth,
+                                         unsigned numDims, bool permutable) {
   SmallVector<Operation *> body = getSequenceScheduleOpList(loopOp.getBody());
 
-  isl_schedule *child = buildSequenceSchedule(body, depth + 1);
+  isl_schedule *child = buildSequenceSchedule(body, depth + numDims);
   ISL_DEBUG("CHILD:\n", isl_schedule_dump(child));
-  isl_union_set *domain = isl_schedule_get_domain(child);
-  ISL_DEBUG("MUPA dom: ", isl_union_set_dump(domain));
-  isl_multi_union_pw_aff *mupa = mapToDimension(domain, depth);
-  mupa = isl_multi_union_pw_aff_set_tuple_name(
-      mupa, isl_dim_set, ("L" + std::to_string(loopId++)).c_str());
-  ISL_DEBUG("MUPA: ", isl_multi_union_pw_aff_dump(mupa));
-  schedule = isl_schedule_insert_partial_schedule(child, mupa);
+  isl_schedule *schedule = child;
+  for (unsigned dim = 0; dim < numDims; dim++) {
+    isl_union_set *domain = isl_schedule_get_domain(schedule);
+    ISL_DEBUG("MUPA dom: ", isl_union_set_dump(domain));
+    isl_multi_union_pw_aff *mupa =
+        mapToDimension(domain, depth + numDims - dim - 1);
+    mupa = isl_multi_union_pw_aff_set_tuple_name(
+        mupa, isl_dim_set,
+        ("L" + std::to_string(loopId++) + "." +
+         loopOp->getName().getStringRef().str())
+            .c_str());
+    ISL_DEBUG("MUPA: ", isl_multi_union_pw_aff_dump(mupa));
+    schedule = isl_schedule_insert_partial_schedule(schedule, mupa);
+    if (permutable)
+      schedule = markPermutable(schedule);
+  }
 
-  ISL_DEBUG("Created for schedule:\n", isl_schedule_dump(schedule));
+  ISL_DEBUG("Created loop schedule:\n", isl_schedule_dump(schedule));
 
   return schedule;
 }
 
 isl_schedule *IslScop::buildForSchedule(affine::AffineForOp forOp,
                                         unsigned depth) {
-  isl_schedule *schedule = buildLoopSchedule(forOp, depth);
+  isl_schedule *schedule = buildLoopSchedule(forOp, depth, 1, false);
   return schedule;
 }
 
