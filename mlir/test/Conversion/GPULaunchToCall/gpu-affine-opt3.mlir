@@ -1,3 +1,4 @@
+// REQUIRES; asserts
 // RUN: mlir-opt %s --pass-pipeline="builtin.module(llvm-to-affine-access)" -debug-only=gpu-affine-opt 2>&1 | FileCheck %s --check-prefix=SCHEDULE
 
 #tbaa_root = #llvm.tbaa_root<id = "Simple C++ TBAA">
