@@ -31,6 +31,8 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "isl/schedule.h"
+
 using namespace mlir;
 
 #define DEBUG_TYPE "gpu-affine-opt"
@@ -263,7 +265,7 @@ void optGlobalSharedMemCopies(Operation *root) {
 void transform(LLVM::LLVMFuncOp f) {
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
   LLVM_DEBUG({
-    scop->dumpSchedule(llvm::dbgs());
+    isl_schedule_dump(scop->getSchedule());
     scop->dumpAccesses(llvm::dbgs());
   });
 }

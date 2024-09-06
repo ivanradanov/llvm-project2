@@ -26,3 +26,9 @@ add_mlir_conversion_library(MLIRGPULaunchToCall
   PolymerSupport
   PolymerTargetISL
   )
+
+target_include_directories(MLIRGPULaunchToCall
+  PRIVATE
+  ${MLIR_MAIN_INCLUDE_DIR}/../../polly/lib/External/isl/include/
+  ${LLVM_BINARY_DIR}/tools/polly/lib/External/isl/include
+)
