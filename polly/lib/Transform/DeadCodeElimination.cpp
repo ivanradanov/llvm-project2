@@ -146,14 +146,14 @@ static bool runDeadCodeElimination(Scop &S, int PreciseSteps,
 
 bool DeadCodeElimWrapperPass::runOnScop(Scop &S) {
   auto &DI = getAnalysis<DependenceInfo>();
-  const Dependences &Deps = DI.getDependences(Dependences::AL_Statement);
+  const Dependences &Deps = DI.getDependences(AL_Statement);
 
   bool Changed = runDeadCodeElimination(S, DCEPreciseSteps, Deps);
 
   // FIXME: We can probably avoid the recomputation of all dependences by
   // updating them explicitly.
   if (Changed)
-    DI.recomputeDependences(Dependences::AL_Statement);
+    DI.recomputeDependences(AL_Statement);
 
   return false;
 }
@@ -173,14 +173,14 @@ llvm::PreservedAnalyses DeadCodeElimPass::run(Scop &S, ScopAnalysisManager &SAM,
                                               ScopStandardAnalysisResults &SAR,
                                               SPMUpdater &U) {
   DependenceAnalysis::Result &DA = SAM.getResult<DependenceAnalysis>(S, SAR);
-  const Dependences &Deps = DA.getDependences(Dependences::AL_Statement);
+  const Dependences &Deps = DA.getDependences(AL_Statement);
 
   bool Changed = runDeadCodeElimination(S, DCEPreciseSteps, Deps);
 
   // FIXME: We can probably avoid the recomputation of all dependences by
   // updating them explicitly.
   if (Changed)
-    DA.recomputeDependences(Dependences::AL_Statement);
+    DA.recomputeDependences(AL_Statement);
 
   if (!Changed)
     return PreservedAnalyses::all();

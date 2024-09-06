@@ -1,4 +1,4 @@
-//===- DependenceInfo.cpp - Calculate dependency information for a Scop. --===//
+//===- DependenceInfo.cpp - Calculate dependency information for a ScopInterface. --===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,11 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Calculate the data dependency relations for a Scop using ISL.
+// Calculate the data dependency relations for a ScopInterface using ISL.
 //
 // The integer set library (ISL) from Sven, has a integrated dependency analysis
 // to calculate data dependences. This pass takes advantage of this and
-// calculate those dependences a Scop.
+// calculate those dependences a ScopInterface.
 //
 // The dependences in this pass are exact in terms that for a specific read
 // statement instance only the last write statement instance is returned. In
@@ -69,18 +69,18 @@ static cl::opt<enum AnalysisType> OptAnalysisType(
                           "Overapproximation of dependences")),
     cl::Hidden, cl::init(VALUE_BASED_ANALYSIS), cl::cat(PollyCategory));
 
-static cl::opt<Dependences::AnalysisLevel> OptAnalysisLevel(
+static cl::opt<DependencesAnalysisLevel> OptAnalysisLevel(
     "polly-dependences-analysis-level",
     cl::desc("The level of dependence analysis"),
-    cl::values(clEnumValN(Dependences::AL_Statement, "statement-wise",
+    cl::values(clEnumValN(AL_Statement, "statement-wise",
                           "Statement-level analysis"),
-               clEnumValN(Dependences::AL_Reference, "reference-wise",
+               clEnumValN(AL_Reference, "reference-wise",
                           "Memory reference level analysis that distinguish"
                           " accessed references in the same statement"),
-               clEnumValN(Dependences::AL_Access, "access-wise",
+               clEnumValN(AL_Access, "access-wise",
                           "Memory reference level analysis that distinguish"
                           " access instructions in the same statement")),
-    cl::Hidden, cl::init(Dependences::AL_Statement), cl::cat(PollyCategory));
+    cl::Hidden, cl::init(AL_Statement), cl::cat(PollyCategory));
 
 //===----------------------------------------------------------------------===//
 
@@ -98,12 +98,12 @@ static __isl_give isl_map *tag(__isl_take isl_map *Relation,
 
 /// Tag the @p Relation domain with either MA->getArrayId() or
 ///        MA->getId() based on @p TagLevel
-static __isl_give isl_map *tag(__isl_take isl_map *Relation, MemoryAccess *MA,
-                               Dependences::AnalysisLevel TagLevel) {
-  if (TagLevel == Dependences::AL_Reference)
+static __isl_give isl_map *tag(__isl_take isl_map *Relation, MemoryAccessInterface *MA,
+                               DependencesAnalysisLevel TagLevel) {
+  if (TagLevel == AL_Reference)
     return tag(Relation, MA->getArrayId().release());
 
-  if (TagLevel == Dependences::AL_Access)
+  if (TagLevel == AL_Access)
     return tag(Relation, MA->getId().release());
 
   // No need to tag at the statement level.
@@ -111,11 +111,12 @@ static __isl_give isl_map *tag(__isl_take isl_map *Relation, MemoryAccess *MA,
 }
 
 /// Collect information about the SCoP @p S.
-static void collectInfo(Scop &S, isl_union_map *&Read,
+void Dependences::ScopInterface::collectInfo(isl_union_map *&Read,
                         isl_union_map *&MustWrite, isl_union_map *&MayWrite,
                         isl_union_map *&ReductionTagMap,
                         isl_union_set *&TaggedStmtDomain,
-                        Dependences::AnalysisLevel Level) {
+                        DependencesAnalysisLevel Level) {
+  ScopInterface &S = *this;
   isl_space *Space = S.getParamSpace().release();
   Read = isl_union_map_empty(isl_space_copy(Space));
   MustWrite = isl_union_map_empty(isl_space_copy(Space));
@@ -125,14 +126,14 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
 
   SmallPtrSet<const ScopArrayInfo *, 8> ReductionArrays;
   if (UseReductions)
-    for (ScopStmt &Stmt : S)
-      for (MemoryAccess *MA : Stmt)
+    for (ScopStmtInterface *Stmt : S.getStmts())
+      for (MemoryAccessInterface *MA : Stmt->getMemoryAccesses())
         if (MA->isReductionLike())
           ReductionArrays.insert(MA->getScopArrayInfo());
 
-  for (ScopStmt &Stmt : S) {
-    for (MemoryAccess *MA : Stmt) {
-      isl_set *domcp = Stmt.getDomain().release();
+  for (ScopStmtInterface *Stmt : S.getStmts()) {
+    for (MemoryAccessInterface *MA : Stmt->getMemoryAccesses()) {
+      isl_set *domcp = Stmt->getDomain().release();
       isl_map *accdom = MA->getAccessRelation().release();
 
       accdom = isl_map_intersect_domain(accdom, domcp);
@@ -154,8 +155,8 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
         accdom = isl_map_range_map(accdom);
       } else {
         accdom = tag(accdom, MA, Level);
-        if (Level > Dependences::AL_Statement) {
-          isl_map *StmtScheduleMap = Stmt.getSchedule().release();
+        if (Level > AL_Statement) {
+          isl_map *StmtScheduleMap = Stmt->getSchedule().release();
           assert(StmtScheduleMap &&
                  "Schedules that contain extension nodes require special "
                  "handling.");
@@ -172,9 +173,9 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
         MustWrite = isl_union_map_add_map(MustWrite, accdom);
     }
 
-    if (!ReductionArrays.empty() && Level == Dependences::AL_Statement)
+    if (!ReductionArrays.empty() && Level == AL_Statement)
       StmtSchedule =
-          isl_union_map_add_map(StmtSchedule, Stmt.getSchedule().release());
+          isl_union_map_add_map(StmtSchedule, Stmt->getSchedule().release());
   }
 
   StmtSchedule = isl_union_map_intersect_params(
@@ -308,14 +309,14 @@ static __isl_give isl_union_flow *buildFlow(__isl_keep isl_union_map *Snk,
   return Flow;
 }
 
-void Dependences::calculateDependences(Scop &S) {
+void Dependences::calculateDependences(ScopInterface &S) {
   isl_union_map *Read, *MustWrite, *MayWrite, *ReductionTagMap;
   isl_schedule *Schedule;
   isl_union_set *TaggedStmtDomain;
 
-  POLLY_DEBUG(dbgs() << "Scop: \n" << S << "\n");
+  // POLLY_DEBUG(dbgs() << "ScopInterface: \n" << S << "\n");
 
-  collectInfo(S, Read, MustWrite, MayWrite, ReductionTagMap, TaggedStmtDomain,
+  S.collectInfo(Read, MustWrite, MayWrite, ReductionTagMap, TaggedStmtDomain,
               Level);
 
   bool HasReductions = !isl_union_map_is_empty(ReductionTagMap);
@@ -527,8 +528,8 @@ void Dependences::calculateDependences(Scop &S) {
 
   // Step 1)
   RED = isl_union_map_empty(isl_union_map_get_space(RAW));
-  for (ScopStmt &Stmt : S) {
-    for (MemoryAccess *MA : Stmt) {
+  for (ScopStmtInterface *Stmt : S.getStmts()) {
+    for (MemoryAccessInterface *MA : Stmt->getMemoryAccesses()) {
       if (!MA->isReductionLike())
         continue;
       isl_set *AccDomW = isl_map_wrap(MA->getAccessRelation().release());
@@ -572,8 +573,8 @@ void Dependences::calculateDependences(Scop &S) {
   // We then move this portion of reduction dependences back to the statement ->
   // statement space and add a mapping from the memory access to these
   // dependences.
-  for (ScopStmt &Stmt : S) {
-    for (MemoryAccess *MA : Stmt) {
+  for (ScopStmtInterface *Stmt : S.getStmts()) {
+    for (MemoryAccessInterface *MA : Stmt->getMemoryAccesses()) {
       if (!MA->isReductionLike())
         continue;
 
@@ -635,12 +636,12 @@ void Dependences::calculateDependences(Scop &S) {
   POLLY_DEBUG(dump());
 }
 
-bool Dependences::isValidSchedule(Scop &S, isl::schedule NewSched) const {
+bool Dependences::isValidSchedule(ScopInterface &S, isl::schedule NewSched) const {
   // TODO: Also check permutable/coincident flags as well.
 
   StatementToIslMapTy NewSchedules;
   for (auto NewMap : NewSched.get_map().get_map_list()) {
-    auto Stmt = reinterpret_cast<ScopStmt *>(
+    auto Stmt = reinterpret_cast<ScopStmtInterface *>(
         NewMap.get_tuple_id(isl::dim::in).get_user());
     NewSchedules[Stmt] = NewMap;
   }
@@ -649,7 +650,7 @@ bool Dependences::isValidSchedule(Scop &S, isl::schedule NewSched) const {
 }
 
 bool Dependences::isValidSchedule(
-    Scop &S, const StatementToIslMapTy &NewSchedule) const {
+    ScopInterface &S, const StatementToIslMapTy &NewSchedule) const {
   if (LegalityCheckDisabled)
     return true;
 
@@ -658,12 +659,12 @@ bool Dependences::isValidSchedule(
 
   isl::space ScheduleSpace;
 
-  for (ScopStmt &Stmt : S) {
+  for (ScopStmtInterface *Stmt : S.getStmts()) {
     isl::map StmtScat;
 
-    auto Lookup = NewSchedule.find(&Stmt);
+    auto Lookup = NewSchedule.find(Stmt);
     if (Lookup == NewSchedule.end())
-      StmtScat = Stmt.getSchedule();
+      StmtScat = Stmt->getSchedule();
     else
       StmtScat = Lookup->second;
     assert(!StmtScat.is_null() &&
@@ -823,11 +824,11 @@ bool Dependences::hasValidDependences() const {
 }
 
 __isl_give isl_map *
-Dependences::getReductionDependences(MemoryAccess *MA) const {
+Dependences::getReductionDependences(MemoryAccessInterface *MA) const {
   return isl_map_copy(ReductionDependences.lookup(MA));
 }
 
-void Dependences::setReductionDependences(MemoryAccess *MA,
+void Dependences::setReductionDependences(MemoryAccessInterface *MA,
                                           __isl_take isl_map *D) {
   assert(ReductionDependences.count(MA) == 0 &&
          "Reduction dependences set twice!");
@@ -835,7 +836,7 @@ void Dependences::setReductionDependences(MemoryAccess *MA,
 }
 
 const Dependences &
-DependenceAnalysis::Result::getDependences(Dependences::AnalysisLevel Level) {
+DependenceAnalysis::Result::getDependences(DependencesAnalysisLevel Level) {
   if (Dependences *d = D[Level].get())
     return *d;
 
@@ -843,7 +844,7 @@ DependenceAnalysis::Result::getDependences(Dependences::AnalysisLevel Level) {
 }
 
 const Dependences &DependenceAnalysis::Result::recomputeDependences(
-    Dependences::AnalysisLevel Level) {
+    DependencesAnalysisLevel Level) {
   D[Level].reset(new Dependences(S.getSharedIslCtx(), Level));
   D[Level]->calculateDependences(S);
   return *D[Level];
@@ -882,7 +883,7 @@ DependenceInfoPrinterPass::run(Scop &S, ScopAnalysisManager &SAM,
 }
 
 const Dependences &
-DependenceInfo::getDependences(Dependences::AnalysisLevel Level) {
+DependenceInfo::getDependences(DependencesAnalysisLevel Level) {
   if (Dependences *d = D[Level].get())
     return *d;
 
@@ -890,7 +891,7 @@ DependenceInfo::getDependences(Dependences::AnalysisLevel Level) {
 }
 
 const Dependences &
-DependenceInfo::recomputeDependences(Dependences::AnalysisLevel Level) {
+DependenceInfo::recomputeDependences(DependencesAnalysisLevel Level) {
   D[Level].reset(new Dependences(S->getSharedIslCtx(), Level));
   D[Level]->calculateDependences(*S);
   return *D[Level];
@@ -901,14 +902,14 @@ void DependenceInfo::abandonDependences() {
     Deps.release();
 }
 
-bool DependenceInfo::runOnScop(Scop &ScopVar) {
+bool DependenceInfo::runOnScop(ScopInterface &ScopVar) {
   S = &ScopVar;
   return false;
 }
 
 /// Print the dependences for the given SCoP to @p OS.
 
-void polly::DependenceInfo::printScop(raw_ostream &OS, Scop &S) const {
+void polly::DependenceInfo::printScop(raw_ostream &OS, ScopInterface &S) const {
   if (auto d = D[OptAnalysisLevel].get()) {
     d->print(OS);
     return;
@@ -986,8 +987,8 @@ INITIALIZE_PASS_END(DependenceInfoPrinterLegacyPass, "polly-print-dependences",
 //===----------------------------------------------------------------------===//
 
 const Dependences &
-DependenceInfoWrapperPass::getDependences(Scop *S,
-                                          Dependences::AnalysisLevel Level) {
+DependenceInfoWrapperPass::getDependences(ScopInterface *S,
+                                          DependencesAnalysisLevel Level) {
   auto It = ScopToDepsMap.find(S);
   if (It != ScopToDepsMap.end())
     if (It->second) {
@@ -998,7 +999,7 @@ DependenceInfoWrapperPass::getDependences(Scop *S,
 }
 
 const Dependences &DependenceInfoWrapperPass::recomputeDependences(
-    Scop *S, Dependences::AnalysisLevel Level) {
+    ScopInterface *S, DependencesAnalysisLevel Level) {
   std::unique_ptr<Dependences> D(new Dependences(S->getSharedIslCtx(), Level));
   D->calculateDependences(*S);
   auto Inserted = ScopToDepsMap.insert(std::make_pair(S, std::move(D)));
@@ -1009,14 +1010,14 @@ bool DependenceInfoWrapperPass::runOnFunction(Function &F) {
   auto &SI = *getAnalysis<ScopInfoWrapperPass>().getSI();
   for (auto &It : SI) {
     assert(It.second && "Invalid SCoP object!");
-    recomputeDependences(It.second.get(), Dependences::AL_Access);
+    recomputeDependences(It.second.get(), AL_Access);
   }
   return false;
 }
 
 void DependenceInfoWrapperPass::print(raw_ostream &OS, const Module *M) const {
   for (auto &It : ScopToDepsMap) {
-    assert((It.first && It.second) && "Invalid Scop or Dependence object!\n");
+    assert((It.first && It.second) && "Invalid ScopInterface or Dependence object!\n");
     It.second->print(OS);
   }
 }

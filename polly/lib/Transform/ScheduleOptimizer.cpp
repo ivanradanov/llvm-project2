@@ -716,7 +716,7 @@ static void walkScheduleTreeForStatistics(isl::schedule Schedule, int Version) {
 
 static void runIslScheduleOptimizer(
     Scop &S,
-    function_ref<const Dependences &(Dependences::AnalysisLevel)> GetDeps,
+    function_ref<const Dependences &(DependencesAnalysisLevel)> GetDeps,
     TargetTransformInfo *TTI, OptimizationRemarkEmitter *ORE,
     isl::schedule &LastSchedule, bool &DepsChanged) {
   // Skip empty SCoPs but still allow code generation as it will delete the
@@ -736,7 +736,7 @@ static void runIslScheduleOptimizer(
   bool HasUserTransformation = false;
   if (PragmaBasedOpts) {
     isl::schedule ManuallyTransformed = applyManualTransformations(
-        &S, Schedule, GetDeps(Dependences::AL_Statement), ORE);
+        &S, Schedule, GetDeps(AL_Statement), ORE);
     if (ManuallyTransformed.is_null()) {
       POLLY_DEBUG(dbgs() << "Error during manual optimization\n");
       return;
@@ -761,7 +761,7 @@ static void runIslScheduleOptimizer(
   }
 
   // Get dependency analysis.
-  const Dependences &D = GetDeps(Dependences::AL_Statement);
+  const Dependences &D = GetDeps(AL_Statement);
   if (D.getSharedIslCtx() != S.getSharedIslCtx()) {
     POLLY_DEBUG(dbgs() << "DependenceInfo for another SCoP/isl_ctx\n");
     return;
@@ -938,9 +938,9 @@ bool IslScheduleOptimizerWrapperPass::runOnScop(Scop &S) {
   IslCtx = S.getSharedIslCtx();
 
   auto getDependences =
-      [this](Dependences::AnalysisLevel) -> const Dependences & {
+      [this](DependencesAnalysisLevel) -> const Dependences & {
     return getAnalysis<DependenceInfo>().getDependences(
-        Dependences::AL_Statement);
+        AL_Statement);
   };
   OptimizationRemarkEmitter &ORE =
       getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
@@ -1013,8 +1013,8 @@ runIslScheduleOptimizerUsingNPM(Scop &S, ScopAnalysisManager &SAM,
                                 ScopStandardAnalysisResults &SAR, SPMUpdater &U,
                                 raw_ostream *OS) {
   DependenceAnalysis::Result &Deps = SAM.getResult<DependenceAnalysis>(S, SAR);
-  auto GetDeps = [&Deps](Dependences::AnalysisLevel) -> const Dependences & {
-    return Deps.getDependences(Dependences::AL_Statement);
+  auto GetDeps = [&Deps](DependencesAnalysisLevel) -> const Dependences & {
+    return Deps.getDependences(AL_Statement);
   };
   OptimizationRemarkEmitter ORE(&S.getFunction());
   TargetTransformInfo *TTI = &SAR.TTI;

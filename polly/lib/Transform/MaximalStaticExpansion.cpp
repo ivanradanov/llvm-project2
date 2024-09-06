@@ -477,7 +477,7 @@ static PreservedAnalyses runMSEUsingNPM(Scop &S, ScopAnalysisManager &SAM,
   OptimizationRemarkEmitter ORE(&S.getFunction());
 
   auto &DI = SAM.getResult<DependenceAnalysis>(S, SAR);
-  auto &D = DI.getDependences(Dependences::AL_Reference);
+  auto &D = DI.getDependences(AL_Reference);
 
   std::unique_ptr<MaximalStaticExpansionImpl> Impl =
       runMaximalStaticExpansion(S, ORE, D);
@@ -522,7 +522,7 @@ bool MaximalStaticExpanderWrapperPass::runOnScop(Scop &S) {
 
   // Get the RAW Dependences.
   auto &DI = getAnalysis<DependenceInfo>();
-  auto &D = DI.getDependences(Dependences::AL_Reference);
+  auto &D = DI.getDependences(AL_Reference);
 
   std::unique_ptr<MaximalStaticExpansionImpl> Impl =
       runMaximalStaticExpansion(S, *ORE, D);
