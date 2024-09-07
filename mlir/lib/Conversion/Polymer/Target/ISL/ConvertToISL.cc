@@ -30,6 +30,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "polly/DependenceInfo.h"
+#include "polly/ScopInfo.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
@@ -62,7 +63,7 @@ affine::AffineParallelOp isBlockPar(Operation *op);
 } // namespace gpu
 } // namespace mlir
 
-namespace {
+namespace polymer {
 
 /// Build IslScop from FuncOp.
 class IslScopBuilder {
@@ -74,18 +75,15 @@ public:
 
 private:
   /// Find all statements that calls a scop.stmt.
-  void buildScopStmtMap(Operation *f, IRMapping &map,
-                        IslScop::ScopStmtNames *scopStmtNames,
-                        IslScop::ScopStmtMap *scopStmtMap) const;
+  void gatherStmts(Operation *f, IRMapping &map, IslScop::StmtVec &) const;
 
   /// Build the scop context. The domain of each scop stmt will be updated, by
   /// merging and aligning its IDs with the context as well.
   void buildScopContext(Operation *f, IslScop *scop,
-                        IslScop::ScopStmtMap *scopStmtMap,
                         affine::FlatAffineValueConstraints &ctx) const;
 };
 
-} // namespace
+} // namespace polymer
 
 /// Sometimes the domain generated might be malformed. It is always better to
 /// inform this at an early stage.
@@ -107,26 +105,20 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   // which the validate function won't discover, e.g., no context will cause
   // segfault when printing scop. Please don't just return this object.
   auto scop = std::make_unique<IslScop>();
-  // Mapping between scop stmt names and their caller/callee op pairs.
-  IslScop::ScopStmtMap *scopStmtMap = scop->getScopStmtMap();
-  auto *scopStmtNames = scop->getScopStmtNames();
 
   // Find all caller/callee pairs in which the callee has the attribute of name
   // SCOP_STMT_ATTR_NAME.
   IRMapping storeMap;
-  buildScopStmtMap(f, storeMap, scopStmtNames, scopStmtMap);
-  if (scopStmtMap->empty())
-    return nullptr;
+  gatherStmts(f, storeMap, scop->stmts);
 
   // Build context in it.
-  buildScopContext(f, scop.get(), scopStmtMap, ctx);
+  buildScopContext(f, scop.get(), ctx);
 
   scop->initializeSymbolTable(f, &ctx);
 
   // Counter for the statement inserted.
   unsigned stmtId = 0;
-  for (const auto &scopStmtName : *scopStmtNames) {
-    const ScopStmt &stmt = scopStmtMap->find(scopStmtName)->second;
+  for (auto &stmt : scop->stmts) {
     LLVM_DEBUG({
       dbgs() << "Adding relations to statement: \n";
       stmt.getOperation()->dump();
@@ -152,19 +144,21 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
       op->dump();
     });
 
-    // Create a statement in IslScop and setup relations in it.
-    scop->createStatement();
-    scop->addDomainRelation(stmtId, domain);
-
+    scop->addDomainRelation(stmt, domain);
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
-      auto addStore = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmtId, /*isRead=*/false,
+      auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
+        (void)scop->addAccessRelation(stmt, polly::MemoryAccess::MAY_WRITE,
+                                      storeMap.lookupOrDefault(memref), map,
+                                      domain);
+      };
+      auto addMustStore = [&](Value memref, affine::AffineValueMap map) {
+        (void)scop->addAccessRelation(stmt, polly::MemoryAccess::MUST_WRITE,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
       auto addLoad = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmtId, /*isRead=*/true,
+        (void)scop->addAccessRelation(stmt, polly::MemoryAccess::READ,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
@@ -187,7 +181,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
             map = loadOp.getAffineMap();
             vMap.reset(map, indices);
             addLoad(memref, vMap);
-            addStore(loadOp.getValue(), unitVMap);
+            addMustStore(loadOp.getValue(), unitVMap);
           } else {
             assert(isa<affine::AffineWriteOpInterface>(op) &&
                    "Affine read/write op expected");
@@ -196,7 +190,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
             llvm::append_range(indices, storeOp.getMapOperands());
             map = cast<affine::AffineWriteOpInterface>(op).getAffineMap();
             vMap.reset(map, indices);
-            addStore(memref, vMap);
+            addMustStore(memref, vMap);
             addLoad(storeOp.getValueToStore(), unitVMap);
           }
           needToLoadOperands = false;
@@ -211,14 +205,14 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         Value val = storeMap.lookupOrDefault(storeVar->getOperand(0));
         Value addr = storeMap.lookupOrDefault(storeVar->getOperand(1));
         addLoad(val, unitVMap);
-        addStore(addr, unitVMap);
+        addMustStore(addr, unitVMap);
         needToLoadOperands = false;
         needToStoreResults = false;
       } else if (auto yield = dyn_cast<affine::AffineYieldOp>(op)) {
         for (auto [res, opr] :
              llvm::zip(ValueRange(yield->getParentOp()->getResults()),
                        ValueRange(yield->getOperands()))) {
-          addStore(res, unitVMap);
+          addMustStore(res, unitVMap);
           addLoad(opr, unitVMap);
         }
         needToLoadOperands = false;
@@ -226,7 +220,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
       }
       if (needToStoreResults)
         for (auto res : op->getResults())
-          addStore(res, unitVMap);
+          addMustStore(res, unitVMap);
       if (needToLoadOperands)
         for (auto opr : op->getOperands())
           addLoad(opr, unitVMap);
@@ -252,10 +246,8 @@ static void createForIterArgAccesses(affine::AffineForOp forOp,
   map.map(forOp.getRegionIterArgs(), forOp.getResults());
 }
 
-/// Find all statements that calls a scop.stmt.
-void IslScopBuilder::buildScopStmtMap(Operation *f, IRMapping &map,
-                                      IslScop::ScopStmtNames *scopStmtNames,
-                                      IslScop::ScopStmtMap *scopStmtMap) const {
+void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
+                                 IslScop::StmtVec &stmts) const {
   f->walk(
       [&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
   unsigned stmtId = 0;
@@ -269,13 +261,12 @@ void IslScopBuilder::buildScopStmtMap(Operation *f, IRMapping &map,
                              op->getName().getStringRef().str();
     op->setAttr("polymer.stmt.name",
                 StringAttr::get(f->getContext(), calleeName));
-    scopStmtNames->push_back(calleeName);
-    scopStmtMap->insert(std::make_pair(calleeName, ScopStmt(op)));
+    stmts.push_back(ScopStmt(op));
   });
 }
 
 void IslScopBuilder::buildScopContext(
-    Operation *f, IslScop *scop, IslScop::ScopStmtMap *scopStmtMap,
+    Operation *f, IslScop *scop,
     affine::FlatAffineValueConstraints &ctx) const {
   LLVM_DEBUG(dbgs() << "--- Building SCoP context ...\n");
 
@@ -297,8 +288,8 @@ void IslScopBuilder::buildScopContext(
         symbols.insert(it, sym);
     }
   };
-  for (const auto &it : *scopStmtMap) {
-    auto domain = it.second.getDomain();
+  for (auto &stmt : scop->stmts) {
+    auto domain = stmt.getDomain();
     SmallVector<Value> syms;
     domain->getValues(domain->getNumDimVars(), domain->getNumDimAndSymbolVars(),
                       &syms);
@@ -324,12 +315,12 @@ void IslScopBuilder::buildScopContext(
   // the constraints from the domain to the context. Note that we don't want to
   // mess up with the original domain at this point. Trivial redundant
   // constraints will be removed.
-  for (const auto &it : *scopStmtMap) {
-    affine::FlatAffineValueConstraints *domain = it.second.getDomain();
+  for (auto &stmt : scop->stmts) {
+    affine::FlatAffineValueConstraints *domain = stmt.getDomain();
     affine::FlatAffineValueConstraints cst(*domain);
 
     LLVM_DEBUG(dbgs() << "Statement:\n");
-    LLVM_DEBUG(it.second.getOperation()->dump());
+    LLVM_DEBUG(stmt.getOperation()->dump());
     LLVM_DEBUG(dbgs() << "Target domain: \n");
     LLVM_DEBUG(domain->dump());
 
@@ -367,8 +358,8 @@ void IslScopBuilder::buildScopContext(
   ctx.getValues(ctx.getNumDimVars(), ctx.getNumDimAndSymbolVars(), &symValues);
 
   // Add and align domain SYMBOL columns.
-  for (const auto &it : *scopStmtMap) {
-    affine::FlatAffineValueConstraints *domain = it.second.getDomain();
+  for (auto &stmt : scop->stmts) {
+    affine::FlatAffineValueConstraints *domain = stmt.getDomain();
     // For any symbol missing in the domain, add them directly to the end.
     for (unsigned i = 0; i < ctx.getNumSymbolVars(); ++i) {
       unsigned pos;

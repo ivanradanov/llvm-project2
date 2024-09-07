@@ -6,6 +6,7 @@ add_mlir_conversion_library(MLIRGPULaunchToCall
   PromoteWhile.cpp
   GPUAffineOpt.cpp
   ReshapeMemrefs.cpp
+  DependenceInfo.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/GPULaunchToCall
@@ -29,6 +30,8 @@ add_mlir_conversion_library(MLIRGPULaunchToCall
 
 target_include_directories(MLIRGPULaunchToCall
   PRIVATE
+  ${POLYMER_MAIN_INCLUDE_DIR}/polymer/Target/ISL
+  ${MLIR_MAIN_INCLUDE_DIR}/../../polly/include/
   ${MLIR_MAIN_INCLUDE_DIR}/../../polly/lib/External/isl/include/
   ${LLVM_BINARY_DIR}/tools/polly/lib/External/isl/include
 )
