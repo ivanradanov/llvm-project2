@@ -1,3 +1,4 @@
+#include "DependenceInfo.h"
 #include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
@@ -268,6 +269,7 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_dump(scop->getSchedule());
     scop->dumpAccesses(llvm::dbgs());
   });
+  // polymer::Dependences deps;
 }
 
 } // namespace affine_opt

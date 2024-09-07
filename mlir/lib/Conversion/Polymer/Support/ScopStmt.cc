@@ -28,52 +28,6 @@ using namespace llvm;
 using namespace mlir;
 using namespace polymer;
 
-namespace polymer {
-
-class ScopStmtImpl {
-public:
-  using EnclosingOpList = SmallVector<Operation *, 8>;
-
-  ScopStmtImpl(llvm::StringRef name, Operation *op) : name(name), op(op) {}
-
-  static std::unique_ptr<ScopStmtImpl> get(Operation *op);
-
-  /// A helper function that builds the domain constraints of the
-  /// caller, and find and insert all enclosing for/if ops to enclosingOps.
-  void initializeDomainAndEnclosingOps();
-
-  void getArgsValueMapping(IRMapping &argMap);
-
-  /// Name of the callee, as well as the scop.stmt. It will also be the
-  /// symbol in the OpenScop representation.
-  llvm::StringRef name;
-  /// The statment operation
-  mlir::Operation *op;
-  /// The domain of the caller.
-  affine::FlatAffineValueConstraints domain;
-  /// Enclosing for/if operations for the caller.
-  EnclosingOpList enclosingOps;
-};
-
-} // namespace polymer
-
-/// Create ScopStmtImpl from only the caller/callee pair.
-std::unique_ptr<ScopStmtImpl> ScopStmtImpl::get(Operation *op) {
-  // We assume that the callerOp is of type mlir::func::CallOp, and the calleeOp
-  // is a mlir::func::FuncOp. If not, these two cast lines will raise error.
-  llvm::StringRef name =
-      cast<StringAttr>(op->getAttr("polymer.stmt.name")).getValue();
-
-  // Create the stmt instance.
-  auto stmt = std::make_unique<ScopStmtImpl>(name, op);
-
-  // Initialize the domain constraints around the caller. The enclosing ops will
-  // be figured out as well in this process.
-  stmt->initializeDomainAndEnclosingOps();
-
-  return stmt;
-}
-
 static BlockArgument findTopLevelBlockArgument(mlir::Value val) {
   if (val.isa<mlir::BlockArgument>())
     return val.cast<mlir::BlockArgument>();
@@ -115,7 +69,7 @@ static void reorderSymbolsByOperandId(affine::FlatAffineValueConstraints &cst) {
     }
 }
 
-void ScopStmtImpl::initializeDomainAndEnclosingOps() {
+void ScopStmt::initializeDomainAndEnclosingOps() {
   // Extract the affine for/if ops enclosing the caller and insert them into the
   // enclosingOps list.
   affine::getEnclosingAffineOps(*op, &enclosingOps);
@@ -137,23 +91,24 @@ void ScopStmtImpl::initializeDomainAndEnclosingOps() {
   reorderSymbolsByOperandId(domain);
 }
 
-void ScopStmtImpl::getArgsValueMapping(IRMapping &argMap) {}
+void ScopStmt::getArgsValueMapping(IRMapping &argMap) {}
 
-ScopStmt::ScopStmt(Operation *op) : impl{ScopStmtImpl::get(op)} {}
+ScopStmt::ScopStmt(Operation *op) : op(op) {
+  name = cast<StringAttr>(op->getAttr("polymer.stmt.name")).getValue();
+  initializeDomainAndEnclosingOps();
+}
 
 ScopStmt::~ScopStmt() = default;
 ScopStmt::ScopStmt(ScopStmt &&) = default;
 ScopStmt &ScopStmt::operator=(ScopStmt &&) = default;
 
-affine::FlatAffineValueConstraints *ScopStmt::getDomain() const {
-  return &(impl->domain);
-}
+affine::FlatAffineValueConstraints *ScopStmt::getDomain() { return &domain; }
 
 void ScopStmt::getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
                                bool forOnly) const {
-  for (mlir::Operation *op : impl->enclosingOps)
+  for (mlir::Operation *op : enclosingOps)
     if (!forOnly || isa<mlir::affine::AffineForOp>(op))
       ops.push_back(op);
 }
 
-Operation *ScopStmt::getOperation() const { return impl->op; }
+Operation *ScopStmt::getOperation() const { return op; }

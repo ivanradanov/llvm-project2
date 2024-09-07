@@ -6,14 +6,22 @@
 #ifndef POLYMER_SUPPORT_OSLSCOP_H
 #define POLYMER_SUPPORT_OSLSCOP_H
 
+#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
+#include "polly/ScopInfo.h"
+#include "polly/Support/ScopHelper.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include "isl/isl-noexceptions.h"
+#include "isl/schedule.h"
+#include "isl/space.h"
+#include "isl/union_set.h"
 
 #include <cassert>
 #include <cstdint>
@@ -51,7 +59,60 @@ class FuncOp;
 namespace polymer {
 
 class IslMLIRBuilder;
+class IslScopBuilder;
 class ScopStmt;
+
+class ScopArrayInfo final {
+public:
+  /// Return the isl id for the base pointer.
+  isl::id getBasePtrId() const;
+
+  /// Is this array allocated on heap
+  ///
+  /// This property is only relevant if the array is allocated by Polly instead
+  /// of pre-existing. If false, it is allocated using alloca instead malloca.
+  bool isOnHeap() const;
+
+  /// Print a readable representation to @p OS.
+  ///
+  /// @param SizeAsPwAff Print the size as isl::pw_aff
+  void print(llvm::raw_ostream &OS, bool SizeAsPwAff = false) const;
+
+  /// Access the ScopArrayInfo associated with an access function.
+  static const ScopArrayInfo *getFromAccessFunction(isl::pw_multi_aff PMA);
+
+  /// Access the ScopArrayInfo associated with an isl Id.
+  static const ScopArrayInfo *getFromId(isl::id Id);
+
+  /// Get the space of this array access.
+  isl::space getSpace() const;
+
+  /// If the array is read only
+  bool isReadOnly();
+
+  /// Verify that @p Array is compatible to this ScopArrayInfo.
+  ///
+  /// Two arrays are compatible if their dimensionality, the sizes of their
+  /// dimensions, and their element sizes match.
+  ///
+  /// @param Array The array to compare against.
+  ///
+  /// @returns True, if the arrays are compatible, False otherwise.
+  bool isCompatibleWith(const ScopArrayInfo *Array) const;
+};
+
+class MemoryAccess {
+public:
+  isl::map getAccessRelation() const;
+  const ScopArrayInfo *getScopArrayInfo() const;
+  isl::id getId() const;
+  isl::id getArrayId() const;
+  bool isReductionLike() const;
+  bool isRead() const;
+  bool isMustWrite() const;
+  bool isMayWrite() const;
+  bool isWrite() const;
+};
 
 /// A wrapper for the osl_scop struct in the openscop library.
 class IslScop {
@@ -66,17 +127,17 @@ public:
   ~IslScop();
 
   /// Simply create a new statement in the linked list scop->statement.
-  void createStatement();
+  ScopStmt &createStatement(mlir::Operation *op);
 
   /// Add the relation defined by cst to the context of the current scop.
   void addContextRelation(mlir::affine::FlatAffineValueConstraints cst);
   /// Add the domain relation.
-  void addDomainRelation(int stmtId,
+  void addDomainRelation(ScopStmt &stmt,
                          mlir::affine::FlatAffineValueConstraints &cst);
   /// Add the access relation.
   mlir::LogicalResult
-  addAccessRelation(int stmtId, bool isRead, mlir::Value memref,
-                    mlir::affine::AffineValueMap &vMap,
+  addAccessRelation(ScopStmt &stmt, polly::MemoryAccess::AccessType type,
+                    mlir::Value memref, mlir::affine::AffineValueMap &vMap,
                     mlir::affine::FlatAffineValueConstraints &cst);
 
   /// Initialize the symbol table.
@@ -90,12 +151,6 @@ public:
 
   /// Get the mapping from memref Value to its id.
   MemRefToId *getMemRefIdMap();
-
-  /// Get the ScopStmtMap.
-  ScopStmtMap *getScopStmtMap();
-
-  /// Get the list of stmt names followed by their insertion order
-  ScopStmtNames *getScopStmtNames();
 
   void dumpSchedule(llvm::raw_ostream &os);
   void dumpAccesses(llvm::raw_ostream &os);
@@ -115,13 +170,21 @@ public:
   mlir::Operation *applySchedule(__isl_take isl_schedule *newSchedule,
                                  mlir::Operation *f);
 
+  isl::space getParamSpace() {
+    return isl::manage(
+        isl_union_set_get_space(isl_schedule_get_domain(schedule)));
+  }
+
 private:
-  struct IslStmt {
-    isl_basic_set *domain;
-    std::vector<isl_basic_map *> readRelations;
-    std::vector<isl_basic_map *> writeRelations;
-  };
-  std::vector<IslStmt> islStmts;
+  using StmtVec = std::vector<ScopStmt>;
+  using iterator = StmtVec::iterator;
+  StmtVec stmts;
+
+public:
+  iterator begin() { return stmts.begin(); }
+  iterator end() { return stmts.end(); }
+
+private:
   isl_schedule *schedule = nullptr;
   unsigned loopId = 0;
 
@@ -138,7 +201,8 @@ private:
   buildSequenceSchedule(llvm::SmallVector<mlir::Operation *> ops,
                         unsigned depth = 0);
 
-  IslStmt &getIslStmt(std::string name);
+  ScopStmt &getIslStmt(mlir::Operation *op);
+  ScopStmt &getIslStmt(llvm::StringRef);
 
   __isl_give isl_space *
   setupSpace(__isl_take isl_space *space,
@@ -163,12 +227,9 @@ private:
   /// Symbol table for MLIR values.
   SymbolTable symbolTable;
   ValueTable valueTable;
-  ///
-  ScopStmtMap scopStmtMap;
-
-  ScopStmtNames scopStmtNames;
 
   friend class IslMLIRBuilder;
+  friend class IslScopBuilder;
 };
 
 } // namespace polymer

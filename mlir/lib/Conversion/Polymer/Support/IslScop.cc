@@ -65,18 +65,23 @@ using llvm::formatv;
 IslScop::IslScop() { ctx = isl_ctx_alloc(); }
 
 IslScop::~IslScop() {
-  for (auto &stmt : islStmts) {
-    for (auto &rel : stmt.readRelations)
+  for (auto &stmt : stmts) {
+    for (auto &rel : stmt.reads)
       rel = isl_basic_map_free(rel);
-    for (auto &rel : stmt.writeRelations)
+    for (auto &rel : stmt.mustWrites)
       rel = isl_basic_map_free(rel);
-    stmt.domain = isl_basic_set_free(stmt.domain);
+    for (auto &rel : stmt.mayWrites)
+      rel = isl_basic_map_free(rel);
+    stmt.islDomain = isl_basic_set_free(stmt.islDomain);
   }
   isl_schedule_free(schedule);
   isl_ctx_free(ctx);
 }
 
-void IslScop::createStatement() { islStmts.push_back({}); }
+ScopStmt &IslScop::createStatement(Operation *op) {
+  stmts.push_back({op});
+  return stmts.back();
+}
 
 void IslScop::addContextRelation(affine::FlatAffineValueConstraints cst) {
   // Project out the dim IDs in the context with only the symbol IDs left.
@@ -211,9 +216,9 @@ StringRef getStmtName(Operation *op) {
 
 isl_schedule *IslScop::buildLeafSchedule(Operation *op) {
   // TODO check that we are really calling a statement
-  auto &stmt = getIslStmt(getStmtName(op).str());
+  auto &stmt = getIslStmt(op);
   isl_schedule *schedule = isl_schedule_from_domain(
-      isl_union_set_from_basic_set(isl_basic_set_copy(stmt.domain)));
+      isl_union_set_from_basic_set(isl_basic_set_copy(stmt.islDomain)));
   LLVM_DEBUG({
     llvm::errs() << "Created leaf schedule:\n";
     isl_schedule_dump(schedule);
@@ -291,11 +296,17 @@ isl_schedule *IslScop::buildSequenceSchedule(SmallVector<Operation *> ops,
   return schedule;
 }
 
-IslScop::IslStmt &IslScop::getIslStmt(std::string name) {
-  auto found = std::find(scopStmtNames.begin(), scopStmtNames.end(), name);
-  assert(found != scopStmtNames.end());
-  auto id = std::distance(scopStmtNames.begin(), found);
-  return islStmts[id];
+ScopStmt &IslScop::getIslStmt(llvm::StringRef name) {
+  for (auto &stmt : stmts)
+    if (name == stmt.name)
+      return stmt;
+  llvm_unreachable("stmtm not found");
+}
+ScopStmt &IslScop::getIslStmt(Operation *op) {
+  for (auto &stmt : stmts)
+    if (op == stmt.op)
+      return stmt;
+  llvm_unreachable("stmtm not found");
 }
 
 void IslScop::dumpAccesses(llvm::raw_ostream &os) {
@@ -306,17 +317,21 @@ void IslScop::dumpAccesses(llvm::raw_ostream &os) {
   o(0) << "domain: \"" << IslStr(isl_union_set_to_str(domain)) << "\"\n";
   domain = isl_union_set_free(domain);
   o(0) << "accesses:\n";
-  for (unsigned stmtId = 0; stmtId < islStmts.size(); stmtId++) {
-    auto &stmt = islStmts[stmtId];
-    o(2) << "- " << scopStmtNames[stmtId] << ":"
+  for (unsigned stmtId = 0; stmtId < stmts.size(); stmtId++) {
+    auto &stmt = stmts[stmtId];
+    o(2) << "- " << stmt.name << ":"
          << "\n";
     o(6) << "reads:"
          << "\n";
-    for (auto rel : stmt.readRelations)
+    for (auto rel : stmt.reads)
       o(8) << "- " << '"' << IslStr(isl_basic_map_to_str(rel)) << '"' << "\n";
-    o(6) << "writes:"
+    o(6) << "must-writes:"
          << "\n";
-    for (auto rel : stmt.writeRelations)
+    for (auto rel : stmt.mustWrites)
+      o(8) << "- " << '"' << IslStr(isl_basic_map_to_str(rel)) << '"' << "\n";
+    o(6) << "may-writes:"
+         << "\n";
+    for (auto rel : stmt.mayWrites)
       o(8) << "- " << '"' << IslStr(isl_basic_map_to_str(rel)) << '"' << "\n";
   }
 }
@@ -343,7 +358,7 @@ isl_space *IslScop::setupSpace(isl_space *space,
   return space;
 }
 
-void IslScop::addDomainRelation(int stmtId,
+void IslScop::addDomainRelation(ScopStmt &stmt,
                                 affine::FlatAffineValueConstraints &cst) {
   SmallVector<int64_t, 8> eqs, inEqs;
   isl_mat *eqMat = createConstraintRows(cst, /*isEq=*/true);
@@ -359,19 +374,19 @@ void IslScop::addDomainRelation(int stmtId,
 
   isl_space *space =
       isl_space_set_alloc(ctx, cst.getNumSymbolVars(), cst.getNumDimVars());
-  space = setupSpace(space, cst, scopStmtNames[stmtId]);
+  space = setupSpace(space, cst, stmt.name);
   LLVM_DEBUG(llvm::errs() << "space: ");
   LLVM_DEBUG(isl_space_dump(space));
-  islStmts[stmtId].domain = isl_basic_set_from_constraint_matrices(
+  stmt.islDomain = isl_basic_set_from_constraint_matrices(
       space, eqMat, ineqMat, isl_dim_set, isl_dim_div, isl_dim_param,
       isl_dim_cst);
   LLVM_DEBUG(llvm::errs() << "bset: ");
-  LLVM_DEBUG(isl_basic_set_dump(islStmts[stmtId].domain));
+  LLVM_DEBUG(isl_basic_set_dump(stmt.islDomain));
 }
 
 LogicalResult
-IslScop::addAccessRelation(int stmtId, bool isRead, mlir::Value memref,
-                           affine::AffineValueMap &vMap,
+IslScop::addAccessRelation(ScopStmt &stmt, polly::MemoryAccess::AccessType type,
+                           mlir::Value memref, affine::AffineValueMap &vMap,
                            affine::FlatAffineValueConstraints &domain) {
   affine::FlatAffineValueConstraints cst;
   isl_basic_map *bmap;
@@ -380,8 +395,7 @@ IslScop::addAccessRelation(int stmtId, bool isRead, mlir::Value memref,
 
   if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
-    bmap =
-        isl_basic_map_from_domain(isl_basic_set_copy(islStmts[stmtId].domain));
+    bmap = isl_basic_map_from_domain(isl_basic_set_copy(stmt.islDomain));
   } else {
     isl_space *space = isl_space_alloc(
         ctx, cst.getNumSymbolVars(), cst.getNumDimVars() - vMap.getNumResults(),
@@ -409,10 +423,12 @@ IslScop::addAccessRelation(int stmtId, bool isRead, mlir::Value memref,
   }
   ISL_DEBUG("Created relation: ", isl_basic_map_dump(bmap));
 
-  if (isRead)
-    islStmts[stmtId].readRelations.push_back(bmap);
-  else
-    islStmts[stmtId].writeRelations.push_back(bmap);
+  if (type == polly::MemoryAccess::READ)
+    stmt.reads.push_back(bmap);
+  else if (type == polly::MemoryAccess::MUST_WRITE)
+    stmt.mustWrites.push_back(bmap);
+  else if (type == polly::MemoryAccess::MAY_WRITE)
+    stmt.mayWrites.push_back(bmap);
 
   return success();
 }
@@ -534,10 +550,6 @@ IslScop::SymbolTable *IslScop::getSymbolTable() { return &symbolTable; }
 IslScop::ValueTable *IslScop::getValueTable() { return &valueTable; }
 
 IslScop::MemRefToId *IslScop::getMemRefIdMap() { return &memRefIdMap; }
-
-IslScop::ScopStmtMap *IslScop::getScopStmtMap() { return &scopStmtMap; }
-
-IslScop::ScopStmtNames *IslScop::getScopStmtNames() { return &scopStmtNames; }
 
 namespace polymer {
 class IslMLIRBuilder {
@@ -852,7 +864,7 @@ public:
       ivs.push_back(V);
     }
 
-    ScopStmt &stmt = scop.scopStmtMap.at(std::string(CalleeName));
+    ScopStmt &stmt = scop.getIslStmt(CalleeName);
     llvm_unreachable("TODO");
     // func::CallOp origCaller = stmt.getCaller();
     // SmallVector<Value> args;
