@@ -218,7 +218,7 @@ isl_schedule *IslScop::buildLeafSchedule(Operation *op) {
   // TODO check that we are really calling a statement
   auto &stmt = getIslStmt(op);
   isl_schedule *schedule = isl_schedule_from_domain(
-      isl_union_set_from_basic_set(isl_basic_set_copy(stmt.islDomain)));
+      isl_union_set_from_set(isl_set_copy(stmt.islDomain)));
   LLVM_DEBUG({
     llvm::errs() << "Created leaf schedule:\n";
     isl_schedule_dump(schedule);
@@ -377,9 +377,10 @@ void IslScop::addDomainRelation(ScopStmt &stmt,
   space = setupSpace(space, cst, stmt.name);
   LLVM_DEBUG(llvm::errs() << "space: ");
   LLVM_DEBUG(isl_space_dump(space));
-  stmt.islDomain = isl_basic_set_from_constraint_matrices(
-      space, eqMat, ineqMat, isl_dim_set, isl_dim_div, isl_dim_param,
-      isl_dim_cst);
+  stmt.islDomain =
+      isl_set_from_basic_set(isl_basic_set_from_constraint_matrices(
+          space, eqMat, ineqMat, isl_dim_set, isl_dim_div, isl_dim_param,
+          isl_dim_cst));
   LLVM_DEBUG(llvm::errs() << "bset: ");
   LLVM_DEBUG(isl_basic_set_dump(stmt.islDomain));
 }
@@ -423,12 +424,8 @@ IslScop::addAccessRelation(ScopStmt &stmt, polly::MemoryAccess::AccessType type,
   }
   ISL_DEBUG("Created relation: ", isl_basic_map_dump(bmap));
 
-  if (type == polly::MemoryAccess::READ)
-    stmt.reads.push_back(bmap);
-  else if (type == polly::MemoryAccess::MUST_WRITE)
-    stmt.mustWrites.push_back(bmap);
-  else if (type == polly::MemoryAccess::MAY_WRITE)
-    stmt.mayWrites.push_back(bmap);
+  stmt.memoryAccesses.push_back(new MemoryAccess{
+      id, isl_map_from_basic_map(bmap), MemoryAccess::MT_Array, type});
 
   return success();
 }

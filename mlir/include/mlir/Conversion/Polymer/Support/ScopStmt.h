@@ -15,6 +15,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SPIRV/IR/SPIRVEnums.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -44,9 +45,35 @@ class Value;
 namespace polymer {
 class ScopStmtImpl;
 
-/// Class that stores all the essential information for a Scop statement,
-/// including the MLIR operations and Scop relations, and handles the processing
-/// of them.
+class MemoryAccess {
+public:
+  enum MemoryKind { MT_Array, MT_Value };
+
+  enum AccessType {
+    READ = 0x1,
+    MUST_WRITE = 0x2,
+    MAY_WRITE = 0x3,
+  };
+
+  isl::id Id;
+  isl::map AccessRelation;
+  MemoryKind Kind;
+  AccessType AccType;
+
+  isl::map getAccessRelation() { return AccessRelation; }
+
+  const ScopArrayInfo *getScopArrayInfo() const;
+  isl::id getId() const { return Id; }
+  isl::id getArrayId() const {
+    return AccessRelation.get_tuple_id(isl::dim::out);
+  }
+  bool isReductionLike() const { return false; }
+  bool isRead() const { return AccType == MemoryAccess::READ; }
+  bool isMustWrite() const { return AccType == MemoryAccess::MUST_WRITE; }
+  bool isMayWrite() const { return AccType == MemoryAccess::MAY_WRITE; }
+  bool isWrite() const { return isMustWrite() || isMayWrite(); }
+};
+
 class ScopStmt {
 public:
   ScopStmt(mlir::Operation *op);
@@ -57,7 +84,8 @@ public:
   ScopStmt &operator=(ScopStmt &&);
   ScopStmt &operator=(const ScopStmt &&) = delete;
 
-  mlir::affine::FlatAffineValueConstraints *getDomain();
+  mlir::affine::FlatAffineValueConstraints *getMlirDomain();
+  isl::set getDomain() { return isl::manage(isl_set_copy(islDomain)); }
 
   /// Get a copy of the enclosing operations.
   void getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
@@ -70,11 +98,17 @@ public:
                              mlir::affine::AffineValueMap *vMap,
                              mlir::Value *memref) const;
 
+  using MemAccessesVector = std::vector<MemoryAccess *>;
+  using iterator = MemAccessesVector::iterator;
+
+  iterator begin() { return memoryAccesses.begin(); }
+  iterator end() { return memoryAccesses.end(); }
+
 private:
-  isl_basic_set *islDomain;
-  std::vector<isl_basic_map *> reads;
-  std::vector<isl_basic_map *> mustWrites;
-  std::vector<isl_basic_map *> mayWrites;
+  // TODO we are leaking this currently
+  MemAccessesVector memoryAccesses;
+
+  isl_set *islDomain;
 
   using EnclosingOpList = llvm::SmallVector<mlir::Operation *, 8>;
 

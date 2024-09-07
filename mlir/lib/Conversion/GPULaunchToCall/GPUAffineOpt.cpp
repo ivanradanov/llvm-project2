@@ -269,7 +269,7 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_dump(scop->getSchedule());
     scop->dumpAccesses(llvm::dbgs());
   });
-  // polymer::Dependences deps;
+  polymer::Dependences deps;
 }
 
 } // namespace affine_opt

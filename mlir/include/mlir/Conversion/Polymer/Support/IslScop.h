@@ -101,19 +101,6 @@ public:
   bool isCompatibleWith(const ScopArrayInfo *Array) const;
 };
 
-class MemoryAccess {
-public:
-  isl::map getAccessRelation() const;
-  const ScopArrayInfo *getScopArrayInfo() const;
-  isl::id getId() const;
-  isl::id getArrayId() const;
-  bool isReductionLike() const;
-  bool isRead() const;
-  bool isMustWrite() const;
-  bool isMayWrite() const;
-  bool isWrite() const;
-};
-
 /// A wrapper for the osl_scop struct in the openscop library.
 class IslScop {
 public:
