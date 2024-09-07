@@ -125,7 +125,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     });
 
     // Collet the domain
-    affine::FlatAffineValueConstraints domain = *stmt.getDomain();
+    affine::FlatAffineValueConstraints domain = *stmt.getMlirDomain();
     sanityCheckDomain(domain);
 
     LLVM_DEBUG({
@@ -289,7 +289,7 @@ void IslScopBuilder::buildScopContext(
     }
   };
   for (auto &stmt : scop->stmts) {
-    auto domain = stmt.getDomain();
+    auto domain = stmt.getMlirDomain();
     SmallVector<Value> syms;
     domain->getValues(domain->getNumDimVars(), domain->getNumDimAndSymbolVars(),
                       &syms);
@@ -316,7 +316,7 @@ void IslScopBuilder::buildScopContext(
   // mess up with the original domain at this point. Trivial redundant
   // constraints will be removed.
   for (auto &stmt : scop->stmts) {
-    affine::FlatAffineValueConstraints *domain = stmt.getDomain();
+    affine::FlatAffineValueConstraints *domain = stmt.getMlirDomain();
     affine::FlatAffineValueConstraints cst(*domain);
 
     LLVM_DEBUG(dbgs() << "Statement:\n");
@@ -359,7 +359,7 @@ void IslScopBuilder::buildScopContext(
 
   // Add and align domain SYMBOL columns.
   for (auto &stmt : scop->stmts) {
-    affine::FlatAffineValueConstraints *domain = stmt.getDomain();
+    affine::FlatAffineValueConstraints *domain = stmt.getMlirDomain();
     // For any symbol missing in the domain, add them directly to the end.
     for (unsigned i = 0; i < ctx.getNumSymbolVars(); ++i) {
       unsigned pos;

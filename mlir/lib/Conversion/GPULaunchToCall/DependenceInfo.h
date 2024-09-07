@@ -23,6 +23,7 @@
 #define POLLY_DEPENDENCE_INFO_H
 
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
+#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "isl/ctx.h"
 #include "isl/isl-noexceptions.h"
