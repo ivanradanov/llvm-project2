@@ -378,8 +378,15 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   affine::FlatAffineValueConstraints cst;
   isl_map *map;
   // Create a new dim of memref and set its value to its corresponding ID.
-  std::string name = "A" + std::to_string(memRefIdMap.size() + 1);
-  memRefIdMap.try_emplace(memref, name);
+
+  std::string name;
+  auto found = memRefIdMap.find(memref);
+  if (found == memRefIdMap.end()) {
+    name = "A" + std::to_string(memRefIdMap.size() + 1);
+    memRefIdMap.insert({memref, name});
+  } else {
+    name = found->second;
+  }
   isl::id arrayId =
       isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
 

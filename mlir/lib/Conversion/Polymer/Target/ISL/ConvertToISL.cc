@@ -25,6 +25,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
@@ -158,6 +159,9 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
                                       domain);
       };
       auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+        if (auto *op = memref.getDefiningOp())
+          if (op->hasTrait<OpTrait::ConstantLike>())
+            return;
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
