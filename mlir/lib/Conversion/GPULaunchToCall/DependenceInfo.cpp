@@ -27,6 +27,7 @@
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "isl/aff.h"
 #include "isl/ctx.h"
 #include "isl/flow.h"
@@ -159,12 +160,15 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
       } else {
         accdom = tag(accdom, MA, Level);
         if (Level > Dependences::AL_Statement) {
+          llvm_unreachable("TODO");
+#if 0
           isl_map *StmtScheduleMap = Stmt.getSchedule().release();
           assert(StmtScheduleMap &&
                  "Schedules that contain extension nodes require special "
                  "handling.");
           isl_map *Schedule = tag(StmtScheduleMap, MA, Level);
           StmtSchedule = isl_union_map_add_map(StmtSchedule, Schedule);
+#endif
         }
       }
 
@@ -226,7 +230,7 @@ void Dependences::calculateDependences(Scop &S) {
   isl_schedule *Schedule;
   isl_union_set *TaggedStmtDomain;
 
-  POLLY_DEBUG(dbgs() << "Scop: \n" << S << "\n");
+  // POLLY_DEBUG(dbgs() << "Scop: \n" << S << "\n");
 
   collectInfo(S, Read, MustWrite, MayWrite, ReductionTagMap, TaggedStmtDomain,
               Level);

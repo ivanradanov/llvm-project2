@@ -76,7 +76,7 @@ public:
 
 class ScopStmt {
 public:
-  ScopStmt(mlir::Operation *op);
+  ScopStmt(mlir::Operation *op, IslScop *parent);
   ~ScopStmt();
 
   ScopStmt(ScopStmt &&);
@@ -85,7 +85,10 @@ public:
   ScopStmt &operator=(const ScopStmt &&) = delete;
 
   mlir::affine::FlatAffineValueConstraints *getMlirDomain();
-  isl::set getDomain() { return isl::manage(isl_set_copy(islDomain)); }
+  isl::set getDomain() const { return isl::manage(isl_set_copy(islDomain)); }
+  isl::space getDomainSpace() const { return getDomain().get_space(); }
+  isl::map getSchedule() const;
+  IslScop *getParent() const { return parent; }
 
   /// Get a copy of the enclosing operations.
   void getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
@@ -127,6 +130,8 @@ private:
   mlir::affine::FlatAffineValueConstraints domain;
   /// Enclosing for/if operations for the caller.
   EnclosingOpList enclosingOps;
+
+  IslScop *parent;
 
   friend IslScop;
 };

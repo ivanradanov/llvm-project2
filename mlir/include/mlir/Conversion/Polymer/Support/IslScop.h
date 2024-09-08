@@ -152,12 +152,18 @@ public:
   static llvm::SmallVector<mlir::Operation *>
   getSequenceScheduleOpList(mlir::Block *block);
 
-  isl_schedule *getSchedule() { return schedule; }
-
+  // FIXME assumption
+  isl::set getAssumedContext() const {
+    return isl::set::universe(getParamSpace());
+  }
+  isl::schedule getScheduleTree() const {
+    return isl::manage(isl_schedule_copy(schedule));
+  }
+  isl::union_map getSchedule() const { return getScheduleTree().get_map(); }
   mlir::Operation *applySchedule(__isl_take isl_schedule *newSchedule,
                                  mlir::Operation *f);
 
-  isl::space getParamSpace() {
+  isl::space getParamSpace() const {
     return isl::manage(
         isl_union_set_get_space(isl_schedule_get_domain(schedule)));
   }
