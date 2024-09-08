@@ -29,8 +29,8 @@ using namespace polymer;
 using namespace mlir;
 
 static BlockArgument findTopLevelBlockArgument(mlir::Value val) {
-  if (val.isa<mlir::BlockArgument>())
-    return val.cast<mlir::BlockArgument>();
+  if (auto ba = dyn_cast<mlir::BlockArgument>(val))
+    return ba;
 
   mlir::Operation *defOp = val.getDefiningOp();
   assert((defOp && isa<mlir::arith::IndexCastOp>(defOp)) &&

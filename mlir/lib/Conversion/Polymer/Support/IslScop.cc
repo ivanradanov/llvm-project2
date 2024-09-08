@@ -383,6 +383,12 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   isl::id arrayId =
       isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
 
+  isl::id stmtId = stmt.getDomain().get_tuple_id();
+  static const std::string TypeStrings[] = {"", "_Read", "_Write", "_MayWrite"};
+  const std::string Access = TypeStrings[type] + llvm::utostr(stmt.size());
+  isl::id accessId = isl::id::alloc(getIslCtx(), stmt.getName() + Access,
+                                    memref.getAsOpaquePointer());
+
   if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
     map = isl_map_from_domain(isl_set_copy(stmt.islDomain));
@@ -413,9 +419,10 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
         isl_dim_param, isl_dim_cst);
     map = isl_map_from_basic_map(bmap);
   }
+  map = isl_map_set_tuple_id(map, isl_dim_out, arrayId.release());
+  map = isl_map_set_tuple_id(map, isl_dim_in, stmtId.release());
   ISL_DEBUG("Created relation: ", isl_map_dump(map));
-
-  stmt.memoryAccesses.push_back(new MemoryAccess{arrayId, isl::manage(map),
+  stmt.memoryAccesses.push_back(new MemoryAccess{accessId, isl::manage(map),
                                                  MemoryAccess::MT_Array, type});
 
   return success();
