@@ -50,7 +50,7 @@ static cl::opt<int> OptComputeOut(
     "polymer-dependences-computeout",
     cl::desc("Bound the dependence analysis by a maximal amount of "
              "computational steps (0 means no bound)"),
-    cl::Hidden, cl::init(500000), cl::cat(PolymerCategory));
+    cl::Hidden, cl::init(0), cl::cat(PolymerCategory));
 
 static cl::opt<bool>
     LegalityCheckDisabled("disable-polymer-legality",
@@ -160,15 +160,12 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
       } else {
         accdom = tag(accdom, MA, Level);
         if (Level > Dependences::AL_Statement) {
-          llvm_unreachable("TODO");
-#if 0
           isl_map *StmtScheduleMap = Stmt.getSchedule().release();
           assert(StmtScheduleMap &&
                  "Schedules that contain extension nodes require special "
                  "handling.");
           isl_map *Schedule = tag(StmtScheduleMap, MA, Level);
           StmtSchedule = isl_union_map_add_map(StmtSchedule, Schedule);
-#endif
         }
       }
 
@@ -311,7 +308,8 @@ static __isl_give isl_union_flow *buildFlow(__isl_keep isl_union_map *Snk,
   auto Flow = isl_union_access_info_compute_flow(AI);
   POLLY_DEBUG(if (!Flow) dbgs()
                   << "last error: "
-                  << isl_ctx_last_error(isl_schedule_get_ctx(Schedule))
+                  << isl_ctx_last_error(isl_schedule_get_ctx(Schedule)) << " "
+                  << isl_ctx_last_error_msg(isl_schedule_get_ctx(Schedule))
                   << '\n';);
   return Flow;
 }
@@ -328,11 +326,14 @@ void Dependences::calculateDependences(Scop &S) {
 
   bool HasReductions = !isl_union_map_is_empty(ReductionTagMap);
 
-  POLLY_DEBUG(dbgs() << "Read: " << Read << '\n';
-              dbgs() << "MustWrite: " << MustWrite << '\n';
-              dbgs() << "MayWrite: " << MayWrite << '\n';
-              dbgs() << "ReductionTagMap: " << ReductionTagMap << '\n';
-              dbgs() << "TaggedStmtDomain: " << TaggedStmtDomain << '\n';);
+  POLLY_DEBUG(
+      dbgs() << "Read: " << isl_union_map_to_str(Read) << '\n';
+      dbgs() << "MustWrite: " << isl_union_map_to_str(MustWrite) << '\n';
+      dbgs() << "MayWrite: " << isl_union_map_to_str(MayWrite) << '\n';
+      dbgs() << "ReductionTagMap: " << isl_union_map_to_str(ReductionTagMap)
+             << '\n';
+      dbgs() << "TaggedStmtDomain: " << isl_union_set_to_str(TaggedStmtDomain)
+             << '\n';);
 
   Schedule = S.getScheduleTree().release();
 
@@ -369,10 +370,11 @@ void Dependences::calculateDependences(Scop &S) {
     Schedule = isl_schedule_pullback_union_pw_multi_aff(Schedule, Tags);
   }
 
-  POLLY_DEBUG(dbgs() << "Read: " << Read << "\n";
-              dbgs() << "MustWrite: " << MustWrite << "\n";
-              dbgs() << "MayWrite: " << MayWrite << "\n";
-              dbgs() << "Schedule: " << Schedule << "\n");
+  POLLY_DEBUG(dbgs() << "Read: " << isl_union_map_to_str(Read) << '\n';
+              dbgs() << "MustWrite: " << isl_union_map_to_str(MustWrite)
+                     << '\n';
+              dbgs() << "MayWrite: " << isl_union_map_to_str(MayWrite) << '\n';
+              dbgs() << "Schedule: " << isl_schedule_to_str(Schedule) << "\n");
 
   isl_union_map *StrictWAW = nullptr;
   {
@@ -766,8 +768,9 @@ bool Dependences::isParallel(__isl_keep isl_union_map *Schedule,
 }
 
 static void printDependencyMap(raw_ostream &OS, __isl_keep isl_union_map *DM) {
+  // FIXME free the string
   if (DM)
-    OS << DM << "\n";
+    OS << isl_union_map_to_str(DM) << "\n";
   else
     OS << "n/a\n";
 }

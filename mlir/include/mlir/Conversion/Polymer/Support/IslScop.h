@@ -126,6 +126,9 @@ public:
 
   iterator begin() { return memoryAccesses.begin(); }
   iterator end() { return memoryAccesses.end(); }
+  size_t size() { return memoryAccesses.size(); }
+
+  std::string getName() { return name; }
 
 private:
   // TODO we are leaking this currently
