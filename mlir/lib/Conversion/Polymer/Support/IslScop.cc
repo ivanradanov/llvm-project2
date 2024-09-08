@@ -35,7 +35,10 @@
 
 #include "isl/aff_type.h"
 #include "isl/ast.h"
+#include "isl/ctx.h"
 #include "isl/id_to_id.h"
+#include "isl/isl-noexceptions.h"
+#include "isl/map_type.h"
 #include "isl/printer.h"
 #include "isl/space_type.h"
 #include <isl/aff.h>
@@ -62,26 +65,9 @@ using llvm::formatv;
 
 #define DEBUG_TYPE "islscop"
 
-IslScop::IslScop() { ctx = isl_ctx_alloc(); }
+IslScop::IslScop() { IslCtx.reset(isl_ctx_alloc(), isl_ctx_free); }
 
-IslScop::~IslScop() {
-  for (auto &stmt : stmts) {
-    for (auto &rel : stmt.reads)
-      rel = isl_basic_map_free(rel);
-    for (auto &rel : stmt.mustWrites)
-      rel = isl_basic_map_free(rel);
-    for (auto &rel : stmt.mayWrites)
-      rel = isl_basic_map_free(rel);
-    stmt.islDomain = isl_basic_set_free(stmt.islDomain);
-  }
-  isl_schedule_free(schedule);
-  isl_ctx_free(ctx);
-}
-
-ScopStmt &IslScop::createStatement(Operation *op) {
-  stmts.push_back({op});
-  return stmts.back();
-}
+IslScop::~IslScop() { isl_schedule_free(schedule); }
 
 void IslScop::addContextRelation(affine::FlatAffineValueConstraints cst) {
   // Project out the dim IDs in the context with only the symbol IDs left.
@@ -321,18 +307,18 @@ void IslScop::dumpAccesses(llvm::raw_ostream &os) {
     auto &stmt = stmts[stmtId];
     o(2) << "- " << stmt.name << ":"
          << "\n";
-    o(6) << "reads:"
-         << "\n";
-    for (auto rel : stmt.reads)
-      o(8) << "- " << '"' << IslStr(isl_basic_map_to_str(rel)) << '"' << "\n";
-    o(6) << "must-writes:"
-         << "\n";
-    for (auto rel : stmt.mustWrites)
-      o(8) << "- " << '"' << IslStr(isl_basic_map_to_str(rel)) << '"' << "\n";
-    o(6) << "may-writes:"
-         << "\n";
-    for (auto rel : stmt.mayWrites)
-      o(8) << "- " << '"' << IslStr(isl_basic_map_to_str(rel)) << '"' << "\n";
+    for (MemoryAccess *MA : stmt) {
+      std::string type;
+      if (MA->isRead())
+        type = "read";
+      else if (MA->isMustWrite())
+        type = "must_write";
+      else if (MA->isMayWrite())
+        type = "may_write";
+      assert(type != "");
+      o(8) << "- " << type << " " << '"'
+           << IslStr(isl_map_to_str(MA->AccessRelation.get())) << '"' << "\n";
+    }
   }
 }
 void IslScop::dumpSchedule(llvm::raw_ostream &os) {
@@ -351,7 +337,7 @@ isl_space *IslScop::setupSpace(isl_space *space,
     Value val =
         cst.getValue(cst.getVarKindOffset(presburger::VarKind::Symbol) + i);
     std::string sym = valueTable[val];
-    isl_id *id = isl_id_alloc(ctx, sym.c_str(), nullptr);
+    isl_id *id = isl_id_alloc(getIslCtx(), sym.c_str(), nullptr);
     space = isl_space_set_dim_id(space, isl_dim_param, i, id);
   }
   space = isl_space_set_tuple_name(space, isl_dim_set, name.c_str());
@@ -372,8 +358,8 @@ void IslScop::addDomainRelation(ScopStmt &stmt,
     llvm::errs() << "\n";
   });
 
-  isl_space *space =
-      isl_space_set_alloc(ctx, cst.getNumSymbolVars(), cst.getNumDimVars());
+  isl_space *space = isl_space_set_alloc(getIslCtx(), cst.getNumSymbolVars(),
+                                         cst.getNumDimVars());
   space = setupSpace(space, cst, stmt.name);
   LLVM_DEBUG(llvm::errs() << "space: ");
   LLVM_DEBUG(isl_space_dump(space));
@@ -382,25 +368,28 @@ void IslScop::addDomainRelation(ScopStmt &stmt,
           space, eqMat, ineqMat, isl_dim_set, isl_dim_div, isl_dim_param,
           isl_dim_cst));
   LLVM_DEBUG(llvm::errs() << "bset: ");
-  LLVM_DEBUG(isl_basic_set_dump(stmt.islDomain));
+  LLVM_DEBUG(isl_set_dump(stmt.islDomain));
 }
 
 LogicalResult
-IslScop::addAccessRelation(ScopStmt &stmt, polly::MemoryAccess::AccessType type,
+IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
                            mlir::Value memref, affine::AffineValueMap &vMap,
                            affine::FlatAffineValueConstraints &domain) {
   affine::FlatAffineValueConstraints cst;
-  isl_basic_map *bmap;
+  isl_map *map;
   // Create a new dim of memref and set its value to its corresponding ID.
-  memRefIdMap.try_emplace(memref, "A" + std::to_string(memRefIdMap.size() + 1));
+  std::string name = "A" + std::to_string(memRefIdMap.size() + 1);
+  memRefIdMap.try_emplace(memref, name);
+  isl::id arrayId =
+      isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
 
   if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
-    bmap = isl_basic_map_from_domain(isl_basic_set_copy(stmt.islDomain));
+    map = isl_map_from_domain(isl_set_copy(stmt.islDomain));
   } else {
     isl_space *space = isl_space_alloc(
-        ctx, cst.getNumSymbolVars(), cst.getNumDimVars() - vMap.getNumResults(),
-        vMap.getNumResults());
+        getIslCtx(), cst.getNumSymbolVars(),
+        cst.getNumDimVars() - vMap.getNumResults(), vMap.getNumResults());
     space = setupSpace(space, cst, memRefIdMap[memref]);
 
     isl_mat *eqMat = createConstraintRows(cst, /*isEq=*/true);
@@ -418,14 +407,16 @@ IslScop::addAccessRelation(ScopStmt &stmt, polly::MemoryAccess::AccessType type,
     });
 
     assert(cst.getNumInequalities() == 0);
+    isl_basic_map *bmap;
     bmap = isl_basic_map_from_constraint_matrices(
         space, eqMat, ineqMat, isl_dim_out, isl_dim_in, isl_dim_div,
         isl_dim_param, isl_dim_cst);
+    map = isl_map_from_basic_map(bmap);
   }
-  ISL_DEBUG("Created relation: ", isl_basic_map_dump(bmap));
+  ISL_DEBUG("Created relation: ", isl_map_dump(map));
 
-  stmt.memoryAccesses.push_back(new MemoryAccess{
-      id, isl_map_from_basic_map(bmap), MemoryAccess::MT_Array, type});
+  stmt.memoryAccesses.push_back(new MemoryAccess{arrayId, isl::manage(map),
+                                                 MemoryAccess::MT_Array, type});
 
   return success();
 }
@@ -486,7 +477,7 @@ isl_mat *IslScop::createConstraintRows(affine::FlatAffineValueConstraints &cst,
                           << numSymbolIds << "\n");
 
   unsigned numCols = cst.getNumCols();
-  isl_mat *mat = isl_mat_alloc(ctx, numRows, numCols);
+  isl_mat *mat = isl_mat_alloc(getIslCtx(), numRows, numCols);
 
   for (unsigned i = 0; i < numRows; i++) {
     // Get the row based on isEq.
@@ -1199,7 +1190,7 @@ Operation *IslScop::applySchedule(isl_schedule *newSchedule,
     isl_schedule_dump(newSchedule);
   });
   isl_union_set *domain = isl_schedule_get_domain(newSchedule);
-  isl_ast_build *build = isl_ast_build_alloc(ctx);
+  isl_ast_build *build = isl_ast_build_alloc(getIslCtx());
   IslMLIRBuilder bc = {b, oldToNewMapping, *this};
   isl_ast_node *node =
       isl_ast_build_node_from_schedule(build, isl_schedule_copy(newSchedule));

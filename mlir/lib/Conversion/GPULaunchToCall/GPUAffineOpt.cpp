@@ -266,10 +266,11 @@ void optGlobalSharedMemCopies(Operation *root) {
 void transform(LLVM::LLVMFuncOp f) {
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
   LLVM_DEBUG({
-    isl_schedule_dump(scop->getScheduleTree());
+    isl_schedule_dump(scop->getScheduleTree().get());
     scop->dumpAccesses(llvm::dbgs());
   });
-  polymer::Dependences deps;
+  polymer::Dependences deps(scop->getSharedIslCtx(),
+                            polymer::Dependences::AL_Statement);
 }
 
 } // namespace affine_opt
