@@ -93,7 +93,7 @@ void ScopStmt::initializeDomainAndEnclosingOps() {
 
 void ScopStmt::getArgsValueMapping(IRMapping &argMap) {}
 
-ScopStmt::ScopStmt(Operation *op) : op(op) {
+ScopStmt::ScopStmt(Operation *op, IslScop *parent) : op(op), parent(parent) {
   name = cast<StringAttr>(op->getAttr("polymer.stmt.name")).getValue();
   initializeDomainAndEnclosingOps();
 }
@@ -104,6 +104,23 @@ ScopStmt &ScopStmt::operator=(ScopStmt &&) = default;
 
 affine::FlatAffineValueConstraints *ScopStmt::getMlirDomain() {
   return &domain;
+}
+
+isl::map ScopStmt::getSchedule() const {
+  isl::set Domain = getDomain();
+  if (Domain.is_empty())
+    return isl::map::from_aff(isl::aff(isl::local_space(getDomainSpace())));
+  auto Schedule = getParent()->getSchedule();
+  if (Schedule.is_null())
+    return {};
+  Schedule = Schedule.intersect_domain(isl::union_set(Domain));
+  if (Schedule.is_empty())
+    return isl::map::from_aff(isl::aff(isl::local_space(getDomainSpace())));
+  isl::map M = M.from_union_map(Schedule);
+  M = M.coalesce();
+  M = M.gist_domain(Domain);
+  M = M.coalesce();
+  return M;
 }
 void ScopStmt::getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
                                bool forOnly) const {
