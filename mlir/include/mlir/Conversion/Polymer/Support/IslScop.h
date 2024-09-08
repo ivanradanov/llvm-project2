@@ -60,7 +60,101 @@ namespace polymer {
 
 class IslMLIRBuilder;
 class IslScopBuilder;
-class ScopStmt;
+
+class IslScop;
+class ScopArrayInfo;
+
+class MemoryAccess {
+public:
+  enum MemoryKind { MT_Array, MT_Value };
+
+  enum AccessType {
+    READ = 0x1,
+    MUST_WRITE = 0x2,
+    MAY_WRITE = 0x3,
+  };
+
+  isl::id Id;
+  isl::map AccessRelation;
+  MemoryKind Kind;
+  AccessType AccType;
+
+  isl::map getAccessRelation() { return AccessRelation; }
+
+  // FIXME generate this obj
+  const ScopArrayInfo *getScopArrayInfo() const { return nullptr; }
+  isl::id getId() const { return Id; }
+  isl::id getArrayId() const {
+    return AccessRelation.get_tuple_id(isl::dim::out);
+  }
+  bool isReductionLike() const { return false; }
+  bool isRead() const { return AccType == MemoryAccess::READ; }
+  bool isMustWrite() const { return AccType == MemoryAccess::MUST_WRITE; }
+  bool isMayWrite() const { return AccType == MemoryAccess::MAY_WRITE; }
+  bool isWrite() const { return isMustWrite() || isMayWrite(); }
+};
+
+class ScopStmt {
+public:
+  ScopStmt(mlir::Operation *op, IslScop *parent);
+  ~ScopStmt();
+
+  ScopStmt(ScopStmt &&);
+  ScopStmt(const ScopStmt &) = delete;
+  ScopStmt &operator=(ScopStmt &&);
+  ScopStmt &operator=(const ScopStmt &&) = delete;
+
+  mlir::affine::FlatAffineValueConstraints *getMlirDomain();
+  isl::set getDomain() const { return isl::manage(isl_set_copy(islDomain)); }
+  isl::space getDomainSpace() const { return getDomain().get_space(); }
+  isl::map getSchedule() const;
+  IslScop *getParent() const { return parent; }
+
+  /// Get a copy of the enclosing operations.
+  void getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
+                       bool forOnly = false) const;
+  /// Get the callee of this scop stmt.
+  mlir::Operation *getOperation() const;
+  /// Get the access affine::AffineValueMap of an op in the callee and the
+  /// memref in the caller scope that this op is using.
+  void getAccessMapAndMemRef(mlir::Operation *op,
+                             mlir::affine::AffineValueMap *vMap,
+                             mlir::Value *memref) const;
+
+  using MemAccessesVector = std::vector<MemoryAccess *>;
+  using iterator = MemAccessesVector::iterator;
+
+  iterator begin() { return memoryAccesses.begin(); }
+  iterator end() { return memoryAccesses.end(); }
+
+private:
+  // TODO we are leaking this currently
+  MemAccessesVector memoryAccesses;
+
+  isl_set *islDomain;
+
+  using EnclosingOpList = llvm::SmallVector<mlir::Operation *, 8>;
+
+  /// A helper function that builds the domain constraints of the
+  /// caller, and find and insert all enclosing for/if ops to enclosingOps.
+  void initializeDomainAndEnclosingOps();
+
+  void getArgsValueMapping(mlir::IRMapping &argMap);
+
+  /// Name of the callee, as well as the scop.stmt. It will also be the
+  /// symbol in the OpenScop representation.
+  std::string name;
+  /// The statment operation
+  mlir::Operation *op;
+  /// The domain of the caller.
+  mlir::affine::FlatAffineValueConstraints domain;
+  /// Enclosing for/if operations for the caller.
+  EnclosingOpList enclosingOps;
+
+  IslScop *parent;
+
+  friend IslScop;
+};
 
 class ScopArrayInfo final {
 public:
@@ -113,9 +207,6 @@ public:
   IslScop();
   ~IslScop();
 
-  /// Simply create a new statement in the linked list scop->statement.
-  ScopStmt &createStatement(mlir::Operation *op);
-
   /// Add the relation defined by cst to the context of the current scop.
   void addContextRelation(mlir::affine::FlatAffineValueConstraints cst);
   /// Add the domain relation.
@@ -123,7 +214,7 @@ public:
                          mlir::affine::FlatAffineValueConstraints &cst);
   /// Add the access relation.
   mlir::LogicalResult
-  addAccessRelation(ScopStmt &stmt, polly::MemoryAccess::AccessType type,
+  addAccessRelation(ScopStmt &stmt, polymer::MemoryAccess::AccessType type,
                     mlir::Value memref, mlir::affine::AffineValueMap &vMap,
                     mlir::affine::FlatAffineValueConstraints &cst);
 
@@ -162,6 +253,9 @@ public:
   isl::union_map getSchedule() const { return getScheduleTree().get_map(); }
   mlir::Operation *applySchedule(__isl_take isl_schedule *newSchedule,
                                  mlir::Operation *f);
+
+  isl_ctx *getIslCtx() const { return IslCtx.get(); }
+  std::shared_ptr<isl_ctx> getSharedIslCtx() { return IslCtx; }
 
   isl::space getParamSpace() const {
     return isl::manage(
@@ -213,7 +307,7 @@ private:
 
   /// The internal storage of the Scop.
   // osl_scop *scop;
-  isl_ctx *ctx;
+  std::shared_ptr<isl_ctx> IslCtx;
 
   /// Number of memrefs recorded.
   MemRefToId memRefIdMap;

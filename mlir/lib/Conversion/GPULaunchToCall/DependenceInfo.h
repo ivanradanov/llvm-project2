@@ -156,13 +156,13 @@ public:
   /// Destructor that will free internal objects.
   ~Dependences() { releaseMemory(); }
 
-private:
   /// Create an empty dependences struct.
   explicit Dependences(const std::shared_ptr<isl_ctx> &IslCtx,
                        AnalysisLevel Level)
       : RAW(nullptr), WAR(nullptr), WAW(nullptr), RED(nullptr), TC_RED(nullptr),
         IslCtx(IslCtx), Level(Level) {}
 
+private:
   /// Calculate and add at the privatization dependences.
   void addPrivatizationDependences();
 

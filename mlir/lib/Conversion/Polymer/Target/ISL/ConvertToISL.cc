@@ -75,7 +75,7 @@ public:
 
 private:
   /// Find all statements that calls a scop.stmt.
-  void gatherStmts(Operation *f, IRMapping &map, IslScop::StmtVec &) const;
+  void gatherStmts(Operation *f, IRMapping &map, IslScop &) const;
 
   /// Build the scop context. The domain of each scop stmt will be updated, by
   /// merging and aligning its IDs with the context as well.
@@ -109,7 +109,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   // Find all caller/callee pairs in which the callee has the attribute of name
   // SCOP_STMT_ATTR_NAME.
   IRMapping storeMap;
-  gatherStmts(f, storeMap, scop->stmts);
+  gatherStmts(f, storeMap, *scop);
 
   // Build context in it.
   buildScopContext(f, scop.get(), ctx);
@@ -148,17 +148,17 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
       auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmt, polly::MemoryAccess::MAY_WRITE,
+        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
       auto addMustStore = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmt, polly::MemoryAccess::MUST_WRITE,
+        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MUST_WRITE,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
       auto addLoad = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmt, polly::MemoryAccess::READ,
+        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
@@ -247,7 +247,7 @@ static void createForIterArgAccesses(affine::AffineForOp forOp,
 }
 
 void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
-                                 IslScop::StmtVec &stmts) const {
+                                 IslScop &S) const {
   f->walk(
       [&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
   unsigned stmtId = 0;
@@ -261,7 +261,7 @@ void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
                              op->getName().getStringRef().str();
     op->setAttr("polymer.stmt.name",
                 StringAttr::get(f->getContext(), calleeName));
-    stmts.push_back(ScopStmt(op));
+    S.stmts.push_back(ScopStmt(op, &S));
   });
 }
 

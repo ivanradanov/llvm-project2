@@ -41,31 +41,31 @@ using namespace polymer;
 using namespace llvm;
 
 #include "polly/Support/PollyDebug.h"
-#define DEBUG_TYPE "polly-dependence"
+#define DEBUG_TYPE "polymer-dependence"
 
-cl::OptionCategory PolymerCategory("Polly Options",
-                                 "Configure the polly loop optimizer");
+cl::OptionCategory PolymerCategory("Polymer Options",
+                                   "Configure the polymer loop optimizer");
 
 static cl::opt<int> OptComputeOut(
-    "polly-dependences-computeout",
+    "polymer-dependences-computeout",
     cl::desc("Bound the dependence analysis by a maximal amount of "
              "computational steps (0 means no bound)"),
     cl::Hidden, cl::init(500000), cl::cat(PolymerCategory));
 
 static cl::opt<bool>
-    LegalityCheckDisabled("disable-polly-legality",
+    LegalityCheckDisabled("disable-polymer-legality",
                           cl::desc("Disable polly legality check"), cl::Hidden,
                           cl::cat(PolymerCategory));
 
 static cl::opt<bool>
-    UseReductions("polly-dependences-use-reductions",
+    UseReductions("polymer-dependences-use-reductions",
                   cl::desc("Exploit reductions in dependence analysis"),
                   cl::Hidden, cl::init(true), cl::cat(PolymerCategory));
 
 enum AnalysisType { VALUE_BASED_ANALYSIS, MEMORY_BASED_ANALYSIS };
 
 static cl::opt<enum AnalysisType> OptAnalysisType(
-    "polly-dependences-analysis-type",
+    "polymer-dependences-analysis-type",
     cl::desc("The kind of dependence analysis to use"),
     cl::values(clEnumValN(VALUE_BASED_ANALYSIS, "value-based",
                           "Exact dependences without transitive dependences"),
@@ -74,7 +74,7 @@ static cl::opt<enum AnalysisType> OptAnalysisType(
     cl::Hidden, cl::init(VALUE_BASED_ANALYSIS), cl::cat(PolymerCategory));
 
 static cl::opt<Dependences::AnalysisLevel> OptAnalysisLevel(
-    "polly-dependences-analysis-level",
+    "polymer-dependences-analysis-level",
     cl::desc("The level of dependence analysis"),
     cl::values(clEnumValN(Dependences::AL_Statement, "statement-wise",
                           "Statement-level analysis"),
@@ -197,9 +197,100 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
 
 /// Fix all dimension of @p Zero to 0 and add it to @p user
 static void fixSetToZero(isl::set Zero, isl::union_set *User) {
-  // for (auto i : rangeIslSize(0, Zero.tuple_dim()))
+  for (auto i : polly::rangeIslSize(0, Zero.tuple_dim()))
     Zero = Zero.fix_si(isl::dim::set, i, 0);
   *User = User->unite(Zero);
+}
+
+/// Compute the privatization dependences for a given dependency @p Map
+///
+/// Privatization dependences are widened original dependences which originate
+/// or end in a reduction access. To compute them we apply the transitive close
+/// of the reduction dependences (which maps each iteration of a reduction
+/// statement to all following ones) on the RAW/WAR/WAW dependences. The
+/// dependences which start or end at a reduction statement will be extended to
+/// depend on all following reduction statement iterations as well.
+/// Note: "Following" here means according to the reduction dependences.
+///
+/// For the input:
+///
+///  S0:   *sum = 0;
+///        for (int i = 0; i < 1024; i++)
+///  S1:     *sum += i;
+///  S2:   *sum = *sum * 3;
+///
+/// we have the following dependences before we add privatization dependences:
+///
+///   RAW:
+///     { S0[] -> S1[0]; S1[1023] -> S2[] }
+///   WAR:
+///     {  }
+///   WAW:
+///     { S0[] -> S1[0]; S1[1024] -> S2[] }
+///   RED:
+///     { S1[i0] -> S1[1 + i0] : i0 >= 0 and i0 <= 1022 }
+///
+/// and afterwards:
+///
+///   RAW:
+///     { S0[] -> S1[i0] : i0 >= 0 and i0 <= 1023;
+///       S1[i0] -> S2[] : i0 >= 0 and i0 <= 1023}
+///   WAR:
+///     {  }
+///   WAW:
+///     { S0[] -> S1[i0] : i0 >= 0 and i0 <= 1023;
+///       S1[i0] -> S2[] : i0 >= 0 and i0 <= 1023}
+///   RED:
+///     { S1[i0] -> S1[1 + i0] : i0 >= 0 and i0 <= 1022 }
+///
+/// Note: This function also computes the (reverse) transitive closure of the
+///       reduction dependences.
+void Dependences::addPrivatizationDependences() {
+  isl_union_map *PrivRAW, *PrivWAW, *PrivWAR;
+
+  // The transitive closure might be over approximated, thus could lead to
+  // dependency cycles in the privatization dependences. To make sure this
+  // will not happen we remove all negative dependences after we computed
+  // the transitive closure.
+  TC_RED = isl_union_map_transitive_closure(isl_union_map_copy(RED), nullptr);
+
+  // FIXME: Apply the current schedule instead of assuming the identity schedule
+  //        here. The current approach is only valid as long as we compute the
+  //        dependences only with the initial (identity schedule). Any other
+  //        schedule could change "the direction of the backward dependences" we
+  //        want to eliminate here.
+  isl_union_set *UDeltas = isl_union_map_deltas(isl_union_map_copy(TC_RED));
+  isl_union_set *Universe = isl_union_set_universe(isl_union_set_copy(UDeltas));
+  isl::union_set Zero =
+      isl::manage(isl_union_set_empty(isl_union_set_get_space(Universe)));
+
+  for (isl::set Set : isl::manage_copy(Universe).get_set_list())
+    fixSetToZero(Set, &Zero);
+
+  isl_union_map *NonPositive =
+      isl_union_set_lex_le_union_set(UDeltas, Zero.release());
+
+  TC_RED = isl_union_map_subtract(TC_RED, NonPositive);
+
+  TC_RED = isl_union_map_union(
+      TC_RED, isl_union_map_reverse(isl_union_map_copy(TC_RED)));
+  TC_RED = isl_union_map_coalesce(TC_RED);
+
+  isl_union_map **Maps[] = {&RAW, &WAW, &WAR};
+  isl_union_map **PrivMaps[] = {&PrivRAW, &PrivWAW, &PrivWAR};
+  for (unsigned u = 0; u < 3; u++) {
+    isl_union_map **Map = Maps[u], **PrivMap = PrivMaps[u];
+
+    *PrivMap = isl_union_map_apply_range(isl_union_map_copy(*Map),
+                                         isl_union_map_copy(TC_RED));
+    *PrivMap = isl_union_map_union(
+        *PrivMap, isl_union_map_apply_range(isl_union_map_copy(TC_RED),
+                                            isl_union_map_copy(*Map)));
+
+    *Map = isl_union_map_union(*Map, *PrivMap);
+  }
+
+  isl_union_set_free(Universe);
 }
 
 static __isl_give isl_union_flow *buildFlow(__isl_keep isl_union_map *Snk,
@@ -285,7 +376,7 @@ void Dependences::calculateDependences(Scop &S) {
 
   isl_union_map *StrictWAW = nullptr;
   {
-    IslMaxOperationsGuard MaxOpGuard(IslCtx.get(), OptComputeOut);
+    polly::IslMaxOperationsGuard MaxOpGuard(IslCtx.get(), OptComputeOut);
 
     RAW = WAW = WAR = RED = nullptr;
     isl_union_map *Write = isl_union_map_union(isl_union_map_copy(MustWrite),
@@ -596,11 +687,11 @@ bool Dependences::isValidSchedule(
   Dependences = Dependences.apply_range(Schedule);
 
   isl::set Zero = isl::set::universe(ScheduleSpace);
-  for (auto i : rangeIslSize(0, Zero.tuple_dim()))
+  for (auto i : polly::rangeIslSize(0, Zero.tuple_dim()))
     Zero = Zero.fix_si(isl::dim::set, i, 0);
 
   isl::union_set UDeltas = Dependences.deltas();
-  isl::set Deltas = singleton(UDeltas, ScheduleSpace);
+  isl::set Deltas = polly::singleton(UDeltas, ScheduleSpace);
 
   isl::space Space = Deltas.get_space();
   isl::map NonPositive = isl::map::universe(Space.map_from_set());

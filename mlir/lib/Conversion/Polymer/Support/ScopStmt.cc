@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Support/IslScop.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
@@ -25,8 +25,8 @@
 #include "llvm/ADT/StringRef.h"
 
 using namespace llvm;
-using namespace mlir;
 using namespace polymer;
+using namespace mlir;
 
 static BlockArgument findTopLevelBlockArgument(mlir::Value val) {
   if (val.isa<mlir::BlockArgument>())
@@ -98,7 +98,12 @@ ScopStmt::ScopStmt(Operation *op, IslScop *parent) : op(op), parent(parent) {
   initializeDomainAndEnclosingOps();
 }
 
-ScopStmt::~ScopStmt() = default;
+ScopStmt::~ScopStmt() {
+  for (auto *MA : memoryAccesses) {
+    islDomain = isl_set_free(islDomain);
+    delete MA;
+  }
+}
 ScopStmt::ScopStmt(ScopStmt &&) = default;
 ScopStmt &ScopStmt::operator=(ScopStmt &&) = default;
 
