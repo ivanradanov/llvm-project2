@@ -171,6 +171,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
       auto unitMap = AffineMap::get(op->getContext());
       affine::AffineValueMap unitVMap(unitMap, ValueRange{}, ValueRange{});
       if (!isMemoryEffectFree(op)) {
+        // TODO FIXME NEED TO PUT THE VECTOR SIZE INTO THE RELATION FOR
+        // affine.vector_{store,load}
         if (isa<mlir::affine::AffineReadOpInterface>(op) ||
             isa<mlir::affine::AffineWriteOpInterface>(op)) {
 
