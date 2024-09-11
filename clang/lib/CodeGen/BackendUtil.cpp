@@ -1937,15 +1937,7 @@ void gpuOptPipeline(llvm::Module *TheModule) {
   auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
   runDefaultPrePostMLIRPipelines(TheModule, MlirModule.get());
 
-  MlirModule.get()->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
-    const mlir::DataLayoutAnalysis dl(gpuModule);
-    gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
-      if (func->getAttr("gpu.par.kernel")) {
-        (void)mlir::convertLLVMToAffineAccess(func, dl, false);
-        mlir::gpu::affine_opt::optGlobalSharedMemCopiesWithBarriersIntact(func);
-      }
-    });
-  });
+  // TODO run gpu-affine-opt
 
   embedMlirModule(TheModule, MlirModule.get());
 

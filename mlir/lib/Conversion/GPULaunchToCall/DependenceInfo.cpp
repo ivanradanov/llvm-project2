@@ -43,8 +43,8 @@ using namespace llvm;
 #include "polly/Support/PollyDebug.h"
 #define DEBUG_TYPE "polymer-dependence"
 
-cl::OptionCategory PolymerCategory("Polymer Options",
-                                   "Configure the polymer loop optimizer");
+static cl::OptionCategory
+    PolymerCategory("Polymer Options", "Configure the polymer loop optimizer");
 
 static cl::opt<int> OptComputeOut(
     "polymer-dependences-computeout",

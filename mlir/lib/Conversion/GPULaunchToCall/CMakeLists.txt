@@ -1,3 +1,4 @@
+add_flag_if_supported("-Wno-global-constructors" WNO_GLOBAL_CONSTRUCTOR_MLIR_IR)
 add_mlir_conversion_library(MLIRGPULaunchToCall
   LoopDistribute.cpp
   GPULaunchToCall.cpp
