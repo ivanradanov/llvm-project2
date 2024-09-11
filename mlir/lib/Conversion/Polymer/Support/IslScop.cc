@@ -158,7 +158,7 @@ IslScop::buildParallelSchedule(affine::AffineParallelOp parallelOp,
   assert(parallelOp->getNumResults() == 0 && "no parallel reductions");
   isl_schedule *schedule =
       buildLoopSchedule(parallelOp, depth, parallelOp.getNumDims(), true);
-  return markPermutable(schedule);
+  return schedule;
 }
 
 template <typename T>
