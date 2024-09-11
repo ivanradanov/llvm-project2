@@ -33,6 +33,7 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "isl/schedule.h"
+#include "isl/schedule_node.h"
 
 using namespace mlir;
 
@@ -278,6 +279,29 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << "Dependencies:\n";
     deps.dump();
   });
+
+  // TODO  need to remove any WAW dependencies on temporary (scoped)
+  // variables/arrays can this be achieved by using Kills in the flow
+  // computation? I think actually removing all WAW should work because the
+  // programmer should have ensured we never get those for global
+  // arrays/variables (those that live after the kernel has finished execution)
+  //
+  // TODO Need to remove dependencies that span different iterations of the
+  // parallel loops.
+
+  isl_union_set *domain =
+      isl_schedule_get_domain(scop->getScheduleTree().release());
+  isl_schedule_constraints *sc = isl_schedule_constraints_on_domain(domain);
+  isl_union_map *validity = deps.getDependences(polymer::Dependences::TYPE_RAW |
+                                                polymer::Dependences::TYPE_WAR)
+                                .release();
+  sc = isl_schedule_constraints_set_validity(sc, validity);
+  isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(sc);
+  LLVM_DEBUG({
+    llvm::dbgs() << "New Schedule:\n";
+    isl_schedule_dump(newSchedule);
+  });
+  isl_schedule_free(newSchedule);
 }
 
 } // namespace affine_opt
