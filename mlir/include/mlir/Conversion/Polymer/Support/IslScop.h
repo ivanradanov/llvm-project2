@@ -208,7 +208,7 @@ public:
   using ScopStmtMap = std::map<std::string, ScopStmt>;
   using ScopStmtNames = std::vector<std::string>;
 
-  IslScop();
+  IslScop(mlir::Operation *op);
   ~IslScop();
 
   /// Add the relation defined by cst to the context of the current scop.
@@ -237,9 +237,10 @@ public:
   void dumpSchedule(llvm::raw_ostream &os);
   void dumpAccesses(llvm::raw_ostream &os);
 
-  void buildSchedule(llvm::SmallVector<mlir::Operation *> ops) {
-    loopId = 0;
-    schedule = buildSequenceSchedule(ops);
+  void buildSchedule() {
+    buildSchedule(
+        getSequenceScheduleOpList(&root->getRegion(0).front().front(),
+                                  &root->getRegion(0).front().back()));
   }
 
   static llvm::SmallVector<mlir::Operation *>
@@ -284,8 +285,14 @@ public:
   }
 
 private:
+  mlir::Operation *root;
   isl_schedule *schedule = nullptr;
   unsigned loopId = 0;
+
+  void buildSchedule(llvm::SmallVector<mlir::Operation *> ops) {
+    loopId = 0;
+    schedule = buildSequenceSchedule(ops);
+  }
 
   template <typename T>
   __isl_give isl_schedule *buildLoopSchedule(T loopOp, unsigned depth,
