@@ -117,8 +117,6 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
   scop->initializeSymbolTable(f, &ctx);
 
-  // Counter for the statement inserted.
-  unsigned stmtId = 0;
   for (auto &stmt : scop->stmts) {
     LLVM_DEBUG({
       dbgs() << "Adding relations to statement: \n";
@@ -134,10 +132,6 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
       domain.dump();
     });
 
-    // Collect the enclosing ops.
-    llvm::SmallVector<mlir::Operation *, 8> enclosingOps;
-    stmt.getEnclosingOps(enclosingOps);
-    // Get the callee.
     Operation *op = stmt.getOperation();
 
     LLVM_DEBUG({
@@ -231,8 +225,6 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         for (auto opr : op->getOperands())
           addLoad(opr, unitVMap);
     }
-
-    stmtId++;
   }
 
   return scop;
@@ -264,7 +256,7 @@ void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
                              op->getName().getStringRef().str();
     op->setAttr("polymer.stmt.name",
                 StringAttr::get(f->getContext(), calleeName));
-    S.stmts.push_back(ScopStmt(op, &S));
+    S.stmts.emplace_back(op, &S);
   });
 }
 

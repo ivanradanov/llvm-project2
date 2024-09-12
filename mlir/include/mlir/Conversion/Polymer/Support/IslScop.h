@@ -267,6 +267,9 @@ public:
         isl_union_set_get_space(isl_schedule_get_domain(schedule)));
   }
 
+  void
+  rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope);
+
 private:
   using StmtVec = std::vector<ScopStmt>;
   using iterator = StmtVec::iterator;
