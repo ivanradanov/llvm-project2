@@ -289,13 +289,13 @@ ScopStmt &IslScop::getIslStmt(llvm::StringRef name) {
   for (auto &stmt : stmts)
     if (name == stmt.name)
       return stmt;
-  llvm_unreachable("stmtm not found");
+  llvm_unreachable("stmt not found");
 }
 ScopStmt &IslScop::getIslStmt(Operation *op) {
   for (auto &stmt : stmts)
     if (op == stmt.op)
       return stmt;
-  llvm_unreachable("stmtm not found");
+  llvm_unreachable("stmt not found");
 }
 
 void IslScop::dumpAccesses(llvm::raw_ostream &os) {
@@ -306,8 +306,7 @@ void IslScop::dumpAccesses(llvm::raw_ostream &os) {
   o(0) << "domain: \"" << IslStr(isl_union_set_to_str(domain)) << "\"\n";
   domain = isl_union_set_free(domain);
   o(0) << "accesses:\n";
-  for (unsigned stmtId = 0; stmtId < stmts.size(); stmtId++) {
-    auto &stmt = stmts[stmtId];
+  for (auto &stmt : *this) {
     o(2) << "- " << stmt.name << ":" << "\n";
     for (MemoryAccess *MA : stmt) {
       std::string type;
@@ -431,8 +430,8 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   map = isl_map_set_tuple_id(map, isl_dim_out, arrayId.release());
   map = isl_map_set_tuple_id(map, isl_dim_in, stmtId.release());
   ISL_DEBUG("Created relation: ", isl_map_dump(map));
-  stmt.memoryAccesses.push_back(new MemoryAccess{accessId, isl::manage(map),
-                                                 MemoryAccess::MT_Array, type});
+  stmt.memoryAccesses.push_back(new MemoryAccess{
+      accessId, isl::manage(map), MemoryAccess::MT_Array, type, memref});
 
   return success();
 }
@@ -1235,9 +1234,10 @@ void IslScop::rescopeStatements(
     std::string newStmtName = "RS" + std::to_string(blockParNum++) + "." +
                               rescopeOp->getName().getStringRef().str();
 
+    // FIXME this only works because we do not assign
     rescopeOp->setAttr("polymer.stmt.name",
                        StringAttr::get(root->getContext(), newStmtName));
-    auto &newStmt = stmts.emplace_back(rescopeOp, this);
+    ScopStmt &newStmt = stmts.emplace_back(rescopeOp, this);
     affine::FlatAffineValueConstraints domain = *newStmt.getMlirDomain();
     addDomainRelation(newStmt, domain);
 
@@ -1247,47 +1247,66 @@ void IslScop::rescopeStatements(
     // FIXME wrong
     LLVM_DEBUG(llvm::dbgs() << "Depth " << depth << "\n");
 
-    for (polymer::ScopStmt &stmt : *this) {
-      if (&stmt == &newStmt)
-        continue;
-      Operation *nested = stmt.getOperation();
-      if (rescopeOp->isAncestor(nested)) {
-        assert(rescopeOp != nested);
-        isl::set domain = stmt.getDomain();
-        LLVM_DEBUG(llvm::dbgs() << "nested stmt " << *nested << "\n");
-        LLVM_DEBUG(isl_set_dump(domain.get()));
-        isl::map domMap = isl::map::from_domain(domain);
-        LLVM_DEBUG(isl_map_dump(domMap.get()));
+    for (auto it = stmts.begin(); it != stmts.end();) {
+      polymer::ScopStmt &stmt = *it;
 
-        for (MemoryAccess *ma : stmt) {
-          isl::map accRel = ma->getAccessRelation();
-          LLVM_DEBUG(isl_map_dump(accRel.get()));
-          isl::map stmtToRescoped = domMap;
-          stmtToRescoped = stmtToRescoped.project_out(isl::dim::in, 0, depth);
-          auto nDims = stmtToRescoped.space().dim(isl::dim::in);
-          assert(!nDims.is_error());
-          stmtToRescoped = isl::manage(isl_map_insert_dims(
-              stmtToRescoped.release(), isl_dim_in, 0, depth));
-          stmtToRescoped = stmtToRescoped.add_dims(isl::dim::out, depth);
-          for (unsigned i = 0; i < depth; i++) {
-            auto cst = isl::constraint::alloc_equality(
-                isl::local_space(stmtToRescoped.get_space()));
-            cst = cst.set_coefficient_si(isl::dim::in, i, 1);
-            cst = cst.set_coefficient_si(isl::dim::out, i, -1);
-            stmtToRescoped = stmtToRescoped.add_constraint(cst);
-          }
-          stmtToRescoped = stmtToRescoped.set_tuple_id(
-              isl::dim::in, accRel.get_tuple_id(isl::dim::in));
-          stmtToRescoped = isl::manage(isl_map_set_tuple_name(
-              stmtToRescoped.release(), isl_dim_out, newStmtName.c_str()));
-          LLVM_DEBUG(isl_map_dump(stmtToRescoped.get()));
-          auto rescopedAccRel = accRel.apply_domain(stmtToRescoped);
-          LLVM_DEBUG(dbgs() << "Computed combined acc rel for rescoped: ";);
-          LLVM_DEBUG(isl_map_dump(rescopedAccRel.get()));
-          newStmt.memoryAccesses.push_back(
-              new MemoryAccess{ma->Id, rescopedAccRel, ma->Kind, ma->AccType});
-        }
+      if (&stmt == &newStmt) {
+        it++;
+        continue;
       }
+
+      Operation *nested = stmt.getOperation();
+      if (!rescopeOp->isAncestor(nested)) {
+        it++;
+        continue;
+      }
+
+      assert(rescopeOp != nested);
+      isl::set domain = stmt.getDomain();
+      LLVM_DEBUG(llvm::dbgs() << "nested stmt " << *nested << "\n");
+      LLVM_DEBUG(isl_set_dump(domain.get()));
+      isl::map domMap = isl::map::from_domain(domain);
+      LLVM_DEBUG(isl_map_dump(domMap.get()));
+
+      for (MemoryAccess *ma : stmt) {
+        Value memref = ma->memref;
+        // FIXME this is wrong for iter args of for loops for example but we do
+        // not rescope operations where this would be problematic
+        Operation *scope = memref.getParentBlock()->getParentOp();
+        // If the scope of the memref is inside the rescoped op then we do not
+        // need to care about accesses to it
+        if (rescopeOp->isAncestor(scope))
+          continue;
+
+        isl::map accRel = ma->getAccessRelation();
+        LLVM_DEBUG(isl_map_dump(accRel.get()));
+        isl::map stmtToRescoped = domMap;
+        stmtToRescoped = stmtToRescoped.project_out(isl::dim::in, 0, depth);
+        auto nDims = stmtToRescoped.space().dim(isl::dim::in);
+        assert(!nDims.is_error());
+        stmtToRescoped = isl::manage(isl_map_insert_dims(
+            stmtToRescoped.release(), isl_dim_in, 0, depth));
+        stmtToRescoped = stmtToRescoped.add_dims(isl::dim::out, depth);
+        for (unsigned i = 0; i < depth; i++) {
+          auto cst = isl::constraint::alloc_equality(
+              isl::local_space(stmtToRescoped.get_space()));
+          cst = cst.set_coefficient_si(isl::dim::in, i, 1);
+          cst = cst.set_coefficient_si(isl::dim::out, i, -1);
+          stmtToRescoped = stmtToRescoped.add_constraint(cst);
+        }
+        stmtToRescoped = stmtToRescoped.set_tuple_id(
+            isl::dim::in, accRel.get_tuple_id(isl::dim::in));
+        stmtToRescoped = isl::manage(isl_map_set_tuple_name(
+            stmtToRescoped.release(), isl_dim_out, newStmtName.c_str()));
+        LLVM_DEBUG(isl_map_dump(stmtToRescoped.get()));
+        auto rescopedAccRel = accRel.apply_domain(stmtToRescoped);
+        LLVM_DEBUG(dbgs() << "Computed combined acc rel for rescoped: ";);
+        LLVM_DEBUG(isl_map_dump(rescopedAccRel.get()));
+        newStmt.memoryAccesses.push_back(new MemoryAccess{
+            ma->Id, rescopedAccRel, ma->Kind, ma->AccType, ma->memref});
+      }
+
+      it = stmts.erase(it);
     }
 
     // no nested resopes

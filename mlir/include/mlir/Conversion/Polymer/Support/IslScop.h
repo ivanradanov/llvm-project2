@@ -79,6 +79,7 @@ public:
   isl::map AccessRelation;
   MemoryKind Kind;
   AccessType AccType;
+  mlir::Value memref;
 
   isl::map getAccessRelation() { return AccessRelation; }
 
@@ -205,8 +206,6 @@ public:
   using SymbolTable = llvm::StringMap<mlir::Value>;
   using ValueTable = llvm::DenseMap<mlir::Value, std::string>;
   using MemRefToId = llvm::DenseMap<mlir::Value, std::string>;
-  using ScopStmtMap = std::map<std::string, ScopStmt>;
-  using ScopStmtNames = std::vector<std::string>;
 
   IslScop(mlir::Operation *op);
   ~IslScop();
@@ -271,7 +270,7 @@ public:
   rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope);
 
 private:
-  using StmtVec = std::vector<ScopStmt>;
+  using StmtVec = std::list<ScopStmt>;
   using iterator = StmtVec::iterator;
   StmtVec stmts;
 
