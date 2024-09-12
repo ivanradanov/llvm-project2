@@ -14,6 +14,7 @@
 #include "polly/Support/ScopHelper.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/raw_ostream.h"
@@ -217,9 +218,9 @@ public:
                          mlir::affine::FlatAffineValueConstraints &cst);
   /// Add the access relation.
   mlir::LogicalResult
-  addAccessRelation(ScopStmt &stmt, polymer::MemoryAccess::AccessType type,
-                    mlir::Value memref, mlir::affine::AffineValueMap &vMap,
-                    mlir::affine::FlatAffineValueConstraints &cst);
+  addAccessRelation(ScopStmt &, polymer::MemoryAccess::AccessType, mlir::Value,
+                    mlir::affine::AffineValueMap &,
+                    mlir::affine::FlatAffineValueConstraints &);
 
   /// Initialize the symbol table.
   void initializeSymbolTable(mlir::Operation *f,
@@ -273,6 +274,14 @@ private:
 public:
   iterator begin() { return stmts.begin(); }
   iterator end() { return stmts.end(); }
+
+  ScopStmt &getStatement(mlir::Operation *op) {
+    auto found = llvm::find_if(
+        *this, [&](ScopStmt &stmt) { return stmt.getOperation() == op; });
+    assert(found != this->end());
+
+    return *found;
+  }
 
 private:
   isl_schedule *schedule = nullptr;
