@@ -105,7 +105,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   // created. It doesn't contain any fields, and this may incur some problems,
   // which the validate function won't discover, e.g., no context will cause
   // segfault when printing scop. Please don't just return this object.
-  auto scop = std::make_unique<IslScop>();
+  auto scop = std::make_unique<IslScop>(f);
 
   // Find all caller/callee pairs in which the callee has the attribute of name
   // SCOP_STMT_ATTR_NAME.
@@ -234,9 +234,6 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
     stmtId++;
   }
-
-  scop->buildSchedule(scop->getSequenceScheduleOpList(
-      &f->getRegion(0).front().front(), &f->getRegion(0).front().back()));
 
   return scop;
 }

@@ -65,7 +65,10 @@ using llvm::formatv;
 
 #define DEBUG_TYPE "islscop"
 
-IslScop::IslScop() { IslCtx.reset(isl_ctx_alloc(), isl_ctx_free); }
+IslScop::IslScop(Operation *op) {
+  IslCtx.reset(isl_ctx_alloc(), isl_ctx_free);
+  root = op;
+}
 
 IslScop::~IslScop() { isl_schedule_free(schedule); }
 

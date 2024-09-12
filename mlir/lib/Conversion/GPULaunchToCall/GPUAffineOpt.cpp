@@ -282,6 +282,7 @@ static inline unsigned unsignedFromIslSize(const isl_size &size) {
 void transform(LLVM::LLVMFuncOp f) {
   using namespace polymer;
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
+  scop->buildSchedule();
   LLVM_DEBUG({
     llvm::dbgs() << "Schedule:\n";
     isl_schedule_dump(scop->getScheduleTree().get());
