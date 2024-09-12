@@ -32,8 +32,11 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "isl/isl-noexceptions.h"
+#include "isl/map.h"
 #include "isl/schedule.h"
 #include "isl/schedule_node.h"
+#include "isl/union_set.h"
 
 using namespace mlir;
 
@@ -264,7 +267,20 @@ void optGlobalSharedMemCopies(Operation *root) {
   }
 }
 
+static inline void islAssert(const isl_size &size) {
+  assert(size != isl_size_error);
+}
+static inline unsigned unsignedFromIslSize(const isl::size &size) {
+  assert(!size.is_error());
+  return static_cast<unsigned>(size);
+}
+static inline unsigned unsignedFromIslSize(const isl_size &size) {
+  islAssert(size);
+  return static_cast<unsigned>(size);
+}
+
 void transform(LLVM::LLVMFuncOp f) {
+  using namespace polymer;
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
   LLVM_DEBUG({
     llvm::dbgs() << "Schedule:\n";
@@ -272,6 +288,62 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << "Accesses:\n";
     scop->dumpAccesses(llvm::dbgs());
   });
+
+  unsigned blockParNum = 0;
+
+  f->walk([&](Operation *op) {
+    auto blockPar = isBlockPar(op);
+    if (!blockPar)
+      return WalkResult::advance();
+
+    LLVM_DEBUG(llvm::dbgs() << "Handling block par\n" << *op << "\n");
+
+    unsigned depth = 3;
+    std::string newStmtName = "BlockPar" + std::to_string(blockParNum++);
+
+    for (polymer::ScopStmt &stmt : *scop) {
+      Operation *nested = stmt.getOperation();
+      if (blockPar->isAncestor(nested)) {
+        assert(blockPar != nested);
+        isl::set domain = stmt.getDomain();
+        LLVM_DEBUG(llvm::dbgs() << "nested stmt " << *nested << "\n");
+        LLVM_DEBUG(isl_set_dump(domain.get()));
+        isl::map domMap = isl::map::from_domain(domain);
+        LLVM_DEBUG(isl_map_dump(domMap.get()));
+
+        for (MemoryAccess *ma : stmt) {
+          isl::map accRel = ma->getAccessRelation();
+          LLVM_DEBUG(isl_map_dump(accRel.get()));
+          isl::map stmtToBlockPar = domMap;
+          stmtToBlockPar = stmtToBlockPar.project_out(isl::dim::in, 0, depth);
+          auto nDims = stmtToBlockPar.space().dim(isl::dim::in);
+          assert(!nDims.is_error());
+          stmtToBlockPar = isl::manage(isl_map_insert_dims(
+              stmtToBlockPar.release(), isl_dim_in, 0, depth));
+          stmtToBlockPar = stmtToBlockPar.add_dims(isl::dim::out, depth);
+          for (unsigned i = 0; i < depth; i++) {
+            auto cst = isl::constraint::alloc_equality(
+                isl::local_space(stmtToBlockPar.get_space()));
+            cst = cst.set_coefficient_si(isl::dim::in, i, 1);
+            cst = cst.set_coefficient_si(isl::dim::out, i, -1);
+            stmtToBlockPar = stmtToBlockPar.add_constraint(cst);
+          }
+          stmtToBlockPar = stmtToBlockPar.set_tuple_id(
+              isl::dim::in, accRel.get_tuple_id(isl::dim::in));
+          stmtToBlockPar =
+              stmtToBlockPar.set_tuple_id(isl::dim::out, newStmtName);
+          LLVM_DEBUG(isl_map_dump(stmtToBlockPar.get()));
+          auto blockParAccRel = accRel.apply_domain(stmtToBlockPar);
+          LLVM_DEBUG(dbgs() << "Computed combined acc rel for block par: ";);
+          LLVM_DEBUG(isl_map_dump(blockParAccRel.get()));
+        }
+      }
+    }
+
+    // no nested block pars
+    return WalkResult::skip();
+  });
+
   polymer::Dependences deps(scop->getSharedIslCtx(),
                             polymer::Dependences::AL_Statement);
   deps.calculateDependences(*scop);
@@ -409,6 +481,7 @@ struct ParallelizeSequential
     Block *block = par->getBlock();
     if (block->getOperations().size() == 2)
       return rewriter.notifyMatchFailure(par, "no ops around par");
+    return rewriter.notifyMatchFailure(par, "not implemented yet");
   }
 };
 
