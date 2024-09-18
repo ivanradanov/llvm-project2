@@ -1220,6 +1220,10 @@ Operation *IslScop::applySchedule(isl_schedule *newSchedule,
   return f;
 }
 
+// TODO this takes the union of the write effects in the operations we rescope
+// to. instead, what should happen is we should do flow analysis to see what
+// memory effects live-out and live-in, i.e. not care about memory effects that
+// are not observable outside the rescoped op.
 void IslScop::rescopeStatements(
     std::function<bool(Operation *op)> shouldRescope) {
 
