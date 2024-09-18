@@ -308,7 +308,7 @@ void transform(LLVM::LLVMFuncOp f) {
     deps.dump();
   });
 
-  // TODO  need to remove any WAW dependencies on temporary (scoped)
+  // TODO need to remove any WAW dependencies on temporary (scoped)
   // variables/arrays can this be achieved by using Kills in the flow
   // computation? I think actually removing all WAW should work because the
   // programmer should have ensured we never get those for global
