@@ -29,6 +29,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "isl/aff.h"
+#include "isl/aff_type.h"
 #include "isl/ctx.h"
 #include "isl/flow.h"
 #include "isl/map.h"
@@ -1335,10 +1336,7 @@ ppcg_scop *computeDeps(Scop &S) {
       isl_set_universe(S.getScheduleTree().get_domain().get_space().release());
   ps->independence = isl_union_map_empty(isl_set_get_space(ps->context));
 
-  auto TaggedMap = isl_union_set_unwrap(isl_union_set_copy(TaggedStmtDomain));
-  auto Tags = isl_union_map_domain_map_union_pw_multi_aff(TaggedMap);
-  ps->tagger = Tags;
-
+  compute_tagger(ps);
   compute_dependences(&(*ps));
 
 #define PPCGSCOPDUMP(field)                                                    \
@@ -1361,6 +1359,10 @@ ppcg_scop *computeDeps(Scop &S) {
     PPCGSCOPDUMP(dep_forced);
     PPCGSCOPDUMP(dep_order);
     PPCGSCOPDUMP(tagged_dep_order);
+    dbgs() << "tagger" << " " << isl_union_pw_multi_aff_to_str(ps->tagger)
+           << '\n';
+    dbgs() << "schedule" << '\n';
+    isl_schedule_dump(ps->schedule);
   });
 #undef PPCGSCOPDUMP
 
