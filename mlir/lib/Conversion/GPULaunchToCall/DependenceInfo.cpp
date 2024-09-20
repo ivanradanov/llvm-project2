@@ -1292,18 +1292,36 @@ static void compute_dependences(struct ppcg_scop *scop)
 // ############### PPCG END ###############
 
 ppcg_scop *computeDeps(Scop &S) {
-  isl_union_map *Read, *MustWrite, *MayWrite, *ReductionTagMap, *Kill;
+  isl_union_map *ReductionTagMap;
   isl_schedule *Schedule;
   isl_union_set *TaggedStmtDomain;
 
-  collectInfo(S, Read, MustWrite, MayWrite, Kill, ReductionTagMap,
-              TaggedStmtDomain, polymer::Dependences::AL_Reference);
+  // TODO leaking
+  ppcg_options *options = new ppcg_options{1, PPCG_TARGET_CUDA};
+  ppcg_scop *ps = new ppcg_scop;
+  (*ps) = ppcg_scop{0};
+  (*ps).options = options;
+
+  collectInfo(S, ps->reads, ps->must_writes, ps->may_writes, ps->must_kills,
+              ReductionTagMap, TaggedStmtDomain,
+              polymer::Dependences::AL_Statement);
+
+  collectInfo(S, ps->tagged_reads, ps->tagged_must_writes,
+              ps->tagged_may_writes, ps->tagged_must_kills, ReductionTagMap,
+              TaggedStmtDomain, polymer::Dependences::AL_Access);
 
   POLLY_DEBUG(
-      dbgs() << "Read: " << isl_union_map_to_str(Read) << '\n';
-      dbgs() << "MustWrite: " << isl_union_map_to_str(MustWrite) << '\n';
-      dbgs() << "MayWrite: " << isl_union_map_to_str(MayWrite) << '\n';
-      dbgs() << "Kill: " << isl_union_map_to_str(Kill) << '\n';
+      dbgs() << "Read: " << isl_union_map_to_str(ps->reads) << '\n';
+      dbgs() << "MustWrite: " << isl_union_map_to_str(ps->must_writes) << '\n';
+      dbgs() << "MayWrite: " << isl_union_map_to_str(ps->may_writes) << '\n';
+      dbgs() << "Kill: " << isl_union_map_to_str(ps->must_kills) << '\n';
+      dbgs() << "TRead: " << isl_union_map_to_str(ps->tagged_reads) << '\n';
+      dbgs() << "TMustWrite: " << isl_union_map_to_str(ps->tagged_must_writes)
+             << '\n';
+      dbgs() << "TMayWrite: " << isl_union_map_to_str(ps->tagged_may_writes)
+             << '\n';
+      dbgs() << "TKill: " << isl_union_map_to_str(ps->tagged_must_kills)
+             << '\n';
       dbgs() << "ReductionTagMap: " << isl_union_map_to_str(ReductionTagMap)
              << '\n';
       dbgs() << "TaggedStmtDomain: " << isl_union_set_to_str(TaggedStmtDomain)
@@ -1311,15 +1329,8 @@ ppcg_scop *computeDeps(Scop &S) {
 
   Schedule = S.getScheduleTree().release();
 
-  // TODO leaking
-  ppcg_options *options = new ppcg_options{1, PPCG_TARGET_CUDA};
-  ppcg_scop *ps = new ppcg_scop;
-  (*ps) = ppcg_scop{0};
-  (*ps).options = options;
-  (*ps).may_writes = MayWrite;
-  (*ps).must_writes = MustWrite;
-  (*ps).must_kills = Kill;
   (*ps).schedule = Schedule;
+
   auto TaggedMap = isl_union_set_unwrap(isl_union_set_copy(TaggedStmtDomain));
   auto Tags = isl_union_map_domain_map_union_pw_multi_aff(TaggedMap);
   (*ps).tagger = Tags;
