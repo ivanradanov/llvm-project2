@@ -1331,6 +1331,9 @@ ppcg_scop *computeDeps(Scop &S) {
 
   ps->schedule = Schedule;
   ps->domain = S.getScheduleTree().get_domain().release();
+  ps->context =
+      isl_set_universe(S.getScheduleTree().get_domain().get_space().release());
+  ps->independence = isl_union_map_empty(isl_set_get_space(ps->context));
 
   auto TaggedMap = isl_union_set_unwrap(isl_union_set_copy(TaggedStmtDomain));
   auto Tags = isl_union_map_domain_map_union_pw_multi_aff(TaggedMap);
