@@ -201,4 +201,57 @@ private:
 
 } // namespace polymer
 
+// ############### PPCG DECLS BEGIN ###############
+// clang-format off
+#define		PPCG_TARGET_C		0
+#define		PPCG_TARGET_CUDA	1
+#define		PPCG_TARGET_OPENCL      2
+
+struct pet_scop {};
+struct ppcg_options {
+	int live_range_reordering;
+	int target;
+};
+
+struct ppcg_scop {
+	struct ppcg_options *options;
+
+	unsigned start;
+	unsigned end;
+
+	isl_set *context;
+	isl_union_set *domain;
+	isl_union_set *call;
+	isl_union_map *tagged_reads;
+	isl_union_map *reads;
+	isl_union_map *live_in;
+	isl_union_map *tagged_may_writes;
+	isl_union_map *may_writes;
+	isl_union_map *tagged_must_writes;
+	isl_union_map *must_writes;
+	isl_union_map *live_out;
+	isl_union_map *tagged_must_kills;
+	isl_union_map *must_kills;
+
+	isl_union_pw_multi_aff *tagger;
+
+	isl_union_map *independence;
+
+	isl_union_map *dep_flow;
+	isl_union_map *tagged_dep_flow;
+	isl_union_map *dep_false;
+	isl_union_map *dep_forced;
+	isl_union_map *dep_order;
+	isl_union_map *tagged_dep_order;
+	isl_schedule *schedule;
+
+	isl_id_to_ast_expr *names;
+
+	struct pet_scop *pet;
+};
+// clang-format on
+// ############### PPCG DECLS END ###############
+
+ppcg_scop *computeDeps(polymer::Scop &S);
+
 #endif

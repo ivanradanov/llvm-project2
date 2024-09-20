@@ -279,6 +279,49 @@ static inline unsigned unsignedFromIslSize(const isl_size &size) {
   return static_cast<unsigned>(size);
 }
 
+static __isl_give isl_schedule_constraints *
+construct_schedule_constraints(struct ppcg_scop *scop) {
+  isl_union_set *domain;
+  isl_union_map *dep_raw, *dep;
+  isl_union_map *validity, *proximity, *coincidence;
+  isl_schedule_constraints *sc;
+
+  domain = isl_union_set_copy(scop->domain);
+  sc = isl_schedule_constraints_on_domain(domain);
+  sc = isl_schedule_constraints_set_context(sc, isl_set_copy(scop->context));
+  if (scop->options->live_range_reordering) {
+    sc = isl_schedule_constraints_set_conditional_validity(
+        sc, isl_union_map_copy(scop->tagged_dep_flow),
+        isl_union_map_copy(scop->tagged_dep_order));
+    proximity = isl_union_map_copy(scop->dep_flow);
+    validity = isl_union_map_copy(proximity);
+    validity =
+        isl_union_map_union(validity, isl_union_map_copy(scop->dep_forced));
+    proximity =
+        isl_union_map_union(proximity, isl_union_map_copy(scop->dep_false));
+    coincidence = isl_union_map_copy(validity);
+    coincidence = isl_union_map_subtract(
+        coincidence, isl_union_map_copy(scop->independence));
+    // TODO
+    isl_union_map *array_order = nullptr;
+    coincidence =
+        isl_union_map_union(coincidence, isl_union_map_copy(array_order));
+  } else {
+    dep_raw = isl_union_map_copy(scop->dep_flow);
+    dep = isl_union_map_copy(scop->dep_false);
+    dep = isl_union_map_union(dep, dep_raw);
+    dep = isl_union_map_coalesce(dep);
+    proximity = isl_union_map_copy(dep);
+    coincidence = isl_union_map_copy(dep);
+    validity = dep;
+  }
+  sc = isl_schedule_constraints_set_validity(sc, validity);
+  sc = isl_schedule_constraints_set_coincidence(sc, coincidence);
+  sc = isl_schedule_constraints_set_proximity(sc, proximity);
+
+  return sc;
+}
+
 void transform(LLVM::LLVMFuncOp f) {
   using namespace polymer;
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
@@ -299,6 +342,16 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << "Accesses:\n";
     scop->dumpAccesses(llvm::dbgs());
   });
+
+  ppcg_scop *ps = computeDeps(*scop);
+  isl_schedule_constraints *sc = construct_schedule_constraints(ps);
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "Schedule constraints:\n";
+    isl_schedule_constraints_dump(sc);
+  });
+
+#if 0
 
   polymer::Dependences deps(scop->getSharedIslCtx(),
                             polymer::Dependences::AL_Statement);
@@ -330,6 +383,8 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_dump(newSchedule);
   });
   isl_schedule_free(newSchedule);
+
+#endif
 }
 
 } // namespace affine_opt
