@@ -385,7 +385,13 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   std::string name;
   auto found = memRefIdMap.find(memref);
   if (found == memRefIdMap.end()) {
-    name = "A" + std::to_string(memRefIdMap.size() + 1);
+    name = "A_";
+    if (auto ba = dyn_cast<BlockArgument>(memref))
+      name += ba.getOwner()->getParentOp()->getName().getStringRef().str() +
+              "_arg_" + std::to_string(ba.getArgNumber());
+    else
+      name += memref.getDefiningOp()->getName().getStringRef().str() + "_res";
+    name += "_" + std::to_string(memRefIdMap.size());
     memRefIdMap.insert({memref, name});
   } else {
     name = found->second;

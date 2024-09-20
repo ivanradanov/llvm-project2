@@ -109,8 +109,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 
   // Find all caller/callee pairs in which the callee has the attribute of name
   // SCOP_STMT_ATTR_NAME.
-  IRMapping storeMap;
-  gatherStmts(f, storeMap, *scop);
+  IRMapping redirectMap;
+  gatherStmts(f, redirectMap, *scop);
 
   // Build context in it.
   buildScopContext(f, scop.get(), ctx);
@@ -151,23 +151,25 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
             return;
 
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
-                                      storeMap.lookupOrDefault(memref), map,
+                                      redirectMap.lookupOrDefault(memref), map,
                                       domain);
       };
       auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
-                                      storeMap.lookupOrDefault(memref), map,
+                                      redirectMap.lookupOrDefault(memref), map,
                                       domain);
       };
       auto addMustStore = [&](Value memref, affine::AffineValueMap map) {
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MUST_WRITE,
-                                      storeMap.lookupOrDefault(memref), map,
+                                      redirectMap.lookupOrDefault(memref), map,
                                       domain);
       };
       auto addKill = [&](Value memref, affine::AffineValueMap map) {
+        auto redirected = redirectMap.lookupOrDefault(memref);
+        if (redirected.getParentBlock()->getParentOp() == f)
+          return;
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::KILL,
-                                      storeMap.lookupOrDefault(memref), map,
-                                      domain);
+                                      redirected, map, domain);
       };
       bool needToLoadOperands = true;
       bool needToStoreResults = true;
@@ -211,8 +213,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         }
       } else if (auto storeVar = dyn_cast<affine::AffineStoreVar>(op)) {
         assert(storeVar->getNumOperands() == 2);
-        Value val = storeMap.lookupOrDefault(storeVar->getOperand(0));
-        Value addr = storeMap.lookupOrDefault(storeVar->getOperand(1));
+        Value val = storeVar->getOperand(0);
+        Value addr = storeVar->getOperand(1);
         addLoad(val, unitVMap);
         addMustStore(addr, unitVMap);
         needToLoadOperands = false;
@@ -260,6 +262,9 @@ void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
                                  IslScop &S) const {
   f->walk(
       [&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
+  f->walk([&](memref::AtAddrOp atAddr) {
+    map.map(atAddr.getResult(), atAddr.getAddr());
+  });
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
     if (isa<affine::AffineForOp, affine::AffineIfOp, affine::AffineParallelOp>(
