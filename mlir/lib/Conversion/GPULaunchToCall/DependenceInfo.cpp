@@ -1329,15 +1329,37 @@ ppcg_scop *computeDeps(Scop &S) {
 
   Schedule = S.getScheduleTree().release();
 
-  (*ps).schedule = Schedule;
+  ps->schedule = Schedule;
+  ps->domain = S.getScheduleTree().get_domain().release();
 
   auto TaggedMap = isl_union_set_unwrap(isl_union_set_copy(TaggedStmtDomain));
   auto Tags = isl_union_map_domain_map_union_pw_multi_aff(TaggedMap);
-  (*ps).tagger = Tags;
-
-  *ps = (*ps);
+  ps->tagger = Tags;
 
   compute_dependences(&(*ps));
+
+#define PPCGSCOPDUMP(field)                                                    \
+  dbgs() << #field << " " << isl_union_map_to_str(ps->field) << '\n'
+  POLLY_DEBUG({
+    PPCGSCOPDUMP(tagged_reads);
+    PPCGSCOPDUMP(reads);
+    PPCGSCOPDUMP(live_in);
+    PPCGSCOPDUMP(tagged_may_writes);
+    PPCGSCOPDUMP(may_writes);
+    PPCGSCOPDUMP(tagged_must_writes);
+    PPCGSCOPDUMP(must_writes);
+    PPCGSCOPDUMP(live_out);
+    PPCGSCOPDUMP(tagged_must_kills);
+    PPCGSCOPDUMP(must_kills);
+    PPCGSCOPDUMP(independence);
+    PPCGSCOPDUMP(dep_flow);
+    PPCGSCOPDUMP(tagged_dep_flow);
+    PPCGSCOPDUMP(dep_false);
+    PPCGSCOPDUMP(dep_forced);
+    PPCGSCOPDUMP(dep_order);
+    PPCGSCOPDUMP(tagged_dep_order);
+  });
+#undef PPCGSCOPDUMP
 
   return ps;
 }
