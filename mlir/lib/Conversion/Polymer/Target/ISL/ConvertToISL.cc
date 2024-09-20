@@ -143,9 +143,13 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
       auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+        if (affine::isValidDim(memref) || affine::isValidSymbol(memref))
+          return;
+
         if (auto *op = memref.getDefiningOp())
           if (op->hasTrait<OpTrait::ConstantLike>())
             return;
+
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
@@ -244,10 +248,10 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
 static void createForIterArgAccesses(affine::AffineForOp forOp,
                                      IRMapping &map) {
   OpBuilder builder(forOp);
-  for (auto [ba, res] : llvm::zip(ValueRange(forOp.getInitsMutable()),
-                                  ValueRange(forOp.getResults())))
+  for (auto [init, res] : llvm::zip(ValueRange(forOp.getInitsMutable()),
+                                    ValueRange(forOp.getResults())))
     builder.create<affine::AffineStoreVar>(
-        forOp.getLoc(), ValueRange{ba, res},
+        forOp.getLoc(), ValueRange{init, res},
         builder.getStringAttr("for.iv.init"));
   map.map(forOp.getRegionIterArgs(), forOp.getResults());
 }
