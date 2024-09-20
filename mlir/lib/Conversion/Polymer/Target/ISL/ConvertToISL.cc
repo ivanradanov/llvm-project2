@@ -142,6 +142,14 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     scop->addDomainRelation(stmt, domain);
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
+      auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+        if (auto *op = memref.getDefiningOp())
+          if (op->hasTrait<OpTrait::ConstantLike>())
+            return;
+        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
+                                      storeMap.lookupOrDefault(memref), map,
+                                      domain);
+      };
       auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
         (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
                                       storeMap.lookupOrDefault(memref), map,
@@ -152,11 +160,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
-      auto addLoad = [&](Value memref, affine::AffineValueMap map) {
-        if (auto *op = memref.getDefiningOp())
-          if (op->hasTrait<OpTrait::ConstantLike>())
-            return;
-        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
+      auto addKill = [&](Value memref, affine::AffineValueMap map) {
+        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::KILL,
                                       storeMap.lookupOrDefault(memref), map,
                                       domain);
       };
@@ -218,12 +223,18 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         needToLoadOperands = false;
         needToStoreResults = false;
       }
+
       if (needToStoreResults)
         for (auto res : op->getResults())
           addMustStore(res, unitVMap);
       if (needToLoadOperands)
         for (auto opr : op->getOperands())
           addLoad(opr, unitVMap);
+
+      if (op->getBlock()->getTerminator() == op)
+        for (auto &toKill : op->getBlock()->without_terminator())
+          for (auto res : toKill.getResults())
+            addKill(res, unitVMap);
     }
   }
 

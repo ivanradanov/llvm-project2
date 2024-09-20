@@ -73,6 +73,7 @@ public:
     READ = 0x1,
     MUST_WRITE = 0x2,
     MAY_WRITE = 0x3,
+    KILL = 0x4,
   };
 
   isl::id Id;
@@ -94,6 +95,7 @@ public:
   bool isMustWrite() const { return AccType == MemoryAccess::MUST_WRITE; }
   bool isMayWrite() const { return AccType == MemoryAccess::MAY_WRITE; }
   bool isWrite() const { return isMustWrite() || isMayWrite(); }
+  bool isKill() const { return AccType == MemoryAccess::KILL; }
 };
 
 class ScopStmt {

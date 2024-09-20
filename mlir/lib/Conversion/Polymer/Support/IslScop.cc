@@ -316,6 +316,8 @@ void IslScop::dumpAccesses(llvm::raw_ostream &os) {
         type = "must_write";
       else if (MA->isMayWrite())
         type = "may_write";
+      else if (MA->isKill())
+        type = "kill";
       assert(type != "");
       o(8) << "- " << type << " " << '"'
            << IslStr(isl_map_to_str(MA->AccessRelation.get())) << '"' << "\n";

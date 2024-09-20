@@ -117,13 +117,14 @@ static __isl_give isl_map *tag(__isl_take isl_map *Relation, MemoryAccess *MA,
 /// Collect information about the SCoP @p S.
 static void collectInfo(Scop &S, isl_union_map *&Read,
                         isl_union_map *&MustWrite, isl_union_map *&MayWrite,
-                        isl_union_map *&ReductionTagMap,
+                        isl_union_map *&Kill, isl_union_map *&ReductionTagMap,
                         isl_union_set *&TaggedStmtDomain,
                         Dependences::AnalysisLevel Level) {
   isl_space *Space = S.getParamSpace().release();
   Read = isl_union_map_empty(isl_space_copy(Space));
   MustWrite = isl_union_map_empty(isl_space_copy(Space));
   MayWrite = isl_union_map_empty(isl_space_copy(Space));
+  Kill = isl_union_map_empty(isl_space_copy(Space));
   ReductionTagMap = isl_union_map_empty(isl_space_copy(Space));
   isl_union_map *StmtSchedule = isl_union_map_empty(Space);
 
@@ -173,8 +174,12 @@ static void collectInfo(Scop &S, isl_union_map *&Read,
         Read = isl_union_map_add_map(Read, accdom);
       else if (MA->isMayWrite())
         MayWrite = isl_union_map_add_map(MayWrite, accdom);
-      else
+      else if (MA->isMustWrite())
         MustWrite = isl_union_map_add_map(MustWrite, accdom);
+      else if (MA->isKill())
+        Kill = isl_union_map_add_map(Kill, accdom);
+      else
+        llvm_unreachable("unknown access type");
     }
 
     if (!ReductionArrays.empty() && Level == Dependences::AL_Statement)
@@ -315,14 +320,14 @@ static __isl_give isl_union_flow *buildFlow(__isl_keep isl_union_map *Snk,
 }
 
 void Dependences::calculateDependences(Scop &S) {
-  isl_union_map *Read, *MustWrite, *MayWrite, *ReductionTagMap;
+  isl_union_map *Read, *MustWrite, *MayWrite, *ReductionTagMap, *Kill;
   isl_schedule *Schedule;
   isl_union_set *TaggedStmtDomain;
 
   // POLLY_DEBUG(dbgs() << "Scop: \n" << S << "\n");
 
-  collectInfo(S, Read, MustWrite, MayWrite, ReductionTagMap, TaggedStmtDomain,
-              Level);
+  collectInfo(S, Read, MustWrite, MayWrite, Kill, ReductionTagMap,
+              TaggedStmtDomain, Level);
 
   bool HasReductions = !isl_union_map_is_empty(ReductionTagMap);
 
@@ -330,6 +335,7 @@ void Dependences::calculateDependences(Scop &S) {
       dbgs() << "Read: " << isl_union_map_to_str(Read) << '\n';
       dbgs() << "MustWrite: " << isl_union_map_to_str(MustWrite) << '\n';
       dbgs() << "MayWrite: " << isl_union_map_to_str(MayWrite) << '\n';
+      dbgs() << "Kill: " << isl_union_map_to_str(Kill) << '\n';
       dbgs() << "ReductionTagMap: " << isl_union_map_to_str(ReductionTagMap)
              << '\n';
       dbgs() << "TaggedStmtDomain: " << isl_union_set_to_str(TaggedStmtDomain)
@@ -374,6 +380,7 @@ void Dependences::calculateDependences(Scop &S) {
               dbgs() << "MustWrite: " << isl_union_map_to_str(MustWrite)
                      << '\n';
               dbgs() << "MayWrite: " << isl_union_map_to_str(MayWrite) << '\n';
+              dbgs() << "Kill: " << isl_union_map_to_str(Kill) << '\n';
               dbgs() << "Schedule: " << isl_schedule_to_str(Schedule) << "\n");
 
   isl_union_map *StrictWAW = nullptr;
