@@ -1306,10 +1306,14 @@ ppcg_scop *computeDeps(Scop &S) {
   collectInfo(S, ps->reads, ps->must_writes, ps->may_writes, ps->must_kills,
               ReductionTagMap, TaggedStmtDomain,
               polymer::Dependences::AL_Statement);
-
   collectInfo(S, ps->tagged_reads, ps->tagged_must_writes,
               ps->tagged_may_writes, ps->tagged_must_kills, ReductionTagMap,
               TaggedStmtDomain, polymer::Dependences::AL_Access);
+
+  // In ppcg, the must writes are a subset of the may writes
+  ps->may_writes = isl_union_map_union(ps->must_writes, ps->may_writes);
+  ps->tagged_may_writes =
+      isl_union_map_union(ps->tagged_must_writes, ps->tagged_may_writes);
 
   POLLY_DEBUG(
       dbgs() << "Read: " << isl_union_map_to_str(ps->reads) << '\n';
