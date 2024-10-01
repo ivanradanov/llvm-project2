@@ -1344,14 +1344,14 @@ ppcg_scop *computeDeps(Scop &S) {
   POLLY_DEBUG({
     PPCGSCOPDUMP(tagged_reads);
     PPCGSCOPDUMP(reads);
-    PPCGSCOPDUMP(live_in);
     PPCGSCOPDUMP(tagged_may_writes);
     PPCGSCOPDUMP(may_writes);
     PPCGSCOPDUMP(tagged_must_writes);
     PPCGSCOPDUMP(must_writes);
-    PPCGSCOPDUMP(live_out);
     PPCGSCOPDUMP(tagged_must_kills);
     PPCGSCOPDUMP(must_kills);
+    PPCGSCOPDUMP(live_in);
+    PPCGSCOPDUMP(live_out);
     PPCGSCOPDUMP(independence);
     PPCGSCOPDUMP(dep_flow);
     PPCGSCOPDUMP(tagged_dep_flow);
