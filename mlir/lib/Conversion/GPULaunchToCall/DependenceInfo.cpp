@@ -1338,6 +1338,7 @@ ppcg_scop *computeDeps(Scop &S) {
   ps->domain = S.getScheduleTree().get_domain().release();
   ps->context =
       isl_set_universe(S.getScheduleTree().get_domain().get_space().release());
+  // See PENCIL support in pet and PPCG (Verdoolaege 2015)
   ps->independence = isl_union_map_empty(isl_set_get_space(ps->context));
 
   compute_tagger(ps);
