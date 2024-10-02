@@ -232,6 +232,8 @@ struct ppcg_scop {
 	isl_union_map *live_out;
 	isl_union_map *tagged_must_kills;
 	isl_union_map *must_kills;
+	isl_union_map *async_reads;
+	isl_union_map *async_must_writes;
 
 	isl_union_pw_multi_aff *tagger;
 
@@ -243,6 +245,7 @@ struct ppcg_scop {
 	isl_union_map *dep_forced;
 	isl_union_map *dep_order;
 	isl_union_map *tagged_dep_order;
+  isl_union_map *dep_async;
 	isl_schedule *schedule;
 
 	isl_id_to_ast_expr *names;
