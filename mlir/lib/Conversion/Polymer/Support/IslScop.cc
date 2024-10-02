@@ -417,6 +417,7 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
     else
       name += memref.getDefiningOp()->getName().getStringRef().str() + "_res";
     name += "_" + std::to_string(memRefIdMap.size());
+    makeIslCompatible(name);
     memRefIdMap.insert({memref, name});
   } else {
     name = found->second;
@@ -462,7 +463,6 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
     map = isl_map_from_basic_map(bmap);
   }
 
-  makeIslCompatible(name);
   isl::id arrayId =
       isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
 
