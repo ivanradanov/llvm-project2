@@ -116,8 +116,8 @@ static __isl_give isl_map *tag(__isl_take isl_map *Relation, MemoryAccess *MA,
   return Relation;
 }
 
-static void collectCopyInfo(Scop &S, isl_union_map *&CopyMustWrite,
-                            isl_union_map *&CopyRead) {
+static void collectAsyncCopyInfo(Scop &S, isl_union_map *&CopyMustWrite,
+                                 isl_union_map *&CopyRead) {
   isl_space *Space = S.getParamSpace().release();
   CopyRead = isl_union_map_empty(isl_space_copy(Space));
   CopyMustWrite = isl_union_map_empty(isl_space_copy(Space));
@@ -1344,18 +1344,18 @@ ppcg_scop *computeDeps(Scop &S) {
               ps->tagged_may_writes, ps->tagged_must_kills, ReductionTagMap,
               TaggedStmtDomain, polymer::Dependences::AL_Access);
 
-  isl_union_map *CopyReads;
-  isl_union_map *CopyMustWrites;
-  collectCopyInfo(S, CopyMustWrites, CopyReads);
-
   // In ppcg, the must writes are a subset of the may writes
   ps->may_writes = isl_union_map_union(ps->must_writes, ps->may_writes);
   ps->tagged_may_writes =
       isl_union_map_union(ps->tagged_must_writes, ps->tagged_may_writes);
 
+  isl_union_map *AsyncCopyReads;
+  isl_union_map *AsyncCopyMustWrites;
+  collectAsyncCopyInfo(S, AsyncCopyMustWrites, AsyncCopyReads);
+
   POLLY_DEBUG(
-      dbgs() << "CopyReads: " << isl_union_map_to_str(CopyReads) << '\n';
-      dbgs() << "CopyMustWrites: " << isl_union_map_to_str(CopyMustWrites)
+      dbgs() << "CopyReads: " << isl_union_map_to_str(AsyncCopyReads) << '\n';
+      dbgs() << "CopyMustWrites: " << isl_union_map_to_str(AsyncCopyMustWrites)
              << '\n';
       dbgs() << "Read: " << isl_union_map_to_str(ps->reads) << '\n';
       dbgs() << "MustWrite: " << isl_union_map_to_str(ps->must_writes) << '\n';
