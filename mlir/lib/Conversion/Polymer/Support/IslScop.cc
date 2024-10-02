@@ -402,37 +402,33 @@ void IslScop::addDomainRelation(ScopStmt &stmt,
 LogicalResult
 IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
                            mlir::Value memref, affine::AffineValueMap &vMap,
+                           bool universe,
                            affine::FlatAffineValueConstraints &domain) {
   affine::FlatAffineValueConstraints cst;
   isl_map *map = nullptr;
 
-  // Create a new dim of memref and set its value to its corresponding ID.
+  ScopArrayInfo &ai = getOrAddArray(memref);
+  std::string name = ai.name;
 
-  std::string name;
-  auto found = memRefIdMap.find(memref);
-  if (found == memRefIdMap.end()) {
-    name = "A_";
-    if (auto ba = dyn_cast<BlockArgument>(memref))
-      name += ba.getOwner()->getParentOp()->getName().getStringRef().str() +
-              "_arg_" + std::to_string(ba.getArgNumber());
-    else
-      name += memref.getDefiningOp()->getName().getStringRef().str() + "_res";
-    name += "_" + std::to_string(memRefIdMap.size());
-    makeIslCompatible(name);
-    memRefIdMap.insert({memref, name});
-  } else {
-    name = found->second;
-  }
+  unsigned rank = 0;
+  if (auto ty = dyn_cast<MemRefType>(memref.getType()))
+    rank = ty.getRank();
 
-  if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
+  assert(universe || vMap.getNumResults() == rank);
+
+  isl_space *as =
+      isl_space_set_alloc(getIslCtx(), cst.getNumSymbolVars(), rank);
+  isl::space arraySpace = isl::manage(setupSpace(as, cst, ""));
+  ai.space = arraySpace;
+
+  if (universe) {
+    isl_set *range = isl_space_universe_set(arraySpace.release());
+    map = isl_map_from_domain_and_range(isl_set_copy(stmt.islDomain), range);
+  } else if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
+
     // Conservatively act on the entire array
-
-    isl_space *space = isl_space_set_alloc(getIslCtx(), cst.getNumSymbolVars(),
-                                           vMap.getNumResults());
-    space = setupSpace(space, cst, "");
-    isl_set *range = isl_space_universe_set(space);
-
+    isl_set *range = isl_space_universe_set(arraySpace.release());
     map = isl_map_from_domain_and_range(isl_set_copy(stmt.islDomain), range);
 
     if (type == MemoryAccess::AccessType::MUST_WRITE) {

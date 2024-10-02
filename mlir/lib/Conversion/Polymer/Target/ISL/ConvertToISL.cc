@@ -141,7 +141,14 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     });
 
     scop->addDomainRelation(stmt, domain);
+
     {
+      // FIXME remapping of ataddr op to the llvm pointer does not work because
+      // we get the information about the array rank from the memref value type,
+      // temp fix
+      if (isa<memref::AtAddrOp>(op))
+        continue;
+
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
       auto needsMemEffects = [&](Value memref) {
         if (affine::isValidDim(memref) || affine::isValidSymbol(memref))
@@ -157,27 +164,28 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         if (needsMemEffects(memref))
           (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
                                         redirectMap.lookupOrDefault(memref),
-                                        map, domain);
+                                        map, false, domain);
       };
       auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
         if (needsMemEffects(memref))
           (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
                                         redirectMap.lookupOrDefault(memref),
-                                        map, domain);
+                                        map, false, domain);
       };
       auto addMustStore = [&](Value memref, affine::AffineValueMap map) {
         if (needsMemEffects(memref))
           (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MUST_WRITE,
                                         redirectMap.lookupOrDefault(memref),
-                                        map, domain);
+                                        map, false, domain);
       };
-      auto addKill = [&](Value memref, affine::AffineValueMap map) {
+      auto addKill = [&](Value memref, affine::AffineValueMap map,
+                         bool universe) {
         auto redirected = redirectMap.lookupOrDefault(memref);
         if (redirected.getParentBlock()->getParentOp() == f)
           return;
         if (needsMemEffects(memref))
           (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::KILL,
-                                        redirected, map, domain);
+                                        redirected, map, universe, domain);
       };
       bool needToLoadOperands = true;
       bool needToStoreResults = true;
@@ -241,7 +249,7 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
       if (op->getBlock()->getTerminator() == op)
         for (auto &toKill : op->getBlock()->without_terminator())
           for (auto res : toKill.getResults())
-            addKill(res, unitVMap);
+            addKill(res, {}, true);
 
       if (llvm::all_of(op->getOpResults(),
                        [&](Value v) { return redirectMap.contains(v); }))
@@ -274,9 +282,9 @@ void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
                                  IslScop &S) const {
   f->walk(
       [&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
-  f->walk([&](memref::AtAddrOp atAddr) {
-    map.map(atAddr.getResult(), atAddr.getAddr());
-  });
+  // f->walk([&](memref::AtAddrOp atAddr) {
+  //   map.map(atAddr.getResult(), atAddr.getAddr());
+  // });
   unsigned stmtId = 0;
   f->walk([&](mlir::Operation *op) {
     if (isa<affine::AffineForOp, affine::AffineIfOp, affine::AffineParallelOp>(
