@@ -93,8 +93,13 @@ void ScopStmt::initializeDomainAndEnclosingOps() {
 
 void ScopStmt::getArgsValueMapping(IRMapping &argMap) {}
 
-ScopStmt::ScopStmt(Operation *op, IslScop *parent) : op(op), parent(parent) {
-  name = cast<StringAttr>(op->getAttr("polymer.stmt.name")).getValue();
+ScopStmt::ScopStmt(Operation *op, IslScop *parent, StringRef name, bool isCopy)
+    : op(op), parent(parent) {
+  this->name = name.str();
+  op->setAttr("polymer.stmt.name", StringAttr::get(op->getContext(), name));
+  this->validAsyncCopy = isCopy;
+  if (isCopy)
+    op->setAttr("polymer.stmt.copy", UnitAttr::get(op->getContext()));
   initializeDomainAndEnclosingOps();
 }
 

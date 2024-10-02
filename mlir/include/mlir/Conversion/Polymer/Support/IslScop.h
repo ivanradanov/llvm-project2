@@ -100,7 +100,8 @@ public:
 
 class ScopStmt {
 public:
-  ScopStmt(mlir::Operation *op, IslScop *parent);
+  ScopStmt(mlir::Operation *op, IslScop *parent, llvm::StringRef name,
+           bool validAsyncCopy = false);
   ~ScopStmt();
 
   ScopStmt(ScopStmt &&);
@@ -134,7 +135,11 @@ public:
 
   std::string getName() { return name; }
 
+  bool isValidAsyncCopy() { return validAsyncCopy; }
+
 private:
+  bool validAsyncCopy = false;
+
   // TODO we are leaking this currently
   MemAccessesVector memoryAccesses;
 

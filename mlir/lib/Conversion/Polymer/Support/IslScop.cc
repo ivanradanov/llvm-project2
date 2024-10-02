@@ -9,6 +9,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
@@ -16,6 +17,8 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
@@ -1228,6 +1231,36 @@ Operation *IslScop::applySchedule(isl_schedule *newSchedule,
   return f;
 }
 
+static bool isValidAsyncCopy(Operation *op) {
+  return !op->walk([&](Operation *nested) {
+              if (isa<affine::AffineParallelOp, affine::AffineForOp,
+                      affine::AffineYieldOp, affine::AffineIfOp,
+                      LLVM::BitcastOp, LLVM::IntToPtrOp, LLVM::PtrToIntOp>(
+                      nested))
+                return WalkResult::advance();
+              if (isa<affine::AffineVectorStoreOp, affine::AffineStoreOp,
+                      affine::AffineVectorLoadOp, affine::AffineLoadOp>(
+                      nested)) {
+                affine::MemRefAccess access(nested);
+                auto memrefTy = cast<MemRefType>(access.memref.getType());
+                if (access.isStore() &&
+                    !nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(memrefTy))
+                  return WalkResult::interrupt();
+                // FIXME Currently assume that memrefs with the default memory
+                // space (no memory space) are global, we need to actually check
+                // - e.g. they come from kernel arguments
+                bool isGlobalMemref =
+                    nvgpu::NVGPUDialect::hasGlobalMemoryAddressSpace(
+                        memrefTy) ||
+                    (!memrefTy.getMemorySpace());
+                if (access.isLoad() && !isGlobalMemref)
+                  return WalkResult::interrupt();
+                return WalkResult::advance();
+              }
+              return WalkResult::interrupt();
+            }).wasInterrupted();
+}
+
 // TODO this takes the union of the write effects in the operations we rescope
 // to. instead, what should happen is we should do flow analysis to see what
 // memory effects live-out and live-in, i.e. not care about memory effects that
@@ -1245,11 +1278,9 @@ void IslScop::rescopeStatements(
 
     std::string newStmtName = "RS" + std::to_string(blockParNum++) + "." +
                               rescopeOp->getName().getStringRef().str();
-
     // FIXME this only works because we do not assign
-    rescopeOp->setAttr("polymer.stmt.name",
-                       StringAttr::get(root->getContext(), newStmtName));
-    ScopStmt &newStmt = stmts.emplace_back(rescopeOp, this);
+    ScopStmt &newStmt = stmts.emplace_back(rescopeOp, this, newStmtName,
+                                           isValidAsyncCopy(rescopeOp));
     affine::FlatAffineValueConstraints domain = *newStmt.getMlirDomain();
     addDomainRelation(newStmt, domain);
 
