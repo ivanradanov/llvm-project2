@@ -302,7 +302,6 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
     coincidence = isl_union_map_copy(validity);
     coincidence = isl_union_map_subtract(
         coincidence, isl_union_map_copy(scop->independence));
-    anti_proximity = isl_union_map_copy(scop->dep_async);
   } else {
     dep_raw = isl_union_map_copy(scop->dep_flow);
     dep = isl_union_map_copy(scop->dep_false);
@@ -312,6 +311,7 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
     coincidence = isl_union_map_copy(dep);
     validity = dep;
   }
+  anti_proximity = isl_union_map_copy(scop->dep_async);
   sc = isl_schedule_constraints_set_validity(sc, validity);
   sc = isl_schedule_constraints_set_coincidence(sc, coincidence);
   sc = isl_schedule_constraints_set_proximity(sc, proximity);
