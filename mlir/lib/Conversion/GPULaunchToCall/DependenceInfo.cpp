@@ -1278,6 +1278,23 @@ static void compute_flow_dep(struct ppcg_scop *ps)
 	isl_union_flow_free(flow);
 }
 
+static void compute_async_dependences(struct ppcg_scop *scop) {
+	isl_union_access_info *access;
+	access = isl_union_access_info_from_sink(
+				isl_union_map_copy(scop->reads));
+	access = isl_union_access_info_set_kill(access,
+				isl_union_map_union(isl_union_map_copy(scop->must_writes), isl_union_map_copy(scop->must_kills)));
+	access = isl_union_access_info_set_may_source(access,
+				isl_union_map_copy(scop->async_must_writes));
+	access = isl_union_access_info_set_schedule(access,
+				isl_schedule_copy(scop->schedule));
+	isl_union_flow *flow;
+	flow = isl_union_access_info_compute_flow(access);
+
+	scop->dep_async = isl_union_flow_get_may_dependence(flow);
+	isl_union_flow_free(flow);
+}
+
 /* Compute the dependences of the program represented by "scop".
  * Store the computed potential flow dependences
  * in scop->dep_flow and the reads with potentially no corresponding writes in
@@ -1298,6 +1315,7 @@ static void compute_dependences(struct ppcg_scop *scop)
 	if (!scop)
 		return;
 
+	compute_async_dependences(scop);
 	compute_live_out(scop);
 
 	if (scop->options->live_range_reordering)
@@ -1349,29 +1367,12 @@ ppcg_scop *computeDeps(Scop &S) {
   ps->tagged_may_writes =
       isl_union_map_union(ps->tagged_must_writes, ps->tagged_may_writes);
 
-  isl_union_map *AsyncCopyReads;
-  isl_union_map *AsyncCopyMustWrites;
-  collectAsyncCopyInfo(S, AsyncCopyMustWrites, AsyncCopyReads);
+  collectAsyncCopyInfo(S, ps->async_must_writes, ps->async_reads);
 
-  POLLY_DEBUG(
-      dbgs() << "CopyReads: " << isl_union_map_to_str(AsyncCopyReads) << '\n';
-      dbgs() << "CopyMustWrites: " << isl_union_map_to_str(AsyncCopyMustWrites)
-             << '\n';
-      dbgs() << "Read: " << isl_union_map_to_str(ps->reads) << '\n';
-      dbgs() << "MustWrite: " << isl_union_map_to_str(ps->must_writes) << '\n';
-      dbgs() << "MayWrite: " << isl_union_map_to_str(ps->may_writes) << '\n';
-      dbgs() << "Kill: " << isl_union_map_to_str(ps->must_kills) << '\n';
-      dbgs() << "TRead: " << isl_union_map_to_str(ps->tagged_reads) << '\n';
-      dbgs() << "TMustWrite: " << isl_union_map_to_str(ps->tagged_must_writes)
-             << '\n';
-      dbgs() << "TMayWrite: " << isl_union_map_to_str(ps->tagged_may_writes)
-             << '\n';
-      dbgs() << "TKill: " << isl_union_map_to_str(ps->tagged_must_kills)
-             << '\n';
-      dbgs() << "ReductionTagMap: " << isl_union_map_to_str(ReductionTagMap)
-             << '\n';
-      dbgs() << "TaggedStmtDomain: " << isl_union_set_to_str(TaggedStmtDomain)
-             << '\n';);
+  POLLY_DEBUG(dbgs() << "ReductionTagMap: "
+                     << isl_union_map_to_str(ReductionTagMap) << '\n';
+              dbgs() << "TaggedStmtDomain: "
+                     << isl_union_set_to_str(TaggedStmtDomain) << '\n';);
 
   Schedule = S.getScheduleTree().release();
 
@@ -1390,10 +1391,12 @@ ppcg_scop *computeDeps(Scop &S) {
   POLLY_DEBUG({
     PPCGSCOPDUMP(tagged_reads);
     PPCGSCOPDUMP(reads);
+    PPCGSCOPDUMP(async_reads);
     PPCGSCOPDUMP(tagged_may_writes);
     PPCGSCOPDUMP(may_writes);
     PPCGSCOPDUMP(tagged_must_writes);
     PPCGSCOPDUMP(must_writes);
+    PPCGSCOPDUMP(async_must_writes);
     PPCGSCOPDUMP(tagged_must_kills);
     PPCGSCOPDUMP(must_kills);
     PPCGSCOPDUMP(live_in);
@@ -1405,6 +1408,7 @@ ppcg_scop *computeDeps(Scop &S) {
     PPCGSCOPDUMP(dep_forced);
     PPCGSCOPDUMP(dep_order);
     PPCGSCOPDUMP(tagged_dep_order);
+    PPCGSCOPDUMP(dep_async);
     dbgs() << "tagger" << " " << isl_union_pw_multi_aff_to_str(ps->tagger)
            << '\n';
     dbgs() << "schedule" << '\n';
