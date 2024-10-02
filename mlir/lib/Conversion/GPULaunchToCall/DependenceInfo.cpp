@@ -1462,9 +1462,10 @@ ppcg_scop *computeDeps(Scop &S) {
               TaggedStmtDomain, polymer::Dependences::AL_Access);
 
   // In ppcg, the must writes are a subset of the may writes
-  ps->may_writes = isl_union_map_union(ps->must_writes, ps->may_writes);
-  ps->tagged_may_writes =
-      isl_union_map_union(ps->tagged_must_writes, ps->tagged_may_writes);
+  ps->may_writes =
+      isl_union_map_union(isl_union_map_copy(ps->must_writes), ps->may_writes);
+  ps->tagged_may_writes = isl_union_map_union(
+      isl_union_map_copy(ps->tagged_must_writes), ps->tagged_may_writes);
 
   collectAsyncCopyInfo(S, ps->async_must_writes, ps->async_reads);
 
