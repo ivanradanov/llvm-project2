@@ -4,14 +4,15 @@
 #include <isl/schedule.h>
 
 enum isl_edge_type {
-	isl_edge_validity = 0,
-	isl_edge_first = isl_edge_validity,
-	isl_edge_coincidence,
-	isl_edge_condition,
-	isl_edge_conditional_validity,
-	isl_edge_proximity,
-	isl_edge_last = isl_edge_proximity,
-	isl_edge_local
+  isl_edge_validity = 0,
+  isl_edge_first = isl_edge_validity,
+  isl_edge_coincidence,
+  isl_edge_condition,
+  isl_edge_conditional_validity,
+  isl_edge_proximity,
+  isl_edge_anti_proximity,
+  isl_edge_last = isl_edge_anti_proximity,
+  isl_edge_local
 };
 
 __isl_give isl_schedule_constraints *

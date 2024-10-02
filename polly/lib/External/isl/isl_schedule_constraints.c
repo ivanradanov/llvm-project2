@@ -219,6 +219,16 @@ __isl_give isl_schedule_constraints *isl_schedule_constraints_set_coincidence(
 						coincidence);
 }
 
+/* Replace the anti_proximity constraints of "sc" by "anti_proximity".
+ */
+__isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_anti_proximity(
+    __isl_take isl_schedule_constraints *sc,
+    __isl_take isl_union_map *anti_proximity) {
+  return isl_schedule_constraints_set(sc, isl_edge_anti_proximity,
+                                      anti_proximity);
+}
+
 /* Replace the proximity constraints of "sc" by "proximity".
  */
 __isl_give isl_schedule_constraints *isl_schedule_constraints_set_proximity(
@@ -461,28 +471,30 @@ error:
  * as the edge types in isl_edge_type.
  */
 enum isl_sc_key {
-	isl_sc_key_error = -1,
-	isl_sc_key_validity = isl_edge_validity,
-	isl_sc_key_coincidence = isl_edge_coincidence,
-	isl_sc_key_condition = isl_edge_condition,
-	isl_sc_key_conditional_validity = isl_edge_conditional_validity,
-	isl_sc_key_proximity = isl_edge_proximity,
-	isl_sc_key_domain,
-	isl_sc_key_context,
-	isl_sc_key_end
+  isl_sc_key_error = -1,
+  isl_sc_key_validity = isl_edge_validity,
+  isl_sc_key_coincidence = isl_edge_coincidence,
+  isl_sc_key_condition = isl_edge_condition,
+  isl_sc_key_conditional_validity = isl_edge_conditional_validity,
+  isl_sc_key_proximity = isl_edge_proximity,
+  isl_sc_key_anti_proximity = isl_edge_anti_proximity,
+  isl_sc_key_domain,
+  isl_sc_key_context,
+  isl_sc_key_end
 };
 
 /* Textual representations of the YAML keys for an isl_schedule_constraints
  * object.
  */
 static char *key_str[] = {
-	[isl_sc_key_validity] = "validity",
-	[isl_sc_key_coincidence] = "coincidence",
-	[isl_sc_key_condition] = "condition",
-	[isl_sc_key_conditional_validity] = "conditional_validity",
-	[isl_sc_key_proximity] = "proximity",
-	[isl_sc_key_domain] = "domain",
-	[isl_sc_key_context] = "context",
+    [isl_sc_key_validity] = "validity",
+    [isl_sc_key_coincidence] = "coincidence",
+    [isl_sc_key_condition] = "condition",
+    [isl_sc_key_conditional_validity] = "conditional_validity",
+    [isl_sc_key_proximity] = "proximity",
+    [isl_sc_key_anti_proximity] = "anti_proximity",
+    [isl_sc_key_domain] = "domain",
+    [isl_sc_key_context] = "context",
 };
 
 #undef BASE
@@ -543,7 +555,8 @@ __isl_give isl_printer *isl_printer_print_schedule_constraints(
 						sc->context);
 	p = print_constraint(p, sc, isl_edge_validity);
 	p = print_constraint(p, sc, isl_edge_proximity);
-	p = print_constraint(p, sc, isl_edge_coincidence);
+        p = print_constraint(p, sc, isl_edge_anti_proximity);
+        p = print_constraint(p, sc, isl_edge_coincidence);
 	p = print_constraint(p, sc, isl_edge_condition);
 	p = print_constraint(p, sc, isl_edge_conditional_validity);
 	p = isl_printer_yaml_end_mapping(p);
