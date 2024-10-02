@@ -1341,6 +1341,102 @@ static void compute_dependences(struct ppcg_scop *scop)
 	isl_union_flow_free(flow);
 }
 
+/* Report the eliminated dead code,
+ * if there is any and if the verbose option is set.
+ */
+static void report_dead_code(struct ppcg_scop *ps,
+	__isl_keep isl_union_set *live)
+{
+	isl_ctx *ctx;
+	isl_printer *p;
+	isl_union_set *dead;
+
+	if (!ps->options->debug->verbose)
+		return;
+	if (isl_union_set_is_equal(ps->domain, live))
+		return;
+
+	ctx = isl_union_set_get_ctx(live);
+	dead = isl_union_set_subtract(isl_union_set_copy(ps->domain),
+					isl_union_set_copy(live));
+
+	p = isl_printer_to_file(ctx, stdout);
+	p = isl_printer_print_str(p, "Eliminated dead instances: ");
+	p = isl_printer_print_union_set(p, dead);
+	p = isl_printer_end_line(p);
+	isl_printer_free(p);
+
+	isl_union_set_free(dead);
+}
+
+/* Eliminate dead code from ps->domain.
+ *
+ * In particular, intersect both ps->domain and the domain of
+ * ps->schedule with the (parts of) iteration
+ * domains that are needed to produce the output or for statement
+ * iterations that call functions.
+ * Also intersect the range of the dataflow dependences with
+ * this domain such that the removed instances will no longer
+ * be considered as targets of dataflow.
+ *
+ * We start with the iteration domains that call functions
+ * and the set of iterations that last write to an array
+ * (except those that are later killed).
+ *
+ * Then we add those statement iterations that produce
+ * something needed by the "live" statements iterations.
+ * We keep doing this until no more statement iterations can be added.
+ * To ensure that the procedure terminates, we compute the affine
+ * hull of the live iterations (bounded to the original iteration
+ * domains) each time we have added extra iterations.
+ */
+static void eliminate_dead_code(struct ppcg_scop *ps)
+{
+	isl_union_set *live;
+	isl_union_map *dep;
+	isl_union_pw_multi_aff *tagger;
+
+	live = isl_union_map_domain(isl_union_map_copy(ps->live_out));
+	if (!isl_union_set_is_empty(ps->call)) {
+		live = isl_union_set_union(live, isl_union_set_copy(ps->call));
+		live = isl_union_set_coalesce(live);
+	}
+
+	dep = isl_union_map_copy(ps->dep_flow);
+	dep = isl_union_map_reverse(dep);
+
+	for (;;) {
+		isl_union_set *extra;
+
+		extra = isl_union_set_apply(isl_union_set_copy(live),
+					    isl_union_map_copy(dep));
+		if (isl_union_set_is_subset(extra, live)) {
+			isl_union_set_free(extra);
+			break;
+		}
+
+		live = isl_union_set_union(live, extra);
+		live = isl_union_set_affine_hull(live);
+		live = isl_union_set_intersect(live,
+					    isl_union_set_copy(ps->domain));
+	}
+
+	isl_union_map_free(dep);
+
+	report_dead_code(ps, live);
+
+	ps->domain = isl_union_set_intersect(ps->domain,
+						isl_union_set_copy(live));
+	ps->schedule = isl_schedule_intersect_domain(ps->schedule,
+						isl_union_set_copy(live));
+	ps->dep_flow = isl_union_map_intersect_range(ps->dep_flow,
+						isl_union_set_copy(live));
+	tagger = isl_union_pw_multi_aff_copy(ps->tagger);
+	live = isl_union_set_preimage_union_pw_multi_aff(live, tagger);
+	ps->tagged_dep_flow = isl_union_map_intersect_range(ps->tagged_dep_flow,
+						live);
+}
+
 // clang-format on
 // ############### PPCG END ###############
 
@@ -1350,7 +1446,10 @@ ppcg_scop *computeDeps(Scop &S) {
   isl_union_set *TaggedStmtDomain;
 
   // TODO leaking
-  ppcg_options *options = new ppcg_options{1, PPCG_TARGET_CUDA};
+  bool verbose = false;
+  LLVM_DEBUG(verbose = true);
+  ppcg_debug_options *debug_options = new ppcg_debug_options{verbose};
+  ppcg_options *options = new ppcg_options{1, PPCG_TARGET_CUDA, debug_options};
   ppcg_scop *ps = new ppcg_scop;
   (*ps) = ppcg_scop{0};
   (*ps).options = options;
@@ -1384,7 +1483,8 @@ ppcg_scop *computeDeps(Scop &S) {
   ps->independence = isl_union_map_empty(isl_set_get_space(ps->context));
 
   compute_tagger(ps);
-  compute_dependences(&(*ps));
+  compute_dependences(ps);
+  eliminate_dead_code(ps);
 
 #define PPCGSCOPDUMP(field)                                                    \
   dbgs() << #field << " " << isl_union_map_to_str(ps->field) << '\n'
