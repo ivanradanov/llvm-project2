@@ -367,7 +367,8 @@ isl_space *IslScop::setupSpace(isl_space *space,
     isl_id *id = isl_id_alloc(getIslCtx(), sym.c_str(), nullptr);
     space = isl_space_set_dim_id(space, isl_dim_param, i, id);
   }
-  space = isl_space_set_tuple_name(space, isl_dim_set, name.c_str());
+  if (name != "")
+    space = isl_space_set_tuple_name(space, isl_dim_set, name.c_str());
   return space;
 }
 
@@ -426,7 +427,13 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
     // Conservatively act on the entire array
-    map = isl_map_from_domain(isl_set_copy(stmt.islDomain));
+
+    isl_space *space = isl_space_set_alloc(getIslCtx(), cst.getNumSymbolVars(),
+                                           vMap.getNumResults());
+    space = setupSpace(space, cst, "");
+    isl_set *range = isl_space_universe_set(space);
+
+    map = isl_map_from_domain_and_range(isl_set_copy(stmt.islDomain), range);
 
     if (type == MemoryAccess::AccessType::MUST_WRITE) {
       // If we could not get exact relation, we need to downgrade to a may write
