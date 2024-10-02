@@ -34,6 +34,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "polly/CodeGen/IslNodeBuilder.h"
+#include "polly/ScopInfo.h"
 #include "polly/Support/GICHelper.h"
 
 #include "isl/aff_type.h"
@@ -67,6 +68,25 @@ using llvm::errs;
 using llvm::formatv;
 
 #define DEBUG_TYPE "islscop"
+
+static void replace(std::string &str, StringRef find, StringRef replace) {
+  size_t pos = 0;
+  while ((pos = str.find(find, pos)) != std::string::npos) {
+    str.replace(pos, find.size(), replace);
+    pos += replace.size();
+  }
+}
+
+namespace polymer {
+void makeIslCompatible(std::string &str) {
+  replace(str, ".", "_");
+  replace(str, "\"", "_");
+  replace(str, " ", "__");
+  replace(str, "=>", "TO");
+  replace(str, "+", "_");
+}
+} // namespace polymer
+using polymer::makeIslCompatible;
 
 IslScop::IslScop(Operation *op) {
   IslCtx.reset(isl_ctx_alloc(), isl_ctx_free);
@@ -343,6 +363,7 @@ isl_space *IslScop::setupSpace(isl_space *space,
     Value val =
         cst.getValue(cst.getVarKindOffset(presburger::VarKind::Symbol) + i);
     std::string sym = valueTable[val];
+    makeIslCompatible(sym);
     isl_id *id = isl_id_alloc(getIslCtx(), sym.c_str(), nullptr);
     space = isl_space_set_dim_id(space, isl_dim_param, i, id);
   }
@@ -382,7 +403,8 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
                            mlir::Value memref, affine::AffineValueMap &vMap,
                            affine::FlatAffineValueConstraints &domain) {
   affine::FlatAffineValueConstraints cst;
-  isl_map *map;
+  isl_map *map = nullptr;
+
   // Create a new dim of memref and set its value to its corresponding ID.
 
   std::string name;
@@ -399,18 +421,19 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   } else {
     name = found->second;
   }
-  isl::id arrayId =
-      isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
-
-  isl::id stmtId = stmt.getDomain().get_tuple_id();
-  static const std::string TypeStrings[] = {"", "_Read", "_Write", "_MayWrite"};
-  const std::string Access = TypeStrings[type] + llvm::utostr(stmt.size());
-  isl::id accessId = isl::id::alloc(getIslCtx(), stmt.getName() + Access,
-                                    memref.getAsOpaquePointer());
 
   if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
+    // Conservatively act on the entire array
     map = isl_map_from_domain(isl_set_copy(stmt.islDomain));
+
+    if (type == MemoryAccess::AccessType::MUST_WRITE) {
+      // If we could not get exact relation, we need to downgrade to a may write
+      type = MemoryAccess::AccessType::MAY_WRITE;
+    } else if (type == MemoryAccess::AccessType::KILL) {
+      // May kills are useless
+      return failure();
+    }
   } else {
     isl_space *space = isl_space_alloc(
         getIslCtx(), cst.getNumSymbolVars(),
@@ -438,6 +461,19 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
         isl_dim_param, isl_dim_cst);
     map = isl_map_from_basic_map(bmap);
   }
+
+  makeIslCompatible(name);
+  isl::id arrayId =
+      isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
+
+  isl::id stmtId = stmt.getDomain().get_tuple_id();
+  static const std::string TypeStrings[] = {"", "_Read", "_Write", "_MayWrite"};
+  std::string Access = TypeStrings[type] + llvm::utostr(stmt.size());
+  Access = stmt.getName() + Access;
+  makeIslCompatible(Access);
+  isl::id accessId =
+      isl::id::alloc(getIslCtx(), Access, memref.getAsOpaquePointer());
+
   map = isl_map_set_tuple_id(map, isl_dim_out, arrayId.release());
   map = isl_map_set_tuple_id(map, isl_dim_in, stmtId.release());
   ISL_DEBUG("Created relation: ", isl_map_dump(map));
