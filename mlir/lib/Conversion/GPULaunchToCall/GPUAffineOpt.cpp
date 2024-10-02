@@ -32,6 +32,8 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "isl/ast.h"
+#include "isl/ast_build.h"
 #include "isl/isl-noexceptions.h"
 #include "isl/map.h"
 #include "isl/schedule.h"
@@ -354,6 +356,16 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << "New Schedule:\n";
     isl_schedule_dump(newSchedule);
   });
+
+  isl_ast_build *build = isl_ast_build_alloc(scop->getIslCtx());
+  isl_ast_node *node =
+      isl_ast_build_node_from_schedule(build, isl_schedule_copy(newSchedule));
+  LLVM_DEBUG({
+    llvm::dbgs() << "New AST:\n";
+    isl_ast_node_dump(node);
+  });
+
+  isl_ast_build_free(build);
   isl_schedule_free(newSchedule);
 }
 
