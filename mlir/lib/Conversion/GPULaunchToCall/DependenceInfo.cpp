@@ -36,6 +36,7 @@
 #include "isl/schedule.h"
 #include "isl/set.h"
 #include "isl/union_map.h"
+#include "isl/union_map_type.h"
 #include "isl/union_set.h"
 
 using namespace polymer;
@@ -113,6 +114,39 @@ static __isl_give isl_map *tag(__isl_take isl_map *Relation, MemoryAccess *MA,
 
   // No need to tag at the statement level.
   return Relation;
+}
+
+static void collectCopyInfo(Scop &S, isl_union_map *&CopyMustWrite,
+                            isl_union_map *&CopyRead) {
+  isl_space *Space = S.getParamSpace().release();
+  CopyRead = isl_union_map_empty(isl_space_copy(Space));
+  CopyMustWrite = isl_union_map_empty(isl_space_copy(Space));
+
+  for (ScopStmt &Stmt : S) {
+    if (!Stmt.isValidAsyncCopy())
+      continue;
+
+    for (MemoryAccess *MA : Stmt) {
+      isl_set *domcp = Stmt.getDomain().release();
+      isl_map *accdom = MA->getAccessRelation().release();
+
+      accdom = isl_map_intersect_domain(accdom, domcp);
+
+      if (MA->isRead())
+        CopyRead = isl_union_map_add_map(CopyRead, accdom);
+      else if (MA->isMayWrite())
+        llvm_unreachable("may writes not allowed for copies");
+      else if (MA->isMustWrite())
+        CopyMustWrite = isl_union_map_add_map(CopyMustWrite, accdom);
+      else if (MA->isKill())
+        llvm_unreachable("kills not allowed for copies");
+      else
+        llvm_unreachable("unknown access type");
+    }
+  }
+
+  CopyRead = isl_union_map_coalesce(CopyRead);
+  CopyMustWrite = isl_union_map_coalesce(CopyMustWrite);
 }
 
 /// Collect information about the SCoP @p S.
@@ -1310,12 +1344,19 @@ ppcg_scop *computeDeps(Scop &S) {
               ps->tagged_may_writes, ps->tagged_must_kills, ReductionTagMap,
               TaggedStmtDomain, polymer::Dependences::AL_Access);
 
+  isl_union_map *CopyReads;
+  isl_union_map *CopyMustWrites;
+  collectCopyInfo(S, CopyMustWrites, CopyReads);
+
   // In ppcg, the must writes are a subset of the may writes
   ps->may_writes = isl_union_map_union(ps->must_writes, ps->may_writes);
   ps->tagged_may_writes =
       isl_union_map_union(ps->tagged_must_writes, ps->tagged_may_writes);
 
   POLLY_DEBUG(
+      dbgs() << "CopyReads: " << isl_union_map_to_str(CopyReads) << '\n';
+      dbgs() << "CopyMustWrites: " << isl_union_map_to_str(CopyMustWrites)
+             << '\n';
       dbgs() << "Read: " << isl_union_map_to_str(ps->reads) << '\n';
       dbgs() << "MustWrite: " << isl_union_map_to_str(ps->must_writes) << '\n';
       dbgs() << "MayWrite: " << isl_union_map_to_str(ps->may_writes) << '\n';

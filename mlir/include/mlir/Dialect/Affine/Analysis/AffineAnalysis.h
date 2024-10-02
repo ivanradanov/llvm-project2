@@ -93,6 +93,7 @@ struct MemRefAccess {
   unsigned getRank() const;
   // Returns true if this access is of a store op.
   bool isStore() const;
+  bool isLoad() const { return !isStore(); }
 
   /// Creates an access relation for the access. An access relation maps
   /// elements of an iteration domain to the element(s) of an array domain

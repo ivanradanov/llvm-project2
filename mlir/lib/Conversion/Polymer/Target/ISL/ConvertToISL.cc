@@ -274,9 +274,7 @@ void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
       return;
     std::string calleeName = "S" + std::to_string(stmtId++) + "." +
                              op->getName().getStringRef().str();
-    op->setAttr("polymer.stmt.name",
-                StringAttr::get(f->getContext(), calleeName));
-    S.stmts.emplace_back(op, &S);
+    S.stmts.emplace_back(op, &S, calleeName.c_str());
   });
 }
 
