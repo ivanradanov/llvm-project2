@@ -1437,6 +1437,50 @@ static void eliminate_dead_code(struct ppcg_scop *ps)
 						live);
 }
 
+void collect_order_dependences(Scop &S, ppcg_scop *PS)
+{
+	int i;
+	isl_space *space;
+	isl_union_map *accesses;
+  isl_union_map *array_order;
+
+	space = isl_union_map_get_space(PS->reads);
+	array_order = isl_union_map_empty(space);
+
+	accesses = isl_union_map_copy(PS->tagged_reads);
+	accesses = isl_union_map_union(accesses,
+			    isl_union_map_copy(PS->tagged_may_writes));
+	accesses = isl_union_map_universe(accesses);
+
+  #if 0
+	for (i = 0; i < prog->n_array; ++i) {
+		struct gpu_array_info *array = &prog->array[i];
+		isl_set *set;
+		isl_union_set *uset;
+		isl_union_map *order;
+
+		set = isl_set_universe(isl_space_copy(array->space));
+		uset = isl_union_set_from_set(set);
+		uset = isl_union_map_domain(
+		    isl_union_map_intersect_range(isl_union_map_copy(accesses),
+						    uset));
+		order = isl_union_map_copy(prog->scop->tagged_dep_order);
+		order = isl_union_map_intersect_domain(order, uset);
+		order = isl_union_map_zip(order);
+		order = isl_union_set_unwrap(isl_union_map_domain(order));
+		array->dep_order = order;
+
+		if (gpu_array_can_be_private(array))
+			continue;
+
+		prog->array_order = isl_union_map_union(prog->array_order,
+					isl_union_map_copy(array->dep_order));
+	}
+
+	isl_union_map_free(accesses);
+  #endif
+}
+
 // clang-format on
 // ############### PPCG END ###############
 

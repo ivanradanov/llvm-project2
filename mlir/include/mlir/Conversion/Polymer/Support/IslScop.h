@@ -98,6 +98,8 @@ public:
   bool isKill() const { return AccType == MemoryAccess::KILL; }
 };
 
+void makeIslCompatible(std::string &str);
+
 class ScopStmt {
 public:
   ScopStmt(mlir::Operation *op, IslScop *parent, llvm::StringRef name,
@@ -170,41 +172,21 @@ private:
 
 class ScopArrayInfo final {
 public:
-  /// Return the isl id for the base pointer.
-  isl::id getBasePtrId() const;
+  ScopArrayInfo(mlir::Value val, unsigned id) : val(val) {
+    using namespace mlir;
 
-  /// Is this array allocated on heap
-  ///
-  /// This property is only relevant if the array is allocated by Polly instead
-  /// of pre-existing. If false, it is allocated using alloca instead malloca.
-  bool isOnHeap() const;
-
-  /// Print a readable representation to @p OS.
-  ///
-  /// @param SizeAsPwAff Print the size as isl::pw_aff
-  void print(llvm::raw_ostream &OS, bool SizeAsPwAff = false) const;
-
-  /// Access the ScopArrayInfo associated with an access function.
-  static const ScopArrayInfo *getFromAccessFunction(isl::pw_multi_aff PMA);
-
-  /// Access the ScopArrayInfo associated with an isl Id.
-  static const ScopArrayInfo *getFromId(isl::id Id);
-
-  /// Get the space of this array access.
-  isl::space getSpace() const;
-
-  /// If the array is read only
-  bool isReadOnly();
-
-  /// Verify that @p Array is compatible to this ScopArrayInfo.
-  ///
-  /// Two arrays are compatible if their dimensionality, the sizes of their
-  /// dimensions, and their element sizes match.
-  ///
-  /// @param Array The array to compare against.
-  ///
-  /// @returns True, if the arrays are compatible, False otherwise.
-  bool isCompatibleWith(const ScopArrayInfo *Array) const;
+    name = "A_";
+    if (auto ba = dyn_cast<BlockArgument>(val))
+      name += ba.getOwner()->getParentOp()->getName().getStringRef().str() +
+              "_arg_" + std::to_string(ba.getArgNumber());
+    else
+      name += val.getDefiningOp()->getName().getStringRef().str() + "_res";
+    name += "_" + std::to_string(id);
+    makeIslCompatible(name);
+  }
+  mlir::Value val;
+  std::string name;
+  isl::space space;
 };
 
 /// A wrapper for the osl_scop struct in the openscop library.
@@ -225,7 +207,7 @@ public:
   /// Add the access relation.
   mlir::LogicalResult
   addAccessRelation(ScopStmt &, polymer::MemoryAccess::AccessType, mlir::Value,
-                    mlir::affine::AffineValueMap &,
+                    mlir::affine::AffineValueMap &, bool,
                     mlir::affine::FlatAffineValueConstraints &);
 
   /// Initialize the symbol table.
@@ -276,10 +258,22 @@ public:
   void
   rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope);
 
+  ScopArrayInfo &getOrAddArray(mlir::Value memref) {
+    auto found =
+        llvm::find_if(arrays, [&](auto array) { return array.val == memref; });
+    if (found != arrays.end())
+      return *found;
+    return arrays.emplace_back(memref, arrays.size());
+  }
+
 private:
   using StmtVec = std::list<ScopStmt>;
   using iterator = StmtVec::iterator;
   StmtVec stmts;
+
+  using ArrayVec = std::vector<ScopArrayInfo>;
+  using array_iterator = ArrayVec::iterator;
+  ArrayVec arrays;
 
 public:
   iterator begin() { return stmts.begin(); }
