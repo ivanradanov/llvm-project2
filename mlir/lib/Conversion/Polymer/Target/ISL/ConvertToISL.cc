@@ -238,6 +238,11 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         needToStoreResults = false;
       }
 
+      if (op->getBlock()->getTerminator() == op)
+        for (auto &toKill : op->getBlock()->without_terminator())
+          for (auto res : toKill.getResults())
+            addKill(res, unitVMap);
+
       if (llvm::all_of(op->getOpResults(),
                        [&](Value v) { return redirectMap.contains(v); }))
         continue;
@@ -248,11 +253,6 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
       if (needToLoadOperands)
         for (auto opr : op->getOperands())
           addLoad(opr, unitVMap);
-
-      if (op->getBlock()->getTerminator() == op)
-        for (auto &toKill : op->getBlock()->without_terminator())
-          for (auto res : toKill.getResults())
-            addKill(res, unitVMap);
     }
   }
 
