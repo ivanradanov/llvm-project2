@@ -35,6 +35,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Debug.h"
@@ -142,34 +143,41 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     scop->addDomainRelation(stmt, domain);
     {
       LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
-      auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+      auto needsMemEffects = [&](Value memref) {
         if (affine::isValidDim(memref) || affine::isValidSymbol(memref))
-          return;
+          return false;
 
         if (auto *op = memref.getDefiningOp())
           if (op->hasTrait<OpTrait::ConstantLike>())
-            return;
+            return false;
 
-        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
-                                      redirectMap.lookupOrDefault(memref), map,
-                                      domain);
+        return true;
+      };
+      auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
+                                        redirectMap.lookupOrDefault(memref),
+                                        map, domain);
       };
       auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
-                                      redirectMap.lookupOrDefault(memref), map,
-                                      domain);
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
+                                        redirectMap.lookupOrDefault(memref),
+                                        map, domain);
       };
       auto addMustStore = [&](Value memref, affine::AffineValueMap map) {
-        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MUST_WRITE,
-                                      redirectMap.lookupOrDefault(memref), map,
-                                      domain);
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MUST_WRITE,
+                                        redirectMap.lookupOrDefault(memref),
+                                        map, domain);
       };
       auto addKill = [&](Value memref, affine::AffineValueMap map) {
         auto redirected = redirectMap.lookupOrDefault(memref);
         if (redirected.getParentBlock()->getParentOp() == f)
           return;
-        (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::KILL,
-                                      redirected, map, domain);
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::KILL,
+                                        redirected, map, domain);
       };
       bool needToLoadOperands = true;
       bool needToStoreResults = true;
@@ -229,6 +237,10 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
         needToLoadOperands = false;
         needToStoreResults = false;
       }
+
+      if (llvm::all_of(op->getOpResults(),
+                       [&](Value v) { return redirectMap.contains(v); }))
+        continue;
 
       if (needToStoreResults)
         for (auto res : op->getResults())
