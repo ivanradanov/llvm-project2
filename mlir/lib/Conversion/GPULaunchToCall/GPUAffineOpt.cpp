@@ -283,7 +283,7 @@ static __isl_give isl_schedule_constraints *
 construct_schedule_constraints(struct ppcg_scop *scop) {
   isl_union_set *domain;
   isl_union_map *dep_raw, *dep;
-  isl_union_map *validity, *proximity, *coincidence;
+  isl_union_map *validity, *proximity, *coincidence, *anti_proximity;
   isl_schedule_constraints *sc;
 
   domain = isl_union_set_copy(scop->domain);
@@ -302,10 +302,7 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
     coincidence = isl_union_map_copy(validity);
     coincidence = isl_union_map_subtract(
         coincidence, isl_union_map_copy(scop->independence));
-    // TODO
-    isl_union_map *array_order = nullptr;
-    coincidence =
-        isl_union_map_union(coincidence, isl_union_map_copy(array_order));
+    anti_proximity = isl_union_map_copy(scop->dep_async);
   } else {
     dep_raw = isl_union_map_copy(scop->dep_flow);
     dep = isl_union_map_copy(scop->dep_false);
@@ -318,6 +315,7 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
   sc = isl_schedule_constraints_set_validity(sc, validity);
   sc = isl_schedule_constraints_set_coincidence(sc, coincidence);
   sc = isl_schedule_constraints_set_proximity(sc, proximity);
+  sc = isl_schedule_constraints_set_anti_proximity(sc, anti_proximity);
 
   return sc;
 }
@@ -350,6 +348,13 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << "Schedule constraints:\n";
     isl_schedule_constraints_dump(sc);
   });
+
+  isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(sc);
+  LLVM_DEBUG({
+    llvm::dbgs() << "New Schedule:\n";
+    isl_schedule_dump(newSchedule);
+  });
+  isl_schedule_free(newSchedule);
 
 #if 0
 

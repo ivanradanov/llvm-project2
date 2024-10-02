@@ -66,10 +66,13 @@ __isl_export
 __isl_give isl_schedule_constraints *isl_schedule_constraints_set_coincidence(
 	__isl_take isl_schedule_constraints *sc,
 	__isl_take isl_union_map *coincidence);
-__isl_export
-__isl_give isl_schedule_constraints *isl_schedule_constraints_set_proximity(
-	__isl_take isl_schedule_constraints *sc,
-	__isl_take isl_union_map *proximity);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_anti_proximity(
+    __isl_take isl_schedule_constraints *sc,
+    __isl_take isl_union_map *anti_proximity);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_proximity(__isl_take isl_schedule_constraints *sc,
+                                       __isl_take isl_union_map *proximity);
 __isl_export
 __isl_give isl_schedule_constraints *
 isl_schedule_constraints_set_conditional_validity(
