@@ -207,10 +207,15 @@ private:
 #define		PPCG_TARGET_CUDA	1
 #define		PPCG_TARGET_OPENCL      2
 
+struct ppcg_debug_options {
+	int verbose;
+};
+
 struct pet_scop {};
 struct ppcg_options {
 	int live_range_reordering;
 	int target;
+	struct ppcg_debug_options *debug;
 };
 
 struct ppcg_scop {
