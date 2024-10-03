@@ -1481,6 +1481,9 @@ void IslScop::rescopeStatements(
     // no nested resopes
     return WalkResult::skip();
   });
+
+  addIndependences();
+
 }
 
 namespace polymer {
