@@ -287,10 +287,14 @@ public:
     return *found;
   }
 
+  isl::union_map getIndependence() { return independence; }
+
 private:
   mlir::Operation *root;
   isl_schedule *schedule = nullptr;
   unsigned loopId = 0;
+
+  isl::union_map independence;
 
   void buildSchedule(llvm::SmallVector<mlir::Operation *> ops) {
     loopId = 0;
@@ -327,6 +331,8 @@ private:
       mlir::affine::FlatAffineValueConstraints &cst,
       mlir::affine::FlatAffineValueConstraints &domain);
 
+  void addIndependences();
+
   /// The internal storage of the Scop.
   // osl_scop *scop;
   std::shared_ptr<isl_ctx> IslCtx;
@@ -339,6 +345,24 @@ private:
 
   friend class IslMLIRBuilder;
   friend class IslScopBuilder;
+};
+
+/// Build IslScop from FuncOp.
+class IslScopBuilder {
+public:
+  IslScopBuilder() {}
+
+  /// Build a scop from a common FuncOp.
+  std::unique_ptr<IslScop> build(mlir::Operation *f);
+
+private:
+  /// Find all statements that calls a scop.stmt.
+  void gatherStmts(mlir::Operation *f, mlir::IRMapping &map, IslScop &) const;
+
+  /// Build the scop context. The domain of each scop stmt will be updated, by
+  /// merging and aligning its IDs with the context as well.
+  void buildScopContext(mlir::Operation *f, IslScop *scop,
+                        mlir::affine::FlatAffineValueConstraints &ctx) const;
 };
 
 } // namespace polymer
