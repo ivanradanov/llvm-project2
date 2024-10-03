@@ -4,6 +4,7 @@
 #include "mlir/Analysis/Presburger/PresburgerSpace.h"
 #include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
 #include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Conversion/Polymer/Target/ISL.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -130,8 +131,8 @@ inline unsigned unsignedFromIslSize(const isl_size &size) {
     llvm::dbgs() << "\n";                                                      \
   })
 
-static __isl_give isl_multi_union_pw_aff *
-mapToDimension(__isl_take isl_union_set *uset, unsigned N) {
+static __isl_give isl_union_pw_multi_aff *
+mapToDimensionUPMA(__isl_take isl_union_set *uset, unsigned N) {
   assert(!isl_union_set_is_empty(uset));
   N += 1;
 
@@ -155,7 +156,13 @@ mapToDimension(__isl_take isl_union_set *uset, unsigned N) {
   isl_set_list_free(bsetlist);
   isl_union_set_free(uset);
 
-  return isl_multi_union_pw_aff_from_union_pw_multi_aff(res);
+  return res;
+}
+
+static __isl_give isl_multi_union_pw_aff *
+mapToDimensionMUPA(__isl_take isl_union_set *uset, unsigned N) {
+  return isl_multi_union_pw_aff_from_union_pw_multi_aff(
+      mapToDimensionUPMA(uset, N));
 }
 
 static constexpr char parallelLoopMark[] = "parallel";
@@ -199,7 +206,7 @@ isl_schedule *IslScop::buildLoopSchedule(T loopOp, unsigned depth,
     isl_union_set *domain = isl_schedule_get_domain(schedule);
     ISL_DEBUG("MUPA dom: ", isl_union_set_dump(domain));
     isl_multi_union_pw_aff *mupa =
-        mapToDimension(domain, depth + numDims - dim - 1);
+        mapToDimensionMUPA(domain, depth + numDims - dim - 1);
     mupa = isl_multi_union_pw_aff_set_tuple_name(
         mupa, isl_dim_set,
         ("L" + std::to_string(loopId++) + "." +
@@ -372,6 +379,85 @@ isl_space *IslScop::setupSpace(isl_space *space,
   return space;
 }
 
+// adapted from `pet_scop_set_independent`
+void IslScop::addIndependences() {
+  if (stmts.empty())
+    return;
+  // FIXME we need the param space here - perhaps in the future we may not have
+  // all the params on all stmts
+  this->independence = isl::manage(
+      isl_union_map_empty(isl_set_get_space(stmts.front().islDomain)));
+  for (auto &stmt : *this) {
+    isl_set *domain = isl_set_copy(stmt.islDomain);
+    unsigned totalDims = unsignedFromIslSize(isl_set_dim(domain, isl_dim_set));
+    LLVM_DEBUG(dbgs() << "Adding independence for stmt with domain ";
+               isl_set_dump(domain));
+    for (unsigned dim = 0; dim < totalDims; dim++) {
+      if (!isa<affine::AffineParallelOp>(stmt.getMlirDomain()
+                                             ->getValue(dim)
+                                             .getParentBlock()
+                                             ->getParentOp()))
+        continue;
+
+      // FIXME currently we only have positive sign parallel loops so this is
+      // fine for now
+      int sign = 1;
+
+      // TODO collect all arrays in the dim and add that info to the scop
+      isl_union_set *local = nullptr;
+
+      isl_space *space;
+      isl_map *map;
+      isl_union_map *independence;
+      isl_union_pw_multi_aff *proj;
+
+      assert(domain);
+
+      space = isl_space_map_from_set(isl_set_get_space(domain));
+      map = isl_map_universe(space);
+      for (unsigned i = 0; i < dim; ++i)
+        map = isl_map_equate(map, isl_dim_in, i, isl_dim_out, i);
+      for (unsigned i = dim + 1; i < totalDims; ++i)
+        map = isl_map_equate(map, isl_dim_in, i, isl_dim_out, i);
+      if (sign > 0)
+        map = isl_map_order_lt(map, isl_dim_in, dim, isl_dim_out, dim);
+      else
+        map = isl_map_order_gt(map, isl_dim_in, dim, isl_dim_out, dim);
+
+      independence = isl_union_map_from_map(map);
+      space = isl_space_params(isl_set_get_space(domain));
+      proj =
+          mapToDimensionUPMA(isl_union_set_from_set(isl_set_copy(domain)), dim);
+      {
+        proj = isl_union_pw_multi_aff_empty(space);
+        isl_space *space;
+        isl_multi_aff *ma;
+        isl_pw_multi_aff *pma;
+        space = isl_set_get_space(stmt.getDomain().release());
+        int dim;
+        dim = isl_space_dim(space, isl_dim_set);
+        ma = isl_multi_aff_project_out_map(space, isl_dim_set, dim,
+                                           totalDims - dim);
+        ma = isl_multi_aff_set_tuple_name(ma, isl_dim_out,
+                                          isl_set_get_tuple_name(domain));
+        pma = isl_pw_multi_aff_from_multi_aff(ma);
+        proj = isl_union_pw_multi_aff_add_pw_multi_aff(proj, pma);
+      }
+      // proj = outer_projection(scop, space, dim);
+      independence = isl_union_map_preimage_domain_union_pw_multi_aff(
+          independence, isl_union_pw_multi_aff_copy(proj));
+      independence =
+          isl_union_map_preimage_range_union_pw_multi_aff(independence, proj);
+
+      LLVM_DEBUG(dbgs() << "Independence for dim " << dim << " ";
+                 isl_union_map_dump(independence));
+
+      this->independence = this->independence.unite(isl::manage(independence));
+    }
+  }
+  LLVM_DEBUG(dbgs() << "Independence "; polly::dumpIslObj(this->independence));
+}
+
 void IslScop::addDomainRelation(ScopStmt &stmt,
                                 affine::FlatAffineValueConstraints &cst) {
   SmallVector<int64_t, 8> eqs, inEqs;
@@ -397,6 +483,7 @@ void IslScop::addDomainRelation(ScopStmt &stmt,
           isl_dim_cst));
   LLVM_DEBUG(llvm::errs() << "bset: ");
   LLVM_DEBUG(isl_set_dump(stmt.islDomain));
+  assert((int)cst.getNumDimVars() == isl_set_dim(stmt.islDomain, isl_dim_set));
 }
 
 LogicalResult
@@ -1395,3 +1482,346 @@ void IslScop::rescopeStatements(
     return WalkResult::skip();
   });
 }
+
+namespace polymer {
+
+/// Build IslScop from a given FuncOp.
+std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
+
+  /// Context constraints.
+  affine::FlatAffineValueConstraints ctx;
+
+  // Initialize a new Scop per FuncOp. The osl_scop object within it will be
+  // created. It doesn't contain any fields, and this may incur some problems,
+  // which the validate function won't discover, e.g., no context will cause
+  // segfault when printing scop. Please don't just return this object.
+  auto scop = std::make_unique<IslScop>(f);
+
+  // Find all caller/callee pairs in which the callee has the attribute of name
+  // SCOP_STMT_ATTR_NAME.
+  IRMapping redirectMap;
+  gatherStmts(f, redirectMap, *scop);
+
+  // Build context in it.
+  buildScopContext(f, scop.get(), ctx);
+
+  scop->initializeSymbolTable(f, &ctx);
+
+  for (auto &stmt : scop->stmts) {
+    LLVM_DEBUG({
+      dbgs() << "Adding relations to statement: \n";
+      stmt.getOperation()->dump();
+    });
+
+    // Collet the domain
+    affine::FlatAffineValueConstraints domain = *stmt.getMlirDomain();
+
+    LLVM_DEBUG({
+      dbgs() << "Domain:\n";
+      domain.dump();
+    });
+
+    Operation *op = stmt.getOperation();
+
+    LLVM_DEBUG({
+      dbgs() << "op:\n";
+      op->dump();
+    });
+
+    scop->addDomainRelation(stmt, domain);
+
+    {
+      // FIXME remapping of ataddr op to the llvm pointer does not work because
+      // we get the information about the array rank from the memref value type,
+      // temp fix
+      if (isa<memref::AtAddrOp>(op))
+        continue;
+
+      LLVM_DEBUG(dbgs() << "Creating access relation for: " << *op << '\n');
+      auto needsMemEffects = [&](Value memref) {
+        if (affine::isValidDim(memref) || affine::isValidSymbol(memref))
+          return false;
+
+        if (auto *op = memref.getDefiningOp())
+          if (op->hasTrait<OpTrait::ConstantLike>())
+            return false;
+
+        return true;
+      };
+      auto addLoad = [&](Value memref, affine::AffineValueMap map) {
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::READ,
+                                        redirectMap.lookupOrDefault(memref),
+                                        map, false, domain);
+      };
+      auto addMayStore = [&](Value memref, affine::AffineValueMap map) {
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MAY_WRITE,
+                                        redirectMap.lookupOrDefault(memref),
+                                        map, false, domain);
+      };
+      auto addMustStore = [&](Value memref, affine::AffineValueMap map) {
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::MUST_WRITE,
+                                        redirectMap.lookupOrDefault(memref),
+                                        map, false, domain);
+      };
+      auto addKill = [&](Value memref, affine::AffineValueMap map,
+                         bool universe) {
+        auto redirected = redirectMap.lookupOrDefault(memref);
+        if (redirected.getParentBlock()->getParentOp() == f)
+          return;
+        if (needsMemEffects(memref))
+          (void)scop->addAccessRelation(stmt, polymer::MemoryAccess::KILL,
+                                        redirected, map, universe, domain);
+      };
+      bool needToLoadOperands = true;
+      bool needToStoreResults = true;
+      auto unitMap = AffineMap::get(op->getContext());
+      affine::AffineValueMap unitVMap(unitMap, ValueRange{}, ValueRange{});
+      if (!isMemoryEffectFree(op)) {
+        // TODO FIXME NEED TO PUT THE VECTOR SIZE INTO THE RELATION FOR
+        // affine.vector_{store,load}
+        if (isa<mlir::affine::AffineReadOpInterface>(op) ||
+            isa<mlir::affine::AffineWriteOpInterface>(op)) {
+
+          affine::AffineValueMap vMap;
+          mlir::Value memref;
+
+          AffineMap map;
+          SmallVector<Value, 4> indices;
+          if (auto loadOp = dyn_cast<affine::AffineReadOpInterface>(op)) {
+            memref = loadOp.getMemRef();
+            llvm::append_range(indices, loadOp.getMapOperands());
+            map = loadOp.getAffineMap();
+            vMap.reset(map, indices);
+            addLoad(memref, vMap);
+            addMustStore(loadOp.getValue(), unitVMap);
+          } else {
+            assert(isa<affine::AffineWriteOpInterface>(op) &&
+                   "Affine read/write op expected");
+            auto storeOp = cast<affine::AffineWriteOpInterface>(op);
+            memref = storeOp.getMemRef();
+            llvm::append_range(indices, storeOp.getMapOperands());
+            map = cast<affine::AffineWriteOpInterface>(op).getAffineMap();
+            vMap.reset(map, indices);
+            addMustStore(memref, vMap);
+            addLoad(storeOp.getValueToStore(), unitVMap);
+          }
+          needToLoadOperands = false;
+          needToStoreResults = false;
+        } else {
+          assert((isa<memref::AllocOp, memref::AllocaOp>(op)));
+          needToLoadOperands = false;
+          needToStoreResults = false;
+        }
+      } else if (auto storeVar = dyn_cast<affine::AffineStoreVar>(op)) {
+        assert(storeVar->getNumOperands() == 2);
+        Value val = storeVar->getOperand(0);
+        Value addr = storeVar->getOperand(1);
+        addLoad(val, unitVMap);
+        addMustStore(addr, unitVMap);
+        needToLoadOperands = false;
+        needToStoreResults = false;
+      } else if (auto yield = dyn_cast<affine::AffineYieldOp>(op)) {
+        for (auto [res, opr] :
+             llvm::zip(ValueRange(yield->getParentOp()->getResults()),
+                       ValueRange(yield->getOperands()))) {
+          addMustStore(res, unitVMap);
+          addLoad(opr, unitVMap);
+        }
+        needToLoadOperands = false;
+        needToStoreResults = false;
+      }
+
+      if (op->getBlock()->getTerminator() == op)
+        for (auto &toKill : op->getBlock()->without_terminator())
+          for (auto res : toKill.getResults())
+            addKill(res, {}, true);
+
+      if (llvm::all_of(op->getOpResults(),
+                       [&](Value v) { return redirectMap.contains(v); }))
+        continue;
+
+      if (needToStoreResults)
+        for (auto res : op->getResults())
+          addMustStore(res, unitVMap);
+      if (needToLoadOperands)
+        for (auto opr : op->getOperands())
+          addLoad(opr, unitVMap);
+    }
+  }
+
+  scop->addIndependences();
+
+  return scop;
+}
+
+static void createForIterArgAccesses(affine::AffineForOp forOp,
+                                     IRMapping &map) {
+  OpBuilder builder(forOp);
+  for (auto [init, res] : llvm::zip(ValueRange(forOp.getInitsMutable()),
+                                    ValueRange(forOp.getResults())))
+    builder.create<affine::AffineStoreVar>(
+        forOp.getLoc(), ValueRange{init, res},
+        builder.getStringAttr("for.iv.init"));
+  map.map(forOp.getRegionIterArgs(), forOp.getResults());
+}
+
+void IslScopBuilder::gatherStmts(Operation *f, IRMapping &map,
+                                 IslScop &S) const {
+  f->walk(
+      [&](affine::AffineForOp forOp) { createForIterArgAccesses(forOp, map); });
+  // f->walk([&](memref::AtAddrOp atAddr) {
+  //   map.map(atAddr.getResult(), atAddr.getAddr());
+  // });
+  unsigned stmtId = 0;
+  f->walk([&](mlir::Operation *op) {
+    if (isa<affine::AffineForOp, affine::AffineIfOp, affine::AffineParallelOp>(
+            op))
+      return;
+    if (op == f)
+      return;
+    std::string calleeName = "S" + std::to_string(stmtId++) + "." +
+                             op->getName().getStringRef().str();
+    S.stmts.emplace_back(op, &S, calleeName.c_str());
+  });
+}
+
+void IslScopBuilder::buildScopContext(
+    Operation *f, IslScop *scop,
+    affine::FlatAffineValueConstraints &ctx) const {
+  LLVM_DEBUG(dbgs() << "--- Building SCoP context ...\n");
+
+  // First initialize the symbols of the ctx by the order of arg number.
+  // This simply aims to make mergeAndAlignVarsWithOthers work.
+  SmallVector<Value> symbols;
+  auto insertSyms = [&](auto syms) {
+    for (Value sym : syms) {
+      // Find the insertion position.
+      auto it = symbols.begin();
+      while (it != symbols.end()) {
+        auto lhs = it->getAsOpaquePointer();
+        auto rhs = sym.getAsOpaquePointer();
+        if (lhs >= rhs)
+          break;
+        ++it;
+      }
+      if (it == symbols.end() || *it != sym)
+        symbols.insert(it, sym);
+    }
+  };
+  for (auto &stmt : scop->stmts) {
+    auto domain = stmt.getMlirDomain();
+    SmallVector<Value> syms;
+    domain->getValues(domain->getNumDimVars(), domain->getNumDimAndSymbolVars(),
+                      &syms);
+
+    insertSyms(syms);
+  }
+  f->walk([&](Operation *op) {
+    if (auto loadOp = dyn_cast<affine::AffineReadOpInterface>(op)) {
+      insertSyms(loadOp.getMapOperands().drop_front(
+          loadOp.getAffineMap().getNumDims()));
+    } else if (auto storeOp = dyn_cast<affine::AffineWriteOpInterface>(op)) {
+      insertSyms(storeOp.getMapOperands().drop_front(
+          storeOp.getAffineMap().getNumDims()));
+    }
+  });
+
+  ctx = affine::FlatAffineValueConstraints(/*numDims=*/0,
+                                           /*numSymbols=*/symbols.size());
+  ctx.setValues(0, symbols.size(), symbols);
+
+  // Union with the domains of all Scop statements. We first merge and align the
+  // IDs of the context and the domain of the scop statement, and then append
+  // the constraints from the domain to the context. Note that we don't want to
+  // mess up with the original domain at this point. Trivial redundant
+  // constraints will be removed.
+  for (auto &stmt : scop->stmts) {
+    affine::FlatAffineValueConstraints *domain = stmt.getMlirDomain();
+    affine::FlatAffineValueConstraints cst(*domain);
+
+    LLVM_DEBUG(dbgs() << "Statement:\n");
+    LLVM_DEBUG(stmt.getOperation()->dump());
+    LLVM_DEBUG(dbgs() << "Target domain: \n");
+    LLVM_DEBUG(domain->dump());
+
+    LLVM_DEBUG({
+      dbgs() << "Domain values: \n";
+      SmallVector<Value> values;
+      domain->getValues(0, domain->getNumDimAndSymbolVars(), &values);
+      for (Value value : values)
+        dbgs() << " * " << value << '\n';
+    });
+
+    ctx.mergeAndAlignVarsWithOther(0, &cst);
+    ctx.append(cst);
+    ctx.removeRedundantConstraints();
+
+    LLVM_DEBUG(dbgs() << "Updated context: \n");
+    LLVM_DEBUG(ctx.dump());
+
+    LLVM_DEBUG({
+      dbgs() << "Context values: \n";
+      SmallVector<Value> values;
+      ctx.getValues(0, ctx.getNumDimAndSymbolVars(), &values);
+      for (Value value : values)
+        dbgs() << " * " << value << '\n';
+    });
+  }
+
+  // Then, create the single context relation in scop.
+  scop->addContextRelation(ctx);
+
+  // Finally, given that ctx has all the parameters in it, we will make sure
+  // that each domain is aligned with them, i.e., every domain has the same
+  // parameter columns (Values & order).
+  SmallVector<mlir::Value, 8> symValues;
+  ctx.getValues(ctx.getNumDimVars(), ctx.getNumDimAndSymbolVars(), &symValues);
+
+  // Add and align domain SYMBOL columns.
+  for (auto &stmt : scop->stmts) {
+    affine::FlatAffineValueConstraints *domain = stmt.getMlirDomain();
+    // For any symbol missing in the domain, add them directly to the end.
+    for (unsigned i = 0; i < ctx.getNumSymbolVars(); ++i) {
+      unsigned pos;
+      if (!domain->findVar(symValues[i], &pos)) // insert to the back
+        domain->appendSymbolVar(symValues[i]);
+      else
+        LLVM_DEBUG(dbgs() << "Found " << symValues[i] << '\n');
+    }
+
+    // Then do the aligning.
+    LLVM_DEBUG(domain->dump());
+    for (unsigned i = 0; i < ctx.getNumSymbolVars(); i++) {
+      mlir::Value sym = symValues[i];
+      unsigned pos;
+      domain->findVar(sym, &pos);
+
+      unsigned posAsCtx = i + domain->getNumDimVars();
+      LLVM_DEBUG(dbgs() << "Swapping " << posAsCtx << " " << pos << "\n");
+      if (pos != posAsCtx)
+        domain->swapVar(posAsCtx, pos);
+    }
+
+    // for (unsigned i = 0; i < ctx.getNumSymbolVars(); i++) {
+    //   mlir::Value sym = symValues[i];
+    //   unsigned pos;
+    //   // If the symbol can be found in the domain, we put it in the same
+    //   // position as the ctx.
+    //   if (domain->findVar(sym, &pos)) {
+    //     if (pos != i + domain->getNumDimVars())
+    //       domain->swapVar(i + domain->getNumDimVars(), pos);
+    //   } else {
+    //     domain->insertSymbolId(i, sym);
+    //   }
+    // }
+  }
+}
+
+std::unique_ptr<IslScop> createIslFromFuncOp(Operation *f) {
+  return IslScopBuilder().build(f);
+}
+
+} // namespace polymer
