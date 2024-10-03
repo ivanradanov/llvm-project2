@@ -419,15 +419,12 @@ void IslScop::addIndependences() {
         map = isl_map_equate(map, isl_dim_in, i, isl_dim_out, i);
       for (unsigned i = dim + 1; i < totalDims; ++i)
         map = isl_map_equate(map, isl_dim_in, i, isl_dim_out, i);
-      if (sign > 0)
-        map = isl_map_order_lt(map, isl_dim_in, dim, isl_dim_out, dim);
-      else
-        map = isl_map_order_gt(map, isl_dim_in, dim, isl_dim_out, dim);
+      isl_map *eq =
+          isl_map_equate(isl_map_copy(map), isl_dim_in, dim, isl_dim_out, dim);
+      map = isl_map_subtract(map, eq);
 
       independence = isl_union_map_from_map(map);
       space = isl_space_params(isl_set_get_space(domain));
-      proj =
-          mapToDimensionUPMA(isl_union_set_from_set(isl_set_copy(domain)), dim);
       {
         proj = isl_union_pw_multi_aff_empty(space);
         isl_space *space;
