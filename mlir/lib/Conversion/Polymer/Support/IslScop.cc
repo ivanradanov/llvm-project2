@@ -392,16 +392,25 @@ void IslScop::addIndependences() {
     unsigned totalDims = unsignedFromIslSize(isl_set_dim(domain, isl_dim_set));
     LLVM_DEBUG(dbgs() << "Adding independence for stmt with domain ";
                isl_set_dump(domain));
-    for (unsigned dim = 0; dim < totalDims; dim++) {
-      if (!isa<affine::AffineParallelOp>(stmt.getMlirDomain()
-                                             ->getValue(dim)
-                                             .getParentBlock()
-                                             ->getParentOp()))
+    for (unsigned dim = 0; dim < totalDims;) {
+      unsigned bandStart = dim, bandEnd = dim;
+      affine::AffineParallelOp parOp = nullptr;
+      for (; bandEnd < totalDims; bandEnd++) {
+        auto curPar = dyn_cast<affine::AffineParallelOp>(stmt.getMlirDomain()
+                                                             ->getValue(bandEnd)
+                                                             .getParentBlock()
+                                                             ->getParentOp());
+        if (!parOp)
+          parOp = curPar;
+        else if (parOp != curPar)
+          break;
+      }
+      if (bandStart == bandEnd) {
+        dim++;
         continue;
-
-      // FIXME currently we only have positive sign parallel loops so this is
-      // fine for now
-      int sign = 1;
+      } else {
+        dim = bandEnd;
+      }
 
       // TODO collect all arrays in the dim and add that info to the scop
       isl_union_set *local = nullptr;
@@ -415,12 +424,13 @@ void IslScop::addIndependences() {
 
       space = isl_space_map_from_set(isl_set_get_space(domain));
       map = isl_map_universe(space);
-      for (unsigned i = 0; i < dim; ++i)
+      for (unsigned i = 0; i < bandStart; ++i)
         map = isl_map_equate(map, isl_dim_in, i, isl_dim_out, i);
-      for (unsigned i = dim + 1; i < totalDims; ++i)
+      for (unsigned i = bandEnd; i < totalDims; ++i)
         map = isl_map_equate(map, isl_dim_in, i, isl_dim_out, i);
-      isl_map *eq =
-          isl_map_equate(isl_map_copy(map), isl_dim_in, dim, isl_dim_out, dim);
+      isl_map *eq = isl_map_copy(map);
+      for (unsigned i = bandStart; i < bandEnd; ++i)
+        eq = isl_map_equate(eq, isl_dim_in, i, isl_dim_out, i);
       map = isl_map_subtract(map, eq);
 
       independence = isl_union_map_from_map(map);
@@ -446,7 +456,8 @@ void IslScop::addIndependences() {
       independence =
           isl_union_map_preimage_range_union_pw_multi_aff(independence, proj);
 
-      LLVM_DEBUG(dbgs() << "Independence for dim " << dim << " ";
+      LLVM_DEBUG(dbgs() << "Independence for band " << bandStart << " "
+                        << bandEnd << " ";
                  isl_union_map_dump(independence));
 
       this->independence = this->independence.unite(isl::manage(independence));
@@ -1480,7 +1491,6 @@ void IslScop::rescopeStatements(
   });
 
   addIndependences();
-
 }
 
 namespace polymer {
