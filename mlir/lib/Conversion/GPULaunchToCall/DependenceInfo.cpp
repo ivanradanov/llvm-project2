@@ -1437,52 +1437,53 @@ static void eliminate_dead_code(struct ppcg_scop *ps)
 						live);
 }
 
-void collect_order_dependences(Scop &S, ppcg_scop *PS)
-{
-	int i;
-	isl_space *space;
-	isl_union_map *accesses;
-  isl_union_map *array_order;
-
-	space = isl_union_map_get_space(PS->reads);
-	array_order = isl_union_map_empty(space);
-
-	accesses = isl_union_map_copy(PS->tagged_reads);
-	accesses = isl_union_map_union(accesses,
-			    isl_union_map_copy(PS->tagged_may_writes));
-	accesses = isl_union_map_universe(accesses);
-
-  #if 0
-	for (i = 0; i < prog->n_array; ++i) {
-		struct gpu_array_info *array = &prog->array[i];
-		isl_set *set;
-		isl_union_set *uset;
-		isl_union_map *order;
-
-		set = isl_set_universe(isl_space_copy(array->space));
-		uset = isl_union_set_from_set(set);
-		uset = isl_union_map_domain(
-		    isl_union_map_intersect_range(isl_union_map_copy(accesses),
-						    uset));
-		order = isl_union_map_copy(prog->scop->tagged_dep_order);
-		order = isl_union_map_intersect_domain(order, uset);
-		order = isl_union_map_zip(order);
-		order = isl_union_set_unwrap(isl_union_map_domain(order));
-		array->dep_order = order;
-
-		if (gpu_array_can_be_private(array))
-			continue;
-
-		prog->array_order = isl_union_map_union(prog->array_order,
-					isl_union_map_copy(array->dep_order));
-	}
-
-	isl_union_map_free(accesses);
-  #endif
-}
-
 // clang-format on
 // ############### PPCG END ###############
+
+void collect_order_dependences(Scop &S, ppcg_scop *scop) {
+  int i;
+  isl_space *space;
+  isl_union_map *accesses;
+  isl_union_map *array_order;
+
+  space = isl_union_map_get_space(scop->reads);
+  array_order = isl_union_map_empty(space);
+
+  accesses = isl_union_map_copy(scop->tagged_reads);
+  accesses = isl_union_map_union(accesses,
+                                 isl_union_map_copy(scop->tagged_may_writes));
+  accesses = isl_union_map_universe(accesses);
+
+  for (auto &array : S.arrays) {
+    isl_set *set;
+    isl_union_set *uset;
+    isl_union_map *order;
+
+    set = isl_set_universe(array.space.copy());
+    uset = isl_union_set_from_set(set);
+    uset = isl_union_map_domain(
+        isl_union_map_intersect_range(isl_union_map_copy(accesses), uset));
+    order = isl_union_map_copy(scop->tagged_dep_order);
+    order = isl_union_map_intersect_domain(order, uset);
+    order = isl_union_map_zip(order);
+    order = isl_union_set_unwrap(isl_union_map_domain(order));
+    order = isl_union_map_subtract(order, S.getIndependence().release());
+    array.dep_order = isl::manage(order);
+
+    LLVM_DEBUG(dbgs() << "dep_order for " << array.name << " ";
+               isl_union_map_dump(array.dep_order.get()));
+
+    // TODO
+    // if (gpu_array_can_be_private(array))
+    //   continue;
+
+    array_order = isl_union_map_union(array_order, array.dep_order.copy());
+  }
+
+  isl_union_map_free(accesses);
+
+  scop->array_order = array_order;
+}
 
 ppcg_scop *computeDeps(Scop &S) {
   isl_union_map *ReductionTagMap;
@@ -1531,6 +1532,8 @@ ppcg_scop *computeDeps(Scop &S) {
   compute_dependences(ps);
   eliminate_dead_code(ps);
 
+  collect_order_dependences(S, ps);
+
 #define PPCGSCOPDUMP(field)                                                    \
   dbgs() << #field << " " << isl_union_map_to_str(ps->field) << '\n'
   POLLY_DEBUG({
@@ -1554,6 +1557,7 @@ ppcg_scop *computeDeps(Scop &S) {
     PPCGSCOPDUMP(dep_order);
     PPCGSCOPDUMP(tagged_dep_order);
     PPCGSCOPDUMP(dep_async);
+    PPCGSCOPDUMP(array_order);
     dbgs() << "tagger" << " " << isl_union_pw_multi_aff_to_str(ps->tagger)
            << '\n';
     dbgs() << "schedule" << '\n';

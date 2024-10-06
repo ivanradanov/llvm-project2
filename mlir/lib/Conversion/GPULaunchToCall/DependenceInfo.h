@@ -256,6 +256,8 @@ struct ppcg_scop {
 	isl_id_to_ast_expr *names;
 
 	struct pet_scop *pet;
+
+  isl_union_map *array_order;
 };
 // clang-format on
 // ############### PPCG DECLS END ###############

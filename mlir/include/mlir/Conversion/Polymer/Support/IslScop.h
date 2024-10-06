@@ -76,16 +76,19 @@ public:
     KILL = 0x4,
   };
 
+  MemoryAccess(isl::id Id, isl::map AccessRelation, MemoryKind Kind,
+               AccessType AccType, ScopArrayInfo *AI)
+      : Id(Id), AccessRelation(AccessRelation), Kind(Kind), AccType(AccType),
+        AI(AI) {}
+
   isl::id Id;
   isl::map AccessRelation;
   MemoryKind Kind;
   AccessType AccType;
-  mlir::Value memref;
+  ScopArrayInfo *AI;
 
   isl::map getAccessRelation() { return AccessRelation; }
-
-  // FIXME generate this obj
-  const ScopArrayInfo *getScopArrayInfo() const { return nullptr; }
+  ScopArrayInfo *getScopArrayInfo() const { return AI; }
   isl::id getId() const { return Id; }
   isl::id getArrayId() const {
     return AccessRelation.get_tuple_id(isl::dim::out);
@@ -139,6 +142,8 @@ public:
 
   bool isValidAsyncCopy() { return validAsyncCopy; }
 
+  isl::id id;
+
 private:
   bool validAsyncCopy = false;
 
@@ -172,7 +177,8 @@ private:
 
 class ScopArrayInfo final {
 public:
-  ScopArrayInfo(mlir::Value val, unsigned id) : val(val) {
+  ScopArrayInfo(isl::space space, mlir::Value val, unsigned counter)
+      : val(val) {
     using namespace mlir;
 
     name = "A_";
@@ -181,19 +187,24 @@ public:
               "_arg_" + std::to_string(ba.getArgNumber());
     else
       name += val.getDefiningOp()->getName().getStringRef().str() + "_res";
-    name += "_" + std::to_string(id);
+    name += "_" + std::to_string(counter);
     makeIslCompatible(name);
+    id = isl::id::alloc(space.ctx(), name.c_str(), val.getAsOpaquePointer());
+    this->space = space.set_tuple_id(isl::dim::set, id);
   }
   mlir::Value val;
   std::string name;
+  isl::id id;
   isl::space space;
+
+  isl::union_map dep_order;
 };
 
 /// A wrapper for the osl_scop struct in the openscop library.
 class IslScop {
 public:
   using SymbolTable = llvm::StringMap<mlir::Value>;
-  using ValueTable = llvm::DenseMap<mlir::Value, std::string>;
+  using ValueTable = llvm::DenseMap<mlir::Value, isl::id>;
   using MemRefToId = llvm::DenseMap<mlir::Value, std::string>;
 
   IslScop(mlir::Operation *op);
@@ -258,22 +269,23 @@ public:
   void
   rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope);
 
-  ScopArrayInfo &getOrAddArray(mlir::Value memref) {
+  ScopArrayInfo &getOrAddArray(isl::space space, mlir::Value memref) {
     auto found =
         llvm::find_if(arrays, [&](auto array) { return array.val == memref; });
     if (found != arrays.end())
       return *found;
-    return arrays.emplace_back(memref, arrays.size());
+    return arrays.emplace_back(space, memref, arrays.size());
   }
+
+public:
+  using ArrayList = std::list<ScopArrayInfo>;
+  using array_iterator = ArrayList::iterator;
+  ArrayList arrays;
 
 private:
   using StmtVec = std::list<ScopStmt>;
   using iterator = StmtVec::iterator;
   StmtVec stmts;
-
-  using ArrayVec = std::vector<ScopArrayInfo>;
-  using array_iterator = ArrayVec::iterator;
-  ArrayVec arrays;
 
 public:
   iterator begin() { return stmts.begin(); }
@@ -319,7 +331,7 @@ private:
 
   __isl_give isl_space *
   setupSpace(__isl_take isl_space *space,
-             mlir::affine::FlatAffineValueConstraints &cst, std::string name);
+             mlir::affine::FlatAffineValueConstraints &cst, isl::id tupleId);
 
   __isl_give isl_mat *
   createConstraintRows(mlir::affine::FlatAffineValueConstraints &cst,

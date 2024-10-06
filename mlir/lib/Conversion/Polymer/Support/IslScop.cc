@@ -365,17 +365,15 @@ void IslScop::dumpSchedule(llvm::raw_ostream &os) {
 
 isl_space *IslScop::setupSpace(isl_space *space,
                                affine::FlatAffineValueConstraints &cst,
-                               std::string name) {
+                               isl::id tupleId) {
   for (unsigned i = 0; i < cst.getNumSymbolVars(); i++) {
     Value val =
         cst.getValue(cst.getVarKindOffset(presburger::VarKind::Symbol) + i);
-    std::string sym = valueTable[val];
-    makeIslCompatible(sym);
-    isl_id *id = isl_id_alloc(getIslCtx(), sym.c_str(), nullptr);
-    space = isl_space_set_dim_id(space, isl_dim_param, i, id);
+    isl::id id = valueTable[val];
+    space = isl_space_set_dim_id(space, isl_dim_param, i, id.copy());
   }
-  if (name != "")
-    space = isl_space_set_tuple_name(space, isl_dim_set, name.c_str());
+  if (!tupleId.is_null())
+    space = isl_space_set_tuple_id(space, isl_dim_set, tupleId.copy());
   return space;
 }
 
@@ -445,8 +443,8 @@ void IslScop::addIndependences() {
         dim = isl_space_dim(space, isl_dim_set);
         ma = isl_multi_aff_project_out_map(space, isl_dim_set, dim,
                                            totalDims - dim);
-        ma = isl_multi_aff_set_tuple_name(ma, isl_dim_out,
-                                          isl_set_get_tuple_name(domain));
+        ma = isl_multi_aff_set_tuple_id(ma, isl_dim_out,
+                                        isl_set_get_tuple_id(domain));
         pma = isl_pw_multi_aff_from_multi_aff(ma);
         proj = isl_union_pw_multi_aff_add_pw_multi_aff(proj, pma);
       }
@@ -482,7 +480,7 @@ void IslScop::addDomainRelation(ScopStmt &stmt,
 
   isl_space *space = isl_space_set_alloc(getIslCtx(), cst.getNumSymbolVars(),
                                          cst.getNumDimVars());
-  space = setupSpace(space, cst, stmt.name);
+  space = setupSpace(space, cst, stmt.id);
   LLVM_DEBUG(llvm::errs() << "space: ");
   LLVM_DEBUG(isl_space_dump(space));
   stmt.islDomain =
@@ -502,9 +500,6 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   affine::FlatAffineValueConstraints cst;
   isl_map *map = nullptr;
 
-  ScopArrayInfo &ai = getOrAddArray(memref);
-  std::string name = ai.name;
-
   unsigned rank = 0;
   if (auto ty = dyn_cast<MemRefType>(memref.getType()))
     rank = ty.getRank();
@@ -512,18 +507,20 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   assert(universe || vMap.getNumResults() == rank);
 
   isl_space *as =
-      isl_space_set_alloc(getIslCtx(), cst.getNumSymbolVars(), rank);
-  isl::space arraySpace = isl::manage(setupSpace(as, cst, ""));
-  ai.space = arraySpace;
+      isl_space_set_alloc(getIslCtx(), domain.getNumSymbolVars(), rank);
+  as = setupSpace(as, domain, isl::id());
+  ScopArrayInfo &ai = getOrAddArray(isl::manage(as), memref);
+  isl::id arrayId = ai.id;
+  isl::space arraySpace = ai.space;
 
   if (universe) {
-    isl_set *range = isl_space_universe_set(arraySpace.release());
+    isl_set *range = isl_space_universe_set(arraySpace.copy());
     map = isl_map_from_domain_and_range(isl_set_copy(stmt.islDomain), range);
   } else if (createAccessRelationConstraints(vMap, cst, domain).failed()) {
     LLVM_DEBUG(llvm::dbgs() << "createAccessRelationConstraints failed\n");
 
     // Conservatively act on the entire array
-    isl_set *range = isl_space_universe_set(arraySpace.release());
+    isl_set *range = isl_space_universe_set(arraySpace.copy());
     map = isl_map_from_domain_and_range(isl_set_copy(stmt.islDomain), range);
 
     if (type == MemoryAccess::AccessType::MUST_WRITE) {
@@ -537,7 +534,7 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
     isl_space *space = isl_space_alloc(
         getIslCtx(), cst.getNumSymbolVars(),
         cst.getNumDimVars() - vMap.getNumResults(), vMap.getNumResults());
-    space = setupSpace(space, cst, memRefIdMap[memref]);
+    space = setupSpace(space, cst, valueTable[memref]);
 
     isl_mat *eqMat = createConstraintRows(cst, /*isEq=*/true);
     isl_mat *ineqMat = createConstraintRows(cst, /*isEq=*/false);
@@ -561,10 +558,8 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
     map = isl_map_from_basic_map(bmap);
   }
 
-  isl::id arrayId =
-      isl::id::alloc(getIslCtx(), name.c_str(), memref.getAsOpaquePointer());
-
   isl::id stmtId = stmt.getDomain().get_tuple_id();
+  assert(stmtId.get() == stmt.id.get());
   static const std::string TypeStrings[] = {"", "_Read", "_Write", "_MayWrite"};
   std::string Access = TypeStrings[type] + llvm::utostr(stmt.size());
   Access = stmt.getName() + Access;
@@ -572,11 +567,11 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
   isl::id accessId =
       isl::id::alloc(getIslCtx(), Access, memref.getAsOpaquePointer());
 
-  map = isl_map_set_tuple_id(map, isl_dim_out, arrayId.release());
-  map = isl_map_set_tuple_id(map, isl_dim_in, stmtId.release());
+  map = isl_map_set_tuple_id(map, isl_dim_out, arrayId.copy());
+  map = isl_map_set_tuple_id(map, isl_dim_in, stmtId.copy());
   ISL_DEBUG("Created relation: ", isl_map_dump(map));
   stmt.memoryAccesses.push_back(new MemoryAccess{
-      accessId, isl::manage(map), MemoryAccess::MT_Array, type, memref});
+      accessId, isl::manage(map), MemoryAccess::MT_Array, type, &ai});
 
   return success();
 }
@@ -606,13 +601,16 @@ void IslScop::initializeSymbolTable(Operation *f,
     sym += std::to_string(i - cst->getVarKindOffset(cst->getVarKindAt(i)));
     // symbolTable.insert(std::make_pair(sym, val));
     // valueTable.insert(std::make_pair(val, sym));
-    valueTable[val] = sym;
-    symbolTable[sym] = val;
+    makeIslCompatible(sym);
+    valueTable[val] = isl::manage(
+        isl_id_alloc(IslCtx.get(), sym.c_str(), val.getAsOpaquePointer()));
   }
   for (const auto &it : memRefIdMap) {
     std::string sym(formatv("A{0}", it.second));
     symbolTable.insert(std::make_pair(sym, it.first));
-    valueTable.insert(std::make_pair(it.first, sym));
+    valueTable.insert(std::make_pair(
+        it.first, isl::manage(isl_id_alloc(IslCtx.get(), sym.c_str(),
+                                           it.first.getAsOpaquePointer()))));
   }
   // constants
   unsigned numConstants = 0;
@@ -620,7 +618,9 @@ void IslScop::initializeSymbolTable(Operation *f,
     if (valueTable.find(arg) == valueTable.end()) {
       std::string sym(formatv("C{0}", numConstants++));
       symbolTable.insert(std::make_pair(sym, arg));
-      valueTable.insert(std::make_pair(arg, sym));
+      valueTable.insert(std::make_pair(
+          arg, isl::manage(isl_id_alloc(IslCtx.get(), sym.c_str(),
+                                        arg.getAsOpaquePointer()))));
     }
   }
 }
@@ -1412,7 +1412,9 @@ void IslScop::rescopeStatements(
 
     std::string newStmtName = "RS" + std::to_string(blockParNum++) + "." +
                               rescopeOp->getName().getStringRef().str();
-    // FIXME this only works because we do not assign
+    makeIslCompatible(newStmtName);
+    // FIXME this only works because we do not assign statement names to the
+    // affine.parallel we rescope to.
     ScopStmt &newStmt = stmts.emplace_back(rescopeOp, this, newStmtName,
                                            isValidAsyncCopy(rescopeOp));
     affine::FlatAffineValueConstraints domain = *newStmt.getMlirDomain();
@@ -1446,7 +1448,7 @@ void IslScop::rescopeStatements(
       LLVM_DEBUG(isl_map_dump(domMap.get()));
 
       for (MemoryAccess *ma : stmt) {
-        Value memref = ma->memref;
+        Value memref = ma->getScopArrayInfo()->val;
         // FIXME this is wrong for iter args of for loops for example but we do
         // not rescope operations where this would be problematic
         Operation *scope = memref.getParentBlock()->getParentOp();
@@ -1473,14 +1475,15 @@ void IslScop::rescopeStatements(
         }
         stmtToRescoped = stmtToRescoped.set_tuple_id(
             isl::dim::in, accRel.get_tuple_id(isl::dim::in));
-        stmtToRescoped = isl::manage(isl_map_set_tuple_name(
-            stmtToRescoped.release(), isl_dim_out, newStmtName.c_str()));
+        stmtToRescoped = isl::manage(isl_map_set_tuple_id(
+            stmtToRescoped.release(), isl_dim_out, newStmt.id.copy()));
         LLVM_DEBUG(isl_map_dump(stmtToRescoped.get()));
         auto rescopedAccRel = accRel.apply_domain(stmtToRescoped);
         LLVM_DEBUG(dbgs() << "Computed combined acc rel for rescoped: ";);
         LLVM_DEBUG(isl_map_dump(rescopedAccRel.get()));
-        newStmt.memoryAccesses.push_back(new MemoryAccess{
-            ma->Id, rescopedAccRel, ma->Kind, ma->AccType, ma->memref});
+        newStmt.memoryAccesses.push_back(
+            new MemoryAccess{ma->Id, rescopedAccRel, ma->Kind, ma->AccType,
+                             ma->getScopArrayInfo()});
       }
 
       it = stmts.erase(it);
