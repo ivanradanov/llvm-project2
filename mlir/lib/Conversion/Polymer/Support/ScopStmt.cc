@@ -93,14 +93,22 @@ void ScopStmt::initializeDomainAndEnclosingOps() {
 
 void ScopStmt::getArgsValueMapping(IRMapping &argMap) {}
 
-ScopStmt::ScopStmt(Operation *op, IslScop *parent, StringRef name, bool isCopy)
+namespace polymer {
+void makeIslCompatible(std::string &str);
+}
+
+ScopStmt::ScopStmt(Operation *op, IslScop *parent, StringRef name,
+                   bool validAsyncCopy)
     : op(op), parent(parent) {
   this->name = name.str();
-  op->setAttr("polymer.stmt.name", StringAttr::get(op->getContext(), name));
-  this->validAsyncCopy = isCopy;
-  if (isCopy)
-    op->setAttr("polymer.stmt.copy", UnitAttr::get(op->getContext()));
+  makeIslCompatible(this->name);
+  op->setAttr("polymer.stmt.name",
+              StringAttr::get(op->getContext(), this->name));
+  this->validAsyncCopy = validAsyncCopy;
+  if (validAsyncCopy)
+    op->setAttr("polymer.stmt.async.copy", UnitAttr::get(op->getContext()));
   initializeDomainAndEnclosingOps();
+  id = isl::id::alloc(parent->getIslCtx(), this->name, op);
 }
 
 ScopStmt::~ScopStmt() {
