@@ -228,14 +228,18 @@ struct ppcg_scop {
 	isl_union_set *domain;
 	isl_union_set *call;
 	isl_union_map *tagged_reads;
+	isl_union_map *atagged_reads;
 	isl_union_map *reads;
 	isl_union_map *live_in;
 	isl_union_map *tagged_may_writes;
+	isl_union_map *atagged_may_writes;
 	isl_union_map *may_writes;
 	isl_union_map *tagged_must_writes;
+	isl_union_map *atagged_must_writes;
 	isl_union_map *must_writes;
 	isl_union_map *live_out;
 	isl_union_map *tagged_must_kills;
+	isl_union_map *atagged_must_kills;
 	isl_union_map *must_kills;
 	isl_union_map *async_reads;
 	isl_union_map *async_must_writes;
