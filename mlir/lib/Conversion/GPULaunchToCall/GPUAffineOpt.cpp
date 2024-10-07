@@ -304,9 +304,8 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
     coincidence = isl_union_map_copy(validity);
     coincidence = isl_union_map_subtract(
         coincidence, isl_union_map_copy(scop->independence));
-    // isl_union_map *array_order = nullptr;
-    // coincidence =
-    //     isl_union_map_union(coincidence, isl_union_map_copy(array_order));
+    coincidence =
+        isl_union_map_union(coincidence, isl_union_map_copy(scop->array_order));
   } else {
     dep_raw = isl_union_map_copy(scop->dep_flow);
     dep = isl_union_map_copy(scop->dep_false);
