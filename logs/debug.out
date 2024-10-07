@@ -667,6 +667,7 @@ domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and
 validity: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS3_affine_parallel[i0, i1, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; RS0_affine_parallel[i0, i1, 0] -> RS3_affine_parallel[i0, i1, 0] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS0_affine_parallel[i0, i1, 0] -> RS2_affine_parallel[i0, i1, 0, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, 1 + i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2 }"
 proximity: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, 0] -> RS0_affine_parallel[i0, 1 + i1, 0] : 0 <= i0 < P1 and 0 <= i1 <= -2 + P0; RS3_affine_parallel[i0, -1 + P0, 0] -> RS0_affine_parallel[1 + i0, 0, 0] : P0 > 0 and 0 <= i0 <= -2 + P1; RS1_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS3_affine_parallel[i0, i1, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; RS0_affine_parallel[i0, i1, 0] -> RS3_affine_parallel[i0, i1, 0] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[i0, i1, 0, 1 + i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[i0, 1 + i1, 0, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 <= -2 + P0 and -16 + P2 <= 16i3 < P2; RS2_affine_parallel[i0, -1 + P0, 0, i3] -> RS1_affine_parallel[1 + i0, 0, 0, 0] : P0 > 0 and P2 > 0 and 0 <= i0 <= -2 + P1 and -16 + P2 <= 16i3 < P2; RS0_affine_parallel[i0, i1, 0] -> RS2_affine_parallel[i0, i1, 0, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, 1 + i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS0_affine_parallel[i0, 1 + i1, 0] : 0 <= i0 < P1 and 0 <= i1 <= -2 + P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; RS2_affine_parallel[i0, -1 + P0, 0, i3] -> RS0_affine_parallel[1 + i0, 0, 0] : P0 > 0 and 0 <= i0 <= -2 + P1 and i3 >= 0 and -16 + P2 <= 16i3 < P2; RS1_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[i0, i1, 0, 1 + i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; RS1_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[i0, 1 + i1, 0, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 <= -2 + P0 and -16 + P2 <= 16i3 < P2; RS1_affine_parallel[i0, -1 + P0, 0, i3] -> RS1_affine_parallel[1 + i0, 0, 0, 0] : P0 > 0 and P2 > 0 and 0 <= i0 <= -2 + P1 and -16 + P2 <= 16i3 < P2; RS0_affine_parallel[i0, i1, 0] -> RS0_affine_parallel[i0, 1 + i1, 0] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 <= -2 + P0; RS0_affine_parallel[i0, -1 + P0, 0] -> RS0_affine_parallel[1 + i0, 0, 0] : P0 > 0 and P2 <= 0 and 0 <= i0 <= -2 + P1; RS3_affine_parallel[i0, i1, 0] -> RS3_affine_parallel[o0, o1, 0] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0; RS3_affine_parallel[i0, i1, 0] -> RS3_affine_parallel[i0, o1, 0] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0 }"
 anti_proximity: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 }"
+live_range_span: "[P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_10[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; [RS0_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[i0, i1, 0, 1 + i3] -> A_memref_alloca_res_4[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; [RS0_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[i0, i1, 0, 0] -> A_memref_alloca_res_4[]] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; [RS1_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_7[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 }"
 coincidence: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] -> RS2_affine_parallel[i0, i1, 0, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[o0, o1, 0, o3] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[i0, o1, 0, o3] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS1_affine_parallel[i0, i1, 0, o3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2; RS3_affine_parallel[i0, i1, 0] -> RS2_affine_parallel[o0, o1, 0, o3] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; RS3_affine_parallel[i0, i1, 0] -> RS2_affine_parallel[i0, o1, 0, o3] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS3_affine_parallel[i0, i1, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; RS1_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS0_affine_parallel[i0, i1, 0] -> RS3_affine_parallel[i0, i1, 0] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[o0, o1, 0, o3] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0 and ((16i3 < P2 and 0 <= o3 < i3) or (i3 >= 0 and o3 > i3 and 16o3 < P2)); RS2_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, o1, 0, o3] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0 and ((16i3 < P2 and 0 <= o3 < i3) or (i3 >= 0 and o3 > i3 and 16o3 < P2)); RS3_affine_parallel[i0, i1, 0] -> RS0_affine_parallel[o0, o1, 0] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0; RS3_affine_parallel[i0, i1, 0] -> RS0_affine_parallel[i0, o1, 0] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS0_affine_parallel[o0, o1, 0] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS0_affine_parallel[i0, o1, 0] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 }"
 condition: "[P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, 0] -> S11_affine_store_Write0[]] -> [RS2_affine_parallel[i0, i1, 0, 0] -> S18_affine_load_Read0[]] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; [RS0_affine_parallel[i0, i1, 0] -> S11_affine_store_Write0[]] -> [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 < P0; [RS1_affine_parallel[i0, i1, 0, i3] -> S16_affine_vector_store_Write0[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; [RS1_affine_parallel[i0, i1, 0, i3] -> S14_affine_vector_store_Write0[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S27_affine_store_Write0[]] -> [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S27_affine_store_Write0[]] -> [RS2_affine_parallel[i0, i1, 0, 1 + i3] -> S18_affine_load_Read0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2 }"
 conditional_validity: "[P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS2_affine_parallel[o0, o1, 0, o3] -> S27_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS2_affine_parallel[i0, o1, 0, o3] -> S27_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS2_affine_parallel[o0, o1, 0, o3] -> S27_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS2_affine_parallel[i0, o1, 0, o3] -> S27_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS2_affine_parallel[i0, i1, 0, o3] -> S27_affine_store_Write0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2; [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS0_affine_parallel[o0, o1, 0] -> S11_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0; [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS0_affine_parallel[i0, o1, 0] -> S11_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] -> [RS1_affine_parallel[o0, o1, 0, o3] -> S14_affine_vector_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, o1, 0, o3] -> S14_affine_vector_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, i1, 0, o3] -> S14_affine_vector_store_Write0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS0_affine_parallel[o0, o1, 0] -> S11_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS0_affine_parallel[i0, o1, 0] -> S11_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0; [RS3_affine_parallel[i0, i1, 0] -> S32_affine_vector_store_MayWrite0[]] -> [RS3_affine_parallel[o0, o1, 0] -> S32_affine_vector_store_MayWrite0[]] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0; [RS3_affine_parallel[i0, i1, 0] -> S32_affine_vector_store_MayWrite0[]] -> [RS3_affine_parallel[i0, o1, 0] -> S32_affine_vector_store_MayWrite0[]] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] -> [RS1_affine_parallel[o0, o1, 0, o3] -> S16_affine_vector_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, o1, 0, o3] -> S16_affine_vector_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, i1, 0, o3] -> S16_affine_vector_store_Write0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2 }"
@@ -699,7 +700,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P0@0x34265330
+  - id: P0@0x2763d5c0
 inc:
   val: 1
 body:
@@ -711,7 +712,7 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P1@0x34265420
+    - id: P1@0x2763d6b0
   inc:
     val: 1
   body:
@@ -719,7 +720,7 @@ body:
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x34277b50
+        - id: RS0_affine_parallel@0x2766f030
         - id: c1
         - id: c0
         - val: 0
@@ -735,7 +736,7 @@ body:
           args:
           - op: sub
             args:
-            - id: P2@0x342a3dc0
+            - id: P2@0x2767db00
             - val: 1
           - val: 16
       inc:
@@ -744,7 +745,7 @@ body:
       - user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x342615d0
+          - id: RS1_affine_parallel@0x2763a160
           - id: c1
           - id: c0
           - val: 0
@@ -752,7 +753,7 @@ body:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x34277d50
+          - id: RS2_affine_parallel@0x27650460
           - id: c1
           - id: c0
           - val: 0
@@ -760,7 +761,7 @@ body:
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x34277ab0
+      - id: RS3_affine_parallel@0x2767b1c0
       - id: c1
       - id: c0
       - val: 0

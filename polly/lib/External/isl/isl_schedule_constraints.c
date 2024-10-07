@@ -229,6 +229,16 @@ isl_schedule_constraints_set_anti_proximity(
                                       anti_proximity);
 }
 
+/* Replace the live_range_span constraints of "sc" by "live_range_span".
+ */
+__isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_live_range_span(
+    __isl_take isl_schedule_constraints *sc,
+    __isl_take isl_union_map *live_range_span) {
+  return isl_schedule_constraints_set(sc, isl_edge_live_range_span,
+                                      live_range_span);
+}
+
 /* Replace the proximity constraints of "sc" by "proximity".
  */
 __isl_give isl_schedule_constraints *isl_schedule_constraints_set_proximity(
@@ -478,6 +488,7 @@ enum isl_sc_key {
   isl_sc_key_conditional_validity = isl_edge_conditional_validity,
   isl_sc_key_proximity = isl_edge_proximity,
   isl_sc_key_anti_proximity = isl_edge_anti_proximity,
+  isl_sc_key_live_range_span = isl_edge_live_range_span,
   isl_sc_key_domain,
   isl_sc_key_context,
   isl_sc_key_end
@@ -493,6 +504,7 @@ static char *key_str[] = {
     [isl_sc_key_conditional_validity] = "conditional_validity",
     [isl_sc_key_proximity] = "proximity",
     [isl_sc_key_anti_proximity] = "anti_proximity",
+    [isl_sc_key_live_range_span] = "live_range_span",
     [isl_sc_key_domain] = "domain",
     [isl_sc_key_context] = "context",
 };
@@ -556,6 +568,7 @@ __isl_give isl_printer *isl_printer_print_schedule_constraints(
 	p = print_constraint(p, sc, isl_edge_validity);
 	p = print_constraint(p, sc, isl_edge_proximity);
         p = print_constraint(p, sc, isl_edge_anti_proximity);
+        p = print_constraint(p, sc, isl_edge_live_range_span);
         p = print_constraint(p, sc, isl_edge_coincidence);
 	p = print_constraint(p, sc, isl_edge_condition);
 	p = print_constraint(p, sc, isl_edge_conditional_validity);
