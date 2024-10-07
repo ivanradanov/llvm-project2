@@ -19,9 +19,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
+
 #include "DependenceInfo.h"
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
 #include "mlir/Conversion/Polymer/Support/ScopStmt.h"
+#include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
+#include "mlir/IR/Builders.h"
 #include "polly/Support/GICHelper.h"
 #include "polly/Support/ISLTools.h"
 #include "llvm/ADT/Sequence.h"
@@ -1440,6 +1443,11 @@ static void eliminate_dead_code(struct ppcg_scop *ps)
 // clang-format on
 // ############### PPCG END ###############
 
+bool gpu_array_can_be_private(ScopArrayInfo &sai) {
+  auto ty = dyn_cast<mlir::MemRefType>(sai.val.getType());
+  return ty && mlir::nvgpu::NVGPUDialect::hasGlobalMemoryAddressSpace(ty);
+}
+
 void collect_order_dependences(Scop &S, ppcg_scop *scop) {
   int i;
   isl_space *space;
@@ -1473,9 +1481,8 @@ void collect_order_dependences(Scop &S, ppcg_scop *scop) {
     LLVM_DEBUG(dbgs() << "dep_order for " << array.name << " ";
                isl_union_map_dump(array.dep_order.get()));
 
-    // TODO
-    // if (gpu_array_can_be_private(array))
-    //   continue;
+    if (gpu_array_can_be_private(array))
+      continue;
 
     array_order = isl_union_map_union(array_order, array.dep_order.copy());
   }
