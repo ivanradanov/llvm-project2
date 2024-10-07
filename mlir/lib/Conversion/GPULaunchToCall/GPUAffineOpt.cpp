@@ -320,6 +320,8 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
   sc = isl_schedule_constraints_set_coincidence(sc, coincidence);
   sc = isl_schedule_constraints_set_proximity(sc, proximity);
   sc = isl_schedule_constraints_set_anti_proximity(sc, anti_proximity);
+  sc = isl_schedule_constraints_set_live_range_span(
+      sc, isl_union_map_copy(scop->atagged_dep_flow));
 
   return sc;
 }
