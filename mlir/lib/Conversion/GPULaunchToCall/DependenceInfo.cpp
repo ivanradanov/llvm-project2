@@ -1502,6 +1502,10 @@ ppcg_scop *computeDeps(Scop &S) {
   collectInfo(S, ps->reads, ps->must_writes, ps->may_writes, ps->must_kills,
               ReductionTagMap, TaggedStmtDomain,
               polymer::Dependences::AL_Statement);
+  // FIXME need to also free these atagged_* relations
+  collectInfo(S, ps->atagged_reads, ps->atagged_must_writes,
+              ps->atagged_may_writes, ps->atagged_must_kills, ReductionTagMap,
+              TaggedStmtDomain, polymer::Dependences::AL_Reference);
   collectInfo(S, ps->tagged_reads, ps->tagged_must_writes,
               ps->tagged_may_writes, ps->tagged_must_kills, ReductionTagMap,
               TaggedStmtDomain, polymer::Dependences::AL_Access);
@@ -1538,14 +1542,18 @@ ppcg_scop *computeDeps(Scop &S) {
   dbgs() << #field << " " << isl_union_map_to_str(ps->field) << '\n'
   POLLY_DEBUG({
     PPCGSCOPDUMP(tagged_reads);
+    PPCGSCOPDUMP(atagged_reads);
     PPCGSCOPDUMP(reads);
     PPCGSCOPDUMP(async_reads);
     PPCGSCOPDUMP(tagged_may_writes);
+    PPCGSCOPDUMP(atagged_may_writes);
     PPCGSCOPDUMP(may_writes);
     PPCGSCOPDUMP(tagged_must_writes);
+    PPCGSCOPDUMP(atagged_must_writes);
     PPCGSCOPDUMP(must_writes);
     PPCGSCOPDUMP(async_must_writes);
     PPCGSCOPDUMP(tagged_must_kills);
+    PPCGSCOPDUMP(atagged_must_kills);
     PPCGSCOPDUMP(must_kills);
     PPCGSCOPDUMP(live_in);
     PPCGSCOPDUMP(live_out);
