@@ -1492,7 +1492,7 @@ void collect_order_dependences(Scop &S, ppcg_scop *scop) {
   scop->array_order = array_order;
 }
 
-ppcg_scop *computeDeps(Scop &S) {
+ppcg_scop *computeDeps(Scop &S, polymer::Dependences::AnalysisLevel level) {
   isl_union_map *ReductionTagMap;
   isl_schedule *Schedule;
   isl_union_set *TaggedStmtDomain;
@@ -1509,13 +1509,9 @@ ppcg_scop *computeDeps(Scop &S) {
   collectInfo(S, ps->reads, ps->must_writes, ps->may_writes, ps->must_kills,
               ReductionTagMap, TaggedStmtDomain,
               polymer::Dependences::AL_Statement);
-  // FIXME need to also free these atagged_* relations
-  collectInfo(S, ps->atagged_reads, ps->atagged_must_writes,
-              ps->atagged_may_writes, ps->atagged_must_kills, ReductionTagMap,
-              TaggedStmtDomain, polymer::Dependences::AL_Reference);
   collectInfo(S, ps->tagged_reads, ps->tagged_must_writes,
               ps->tagged_may_writes, ps->tagged_must_kills, ReductionTagMap,
-              TaggedStmtDomain, polymer::Dependences::AL_Access);
+              TaggedStmtDomain, level);
 
   // In ppcg, the must writes are a subset of the may writes
   ps->may_writes =
@@ -1545,6 +1541,20 @@ ppcg_scop *computeDeps(Scop &S) {
 
   collect_order_dependences(S, ps);
 
+  return ps;
+}
+
+ppcg_scop *computeDeps(Scop &S) {
+  ppcg_scop *ps = computeDeps(S, polymer::Dependences::AL_Access);
+  ppcg_scop *array_ps = computeDeps(S, polymer::Dependences::AL_Reference);
+
+  ps->atagged_reads = isl_union_map_copy(array_ps->tagged_reads);
+  ps->atagged_may_writes = isl_union_map_copy(array_ps->tagged_may_writes);
+  ps->atagged_must_writes = isl_union_map_copy(array_ps->tagged_must_writes);
+  ps->atagged_must_kills = isl_union_map_copy(array_ps->tagged_must_kills);
+  ps->atagger = isl_union_pw_multi_aff_copy(array_ps->tagger);
+  ps->atagged_dep_flow = isl_union_map_copy(array_ps->tagged_dep_flow);
+
 #define PPCGSCOPDUMP(field)                                                    \
   dbgs() << #field << " " << isl_union_map_to_str(ps->field) << '\n'
   POLLY_DEBUG({
@@ -1567,6 +1577,7 @@ ppcg_scop *computeDeps(Scop &S) {
     PPCGSCOPDUMP(independence);
     PPCGSCOPDUMP(dep_flow);
     PPCGSCOPDUMP(tagged_dep_flow);
+    PPCGSCOPDUMP(atagged_dep_flow);
     PPCGSCOPDUMP(dep_false);
     PPCGSCOPDUMP(dep_forced);
     PPCGSCOPDUMP(dep_order);
@@ -1574,6 +1585,8 @@ ppcg_scop *computeDeps(Scop &S) {
     PPCGSCOPDUMP(dep_async);
     PPCGSCOPDUMP(array_order);
     dbgs() << "tagger" << " " << isl_union_pw_multi_aff_to_str(ps->tagger)
+           << '\n';
+    dbgs() << "atagger" << " " << isl_union_pw_multi_aff_to_str(ps->atagger)
            << '\n';
     dbgs() << "schedule" << '\n';
     isl_schedule_dump(ps->schedule);

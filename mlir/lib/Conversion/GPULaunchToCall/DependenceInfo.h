@@ -245,11 +245,13 @@ struct ppcg_scop {
 	isl_union_map *async_must_writes;
 
 	isl_union_pw_multi_aff *tagger;
+	isl_union_pw_multi_aff *atagger;
 
 	isl_union_map *independence;
 
 	isl_union_map *dep_flow;
 	isl_union_map *tagged_dep_flow;
+	isl_union_map *atagged_dep_flow;
 	isl_union_map *dep_false;
 	isl_union_map *dep_forced;
 	isl_union_map *dep_order;
