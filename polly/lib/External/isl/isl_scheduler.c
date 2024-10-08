@@ -119,6 +119,14 @@ int isl_sched_edge_is_proximity(struct isl_sched_edge *edge)
 	return isl_sched_edge_has_type(edge, isl_edge_proximity);
 }
 
+/* Is "edge" marked as a live range span edge?
+ */
+int isl_sched_edge_is_live_range_span(struct isl_sched_edge *edge)
+{
+	return isl_sched_edge_has_type(edge, isl_edge_live_range_span);
+}
+
+
 /* Is "edge" marked as a local edge?
  */
 static int is_local(struct isl_sched_edge *edge)
@@ -2046,6 +2054,61 @@ static isl_stat add_intra_proximity_constraints(struct isl_sched_graph *graph,
 	return isl_stat_ok;
 }
 
+static isl_stat add_intra_live_range_span_constraints(struct isl_sched_graph *graph,
+	struct isl_sched_edge *edge, int s)
+{
+	isl_size offset;
+	isl_size nparam;
+	isl_map *map = isl_map_copy(edge->map);
+	isl_ctx *ctx = isl_map_get_ctx(map);
+	isl_dim_map *dim_map;
+	isl_basic_set *coef;
+	struct isl_sched_node *node = edge->src;
+
+	coef = intra_coefficients(graph, node, map, 0);
+	nparam = isl_space_dim(node->space, isl_dim_param);
+
+	offset = coef_var_offset(coef);
+	if (nparam < 0 || offset < 0)
+		coef = isl_basic_set_free(coef);
+	if (!coef)
+		return isl_stat_error;
+
+	dim_map = intra_dim_map(ctx, graph, node, offset, -s);
+
+	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
+
+	return isl_stat_ok;
+}
+
+static isl_stat add_inter_live_range_span_constraints(struct isl_sched_graph *graph,
+	struct isl_sched_edge *edge, int s)
+{
+	isl_size offset;
+	isl_size nparam;
+	isl_map *map = isl_map_copy(edge->map);
+	isl_ctx *ctx = isl_map_get_ctx(map);
+	isl_dim_map *dim_map;
+	isl_basic_set *coef;
+	struct isl_sched_node *src = edge->src;
+	struct isl_sched_node *dst = edge->dst;
+
+	coef = inter_coefficients(graph, edge, map);
+	nparam = isl_space_dim(src->space, isl_dim_param);
+
+	offset = coef_var_offset(coef);
+	if (nparam < 0 || offset < 0)
+		coef = isl_basic_set_free(coef);
+	if (!coef)
+		return isl_stat_error;
+
+	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -s);
+
+	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
+
+	return isl_stat_ok;
+}
+
 /* Add constraints to graph->lp that bound the dependence distance for the given
  * dependence from node i to node j.
  * If s = 1, we add the constraint
@@ -2218,6 +2281,26 @@ static int add_all_proximity_constraints(struct isl_sched_graph *graph,
 			return -1;
 		if (edge->src != edge->dst &&
 		    add_inter_proximity_constraints(graph, edge, -1, 0) < 0)
+			return -1;
+	}
+
+	return 0;
+}
+
+static int add_all_live_range_span_constraints(struct isl_sched_graph *graph)
+
+{
+	int i;
+
+	for (i = 0; i < graph->n_edge; ++i) {
+		struct isl_sched_edge *edge = &graph->edge[i];
+		if (!isl_sched_edge_is_live_range_span(edge))
+			continue;
+		if (edge->src == edge->dst &&
+		    add_intra_live_range_span_constraints(graph, edge, 1) < 0)
+			return -1;
+		if (edge->src != edge->dst &&
+		    add_inter_live_range_span_constraints(graph, edge, 1) < 0)
 			return -1;
 	}
 
@@ -2766,6 +2849,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int parametric;
 	int param_pos;
 	int n_eq, n_ineq;
+    bool use_async = false;
 
 	parametric = ctx->opt->schedule_parametric;
 	nparam = isl_space_dim(graph->node[0].space, isl_dim_param);
@@ -2807,6 +2891,8 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (add_all_validity_constraints(graph, use_coincidence) < 0)
 		return isl_stat_error;
 	if (add_all_proximity_constraints(graph, use_coincidence) < 0)
+		return isl_stat_error;
+	if (use_async && add_all_live_range_span_constraints(graph) < 0)
 		return isl_stat_error;
 
 	return isl_stat_ok;
