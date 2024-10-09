@@ -1097,6 +1097,14 @@ static int merge_edge(struct isl_sched_edge *edge1,
 	edge1->types |= edge2->types;
 	isl_map_free(edge2->map);
 
+	if (isl_sched_edge_is_live_range_span(edge2)) {
+		if (!edge1->live_range_arrays)
+			edge1->live_range_arrays = edge2->live_range_arrays;
+		else
+			edge1->live_range_arrays = isl_union_map_union(
+				edge1->live_range_arrays, edge2->live_range_arrays);
+	}
+
 	if (isl_sched_edge_is_condition(edge2)) {
 		if (!edge1->tagged_condition)
 			edge1->tagged_condition = edge2->tagged_condition;
@@ -1284,6 +1292,15 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 		}
 	}
 
+	if (data->type == isl_edge_live_range_span) {
+		if (isl_map_can_zip(map)) {
+			tagged = isl_map_copy(map);
+			map = isl_set_unwrap(isl_map_domain(isl_map_zip(map)));
+		} else {
+			tagged = insert_dummy_tags(isl_map_copy(map));
+		}
+	}
+
 	src = find_domain_node(ctx, graph, map);
 	dst = find_range_node(ctx, graph, map);
 
@@ -1313,7 +1330,12 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 	graph->edge[graph->n_edge].types = 0;
 	graph->edge[graph->n_edge].tagged_condition = NULL;
 	graph->edge[graph->n_edge].tagged_validity = NULL;
+	graph->edge[graph->n_edge].live_range_arrays = NULL;
 	set_type(&graph->edge[graph->n_edge], data->type);
+	if (data->type == isl_edge_live_range_span)
+		graph->edge[graph->n_edge].live_range_arrays =
+			isl_union_set_from_set(isl_map_range(
+				isl_set_unwrap(isl_map_domain(isl_map_copy(tagged)))));
 	if (data->type == isl_edge_condition)
 		graph->edge[graph->n_edge].tagged_condition =
 					isl_union_map_from_map(tagged);
@@ -2859,7 +2881,8 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int parametric;
 	int param_pos;
 	int n_eq, n_ineq;
-	bool use_async = true;
+
+	bool use_async = graph->n_row == graph->max_row - 1;
 
 	parametric = ctx->opt->schedule_parametric;
 	nparam = isl_space_dim(graph->node[0].space, isl_dim_param);
@@ -2867,8 +2890,10 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		return isl_stat_error;
 	param_pos = 4;
 	total = param_pos + 2 * nparam;
-	graph->span_pos = total;
-	total++;
+	if (use_async) {
+		graph->span_pos = total;
+		total++;
+	}
 	for (i = 0; i < graph->n; ++i) {
 		struct isl_sched_node *node = &graph->node[graph->sorted[i]];
 		if (isl_sched_node_update_vmap(node) < 0)
@@ -2893,7 +2918,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (add_sum_constraint(graph, 0, param_pos, 2 * nparam) < 0)
 		return isl_stat_error;
 	// TODO need to decide the position for this
-	if (add_span_constraint(graph, graph->span_pos) < 0)
+	if (use_async && add_span_constraint(graph, graph->span_pos) < 0)
 		return isl_stat_error;
 	if (parametric && add_param_sum_constraint(graph, 2) < 0)
 		return isl_stat_error;
