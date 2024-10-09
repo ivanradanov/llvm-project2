@@ -253,6 +253,8 @@ struct isl_sched_graph {
 	int weak;
 
 	int max_weight;
+
+	int span_pos;
 };
 
 isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
