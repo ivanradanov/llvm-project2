@@ -2064,6 +2064,7 @@ static isl_stat add_intra_live_range_span_constraints(struct isl_sched_graph *gr
 		return isl_stat_error;
 
 	dim_map = intra_dim_map(ctx, graph, node, offset, -s);
+	isl_dim_map_range(dim_map, graph->span_pos, 0, 0, 0, 1, 1);
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
 
@@ -2092,6 +2093,7 @@ static isl_stat add_inter_live_range_span_constraints(struct isl_sched_graph *gr
 		return isl_stat_error;
 
 	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -s);
+	isl_dim_map_range(dim_map, graph->span_pos, 0, 0, 0, 1, 1);
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
 
@@ -2741,6 +2743,25 @@ static isl_stat add_sum_constraint(struct isl_sched_graph *graph,
 	return isl_stat_ok;
 }
 
+static isl_stat add_span_constraint(struct isl_sched_graph *graph,
+									int span_pos) {
+	int i, k;
+	isl_size total;
+
+	total = isl_basic_set_dim(graph->lp, isl_dim_set);
+	if (total < 0)
+		return isl_stat_error;
+
+	k = isl_basic_set_alloc_equality(graph->lp);
+	if (k < 0)
+		return isl_stat_error;
+	isl_seq_clr(graph->lp->eq[k], 2);
+	isl_int_set_si(graph->lp->eq[k][0], 43);
+	isl_int_set_si(graph->lp->eq[k][1 + span_pos], -1);
+
+	return isl_stat_ok;
+}
+
 /* Add a constraint to graph->lp that equates the value at position
  * "sum_pos" to the sum of the parameter coefficients of all nodes.
  */
@@ -2838,7 +2859,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int parametric;
 	int param_pos;
 	int n_eq, n_ineq;
-    bool use_async = false;
+	bool use_async = true;
 
 	parametric = ctx->opt->schedule_parametric;
 	nparam = isl_space_dim(graph->node[0].space, isl_dim_param);
@@ -2846,6 +2867,8 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		return isl_stat_error;
 	param_pos = 4;
 	total = param_pos + 2 * nparam;
+	graph->span_pos = total;
+	total++;
 	for (i = 0; i < graph->n; ++i) {
 		struct isl_sched_node *node = &graph->node[graph->sorted[i]];
 		if (isl_sched_node_update_vmap(node) < 0)
@@ -2868,6 +2891,9 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	graph->lp = isl_basic_set_alloc_space(space, 0, n_eq, n_ineq);
 
 	if (add_sum_constraint(graph, 0, param_pos, 2 * nparam) < 0)
+		return isl_stat_error;
+	// TODO need to decide the position for this
+	if (add_span_constraint(graph, graph->span_pos) < 0)
 		return isl_stat_error;
 	if (parametric && add_param_sum_constraint(graph, 2) < 0)
 		return isl_stat_error;
