@@ -257,7 +257,11 @@ struct isl_sched_graph {
 
 	int max_weight;
 
-	int span_pos;
+	int array_lrs_start_pos;
+	int n_array;
+	isl_union_set *live_range_arrays;
+
+	struct isl_hash_table *array_table;
 };
 
 isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
