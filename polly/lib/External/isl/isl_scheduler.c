@@ -52,6 +52,7 @@
  * see Verdoolaege and Janssens, "Scheduling for PPCG" (2017).
  */
 
+static isl_bool always(const void *entry, const void *val) { return 1; }
 
 static isl_bool node_has_tuples(const void *entry, const void *val)
 {
@@ -1332,10 +1333,19 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 	graph->edge[graph->n_edge].tagged_validity = NULL;
 	graph->edge[graph->n_edge].live_range_arrays = NULL;
 	set_type(&graph->edge[graph->n_edge], data->type);
-	if (data->type == isl_edge_live_range_span)
+	if (data->type == isl_edge_live_range_span) {
 		graph->edge[graph->n_edge].live_range_arrays =
 			isl_union_set_from_set(isl_map_range(
 				isl_set_unwrap(isl_map_domain(isl_map_copy(tagged)))));
+		if (!graph->live_range_arrays)
+			graph->live_range_arrays = isl_union_set_copy(
+				graph->edge[graph->n_edge].live_range_arrays);
+		else
+			graph->live_range_arrays = isl_union_set_union(
+				graph->live_range_arrays,
+				isl_union_set_copy(
+					graph->edge[graph->n_edge].live_range_arrays));
+	}
 	if (data->type == isl_edge_condition)
 		graph->edge[graph->n_edge].tagged_condition =
 					isl_union_map_from_map(tagged);
@@ -1421,6 +1431,7 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 	}
 	if (graph_init_edge_tables(ctx, graph) < 0)
 		return isl_stat_error;
+	graph->live_range_arrays = NULL;
 	graph->n_edge = 0;
 	data.graph = graph;
 	for (i = isl_edge_first; i <= isl_edge_last; ++i) {
@@ -1433,6 +1444,28 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 		if (r < 0)
 			return isl_stat_error;
 	}
+
+	graph->array_table = isl_hash_table_alloc(ctx, graph->n_array);
+	if (!graph->array_table)
+		return isl_stat_error;
+	isl_size n_array = isl_union_set_n_set(graph->live_range_arrays);
+	if (n_array == isl_size_error)
+		return isl_stat_error;
+	graph->n_array = n_array;
+	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+	for (i = 0; i < graph->n_array; ++i) {
+		isl_set *set = isl_set_list_get_set(sl, i);
+		isl_id *id = isl_set_get_tuple_id(set);
+		uint32_t hash = isl_id_get_hash(id);
+		struct isl_hash_table_entry *entry = isl_hash_table_find(
+			isl_id_get_ctx(id), graph->array_table, hash, always, (void *)i, 1);
+		if (entry == isl_hash_table_entry_none || !entry)
+			return isl_stat_error;
+		entry->data = (void *)i;
+		isl_id_free(id);
+		isl_set_free(set);
+	}
+	isl_set_list_free(sl);
 
 	return isl_stat_ok;
 }
@@ -2065,37 +2098,25 @@ static isl_stat add_intra_proximity_constraints(struct isl_sched_graph *graph,
 	return isl_stat_ok;
 }
 
-static isl_stat add_intra_live_range_span_constraints(struct isl_sched_graph *graph,
-	struct isl_sched_edge *edge, int s)
-{
-	isl_size offset;
-	isl_size nparam;
-	isl_map *map = isl_map_copy(edge->map);
-	isl_ctx *ctx = isl_map_get_ctx(map);
-	isl_dim_map *dim_map;
-	isl_basic_set *coef;
-	struct isl_sched_node *node = edge->src;
+struct lrs_data {
+	struct isl_sched_graph *graph;
+	struct isl_sched_edge *edge;
+};
 
-	coef = intra_coefficients(graph, node, map, 0);
-	nparam = isl_space_dim(node->space, isl_dim_param);
+static isl_stat add_inter_lrs_cst(__isl_take isl_set *set, void *user) {
+	struct lrs_data *data = user;
+	struct isl_sched_graph *graph = data->graph;
+	struct isl_sched_edge *edge = data->edge;
 
-	offset = coef_var_offset(coef);
-	if (nparam < 0 || offset < 0)
-		coef = isl_basic_set_free(coef);
-	if (!coef)
+	isl_id *id = isl_set_get_tuple_id(set);
+	uint32_t hash = isl_id_get_hash(id);
+
+	struct isl_hash_table_entry *entry = isl_hash_table_find(
+		isl_id_get_ctx(id), graph->array_table, hash, always, NULL, 0);
+	if (entry == isl_hash_table_entry_none || !entry)
 		return isl_stat_error;
+	int array_id = (int)entry->data;
 
-	dim_map = intra_dim_map(ctx, graph, node, offset, -s);
-	isl_dim_map_range(dim_map, graph->span_pos, 0, 0, 0, 1, 1);
-
-	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
-
-	return isl_stat_ok;
-}
-
-static isl_stat add_inter_live_range_span_constraints(struct isl_sched_graph *graph,
-	struct isl_sched_edge *edge, int s)
-{
 	isl_size offset;
 	isl_size nparam;
 	isl_map *map = isl_map_copy(edge->map);
@@ -2114,12 +2135,75 @@ static isl_stat add_inter_live_range_span_constraints(struct isl_sched_graph *gr
 	if (!coef)
 		return isl_stat_error;
 
-	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -s);
-	isl_dim_map_range(dim_map, graph->span_pos, 0, 0, 0, 1, 1);
+	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -1);
+	isl_dim_map_range(dim_map, graph->array_lrs_start_pos + array_id, 0, 0, 0,
+					  1, 1);
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
 
 	return isl_stat_ok;
+}
+
+static isl_stat add_intra_lrs_cst(__isl_take isl_set *set, void *user) {
+	struct lrs_data *data = user;
+	struct isl_sched_graph *graph = data->graph;
+	struct isl_sched_edge *edge = data->edge;
+
+	isl_id *id = isl_set_get_tuple_id(set);
+	uint32_t hash = isl_id_get_hash(id);
+
+	struct isl_hash_table_entry *entry = isl_hash_table_find(
+		isl_id_get_ctx(id), graph->array_table, hash, always, NULL, 0);
+	if (entry == isl_hash_table_entry_none || !entry)
+		return isl_stat_error;
+	int array_id = (int)entry->data;
+
+	isl_size offset;
+	isl_size nparam;
+	isl_map *map = isl_map_copy(edge->map);
+	isl_ctx *ctx = isl_map_get_ctx(map);
+	isl_dim_map *dim_map;
+	isl_basic_set *coef;
+	struct isl_sched_node *node = edge->src;
+
+	coef = intra_coefficients(graph, node, map, 0);
+	nparam = isl_space_dim(node->space, isl_dim_param);
+
+	offset = coef_var_offset(coef);
+	if (nparam < 0 || offset < 0)
+		coef = isl_basic_set_free(coef);
+	if (!coef)
+		return isl_stat_error;
+
+	dim_map = intra_dim_map(ctx, graph, node, offset, -1);
+	isl_dim_map_range(dim_map, graph->array_lrs_start_pos + array_id, 0, 0, 0,
+					  1, 1);
+
+	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
+
+	return isl_stat_ok;
+}
+
+static isl_stat
+add_intra_live_range_span_constraints(struct isl_sched_graph *graph,
+									  struct isl_sched_edge *edge) {
+	struct lrs_data data;
+	data.graph = graph;
+	data.edge = edge;
+	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_intra_lrs_cst,
+								  &data) < 0)
+		return isl_stat_ok;
+}
+
+static isl_stat
+add_inter_live_range_span_constraints(struct isl_sched_graph *graph,
+									  struct isl_sched_edge *edge) {
+	struct lrs_data data;
+	data.graph = graph;
+	data.edge = edge;
+	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_inter_lrs_cst,
+								  &data) < 0)
+		return isl_stat_ok;
 }
 
 /* Add constraints to graph->lp that bound the dependence distance for the given
@@ -2310,10 +2394,10 @@ static int add_all_live_range_span_constraints(struct isl_sched_graph *graph)
 		if (!isl_sched_edge_is_live_range_span(edge))
 			continue;
 		if (edge->src == edge->dst &&
-		    add_intra_live_range_span_constraints(graph, edge, 1) < 0)
+			add_intra_live_range_span_constraints(graph, edge) < 0)
 			return -1;
 		if (edge->src != edge->dst &&
-		    add_inter_live_range_span_constraints(graph, edge, 1) < 0)
+			add_inter_live_range_span_constraints(graph, edge) < 0)
 			return -1;
 	}
 
@@ -2765,8 +2849,7 @@ static isl_stat add_sum_constraint(struct isl_sched_graph *graph,
 	return isl_stat_ok;
 }
 
-static isl_stat add_span_constraint(struct isl_sched_graph *graph,
-									int span_pos) {
+static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	int i, k;
 	isl_size total;
 
@@ -2774,12 +2857,16 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph,
 	if (total < 0)
 		return isl_stat_error;
 
-	k = isl_basic_set_alloc_equality(graph->lp);
+	k = isl_basic_set_alloc_inequality(graph->lp);
 	if (k < 0)
 		return isl_stat_error;
-	isl_seq_clr(graph->lp->eq[k], 2);
-	isl_int_set_si(graph->lp->eq[k][0], 43);
-	isl_int_set_si(graph->lp->eq[k][1 + span_pos], -1);
+	isl_seq_clr(graph->lp->ineq[k], total + 1);
+	// TODO plug in the available memory amount here
+	isl_int_set_si(graph->lp->ineq[k][0], 43);
+	for (i = 0; i < graph->n_array; i++)
+		// TODO plug in the per-array multiplier (i.e. the array size) here
+		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos + i],
+					   -1);
 
 	return isl_stat_ok;
 }
@@ -2882,7 +2969,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int param_pos;
 	int n_eq, n_ineq;
 
-	bool use_async = graph->n_row == graph->max_row - 1;
+	bool use_async = graph->live_range_arrays;
 
 	parametric = ctx->opt->schedule_parametric;
 	nparam = isl_space_dim(graph->node[0].space, isl_dim_param);
@@ -2891,8 +2978,8 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	param_pos = 4;
 	total = param_pos + 2 * nparam;
 	if (use_async) {
-		graph->span_pos = total;
-		total++;
+		graph->array_lrs_start_pos = total;
+		total += graph->n_array;
 	}
 	for (i = 0; i < graph->n; ++i) {
 		struct isl_sched_node *node = &graph->node[graph->sorted[i]];
@@ -2908,6 +2995,10 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		return isl_stat_error;
 	if (count_bound_coefficient_constraints(ctx, graph, &n_eq, &n_ineq) < 0)
 		return isl_stat_error;
+	// The weighed sum of the live range arrays bound by the max memory
+	// available
+	if (use_async)
+		n_ineq += 1;
 
 	space = isl_space_set_alloc(ctx, 0, total);
 	isl_basic_set_free(graph->lp);
@@ -2918,7 +3009,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (add_sum_constraint(graph, 0, param_pos, 2 * nparam) < 0)
 		return isl_stat_error;
 	// TODO need to decide the position for this
-	if (use_async && add_span_constraint(graph, graph->span_pos) < 0)
+	if (use_async && add_span_constraint(graph) < 0)
 		return isl_stat_error;
 	if (parametric && add_param_sum_constraint(graph, 2) < 0)
 		return isl_stat_error;
