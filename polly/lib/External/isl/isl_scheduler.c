@@ -2415,6 +2415,86 @@ static int add_all_live_range_span_constraints(struct isl_sched_graph *graph)
 	return 0;
 }
 
+static isl_stat
+add_inter_anti_proximity_constraints(struct isl_sched_graph *graph,
+									 struct isl_sched_edge *edge) {
+	isl_size offset;
+	isl_size nparam;
+	isl_map *map = isl_map_copy(edge->map);
+	isl_ctx *ctx = isl_map_get_ctx(map);
+	isl_dim_map *dim_map;
+	isl_basic_set *coef;
+	struct isl_sched_node *src = edge->src;
+	struct isl_sched_node *dst = edge->dst;
+
+	coef = inter_coefficients(graph, edge, map);
+	nparam = isl_space_dim(src->space, isl_dim_param);
+
+	offset = coef_var_offset(coef);
+	if (nparam < 0 || offset < 0)
+		coef = isl_basic_set_free(coef);
+	if (!coef)
+		return isl_stat_error;
+
+	dim_map = inter_dim_map(ctx, graph, src, dst, offset, 1);
+
+	isl_dim_map_range(dim_map, graph->array_anti_proximity_max_var_pos, 0, 0, 0,
+					  1, 1);
+
+	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
+
+	return isl_stat_ok;
+}
+
+static isl_stat
+add_intra_anti_proximity_constraints(struct isl_sched_graph *graph,
+									 struct isl_sched_edge *edge) {
+	isl_size offset;
+	isl_size nparam;
+	isl_map *map = isl_map_copy(edge->map);
+	isl_ctx *ctx = isl_map_get_ctx(map);
+	isl_dim_map *dim_map;
+	isl_basic_set *coef;
+	struct isl_sched_node *node = edge->src;
+
+	// TODO investigate the need param thing
+	coef = intra_coefficients(graph, node, map, 1);
+	nparam = isl_space_dim(node->space, isl_dim_param);
+
+	offset = coef_var_offset(coef);
+	if (nparam < 0 || offset < 0)
+		coef = isl_basic_set_free(coef);
+	if (!coef)
+		return isl_stat_error;
+
+	dim_map = intra_dim_map(ctx, graph, node, offset, 1);
+
+	isl_dim_map_range(dim_map, graph->array_anti_proximity_max_var_pos, 0, 0, 0,
+					  1, 1);
+	// TODO do we need the pos 4, 5
+
+	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
+
+	return isl_stat_ok;
+}
+
+static int add_all_anti_proximity_constraints(struct isl_sched_graph *graph) {
+	int i;
+
+	for (i = 0; i < graph->n_edge; ++i) {
+		struct isl_sched_edge *edge = &graph->edge[i];
+		int zero;
+		if (edge->src == edge->dst &&
+			add_intra_anti_proximity_constraints(graph, edge) < 0)
+			return -1;
+		if (edge->src != edge->dst &&
+			add_inter_anti_proximity_constraints(graph, edge) < 0)
+			return -1;
+	}
+
+	return 0;
+}
+
 /* Normalize the rows of "indep" such that all rows are lexicographically
  * positive and such that each row contains as many final zeros as possible,
  * given the choice for the previous rows.
@@ -2882,6 +2962,29 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	return isl_stat_ok;
 }
 
+static const int VERY_BIG_NUMBER = (1 << 28);
+
+static isl_stat add_anti_proximity_constraint(struct isl_sched_graph *graph) {
+	int i, k;
+	isl_size total;
+
+	total = isl_basic_set_dim(graph->lp, isl_dim_set);
+	if (total < 0)
+		return isl_stat_error;
+
+	k = isl_basic_set_alloc_equality(graph->lp);
+	if (k < 0)
+		return isl_stat_error;
+	isl_seq_clr(graph->lp->eq[k], total + 1);
+	isl_int_set_si(graph->lp->eq[k][0], VERY_BIG_NUMBER);
+	isl_int_set_si(
+		graph->lp->eq[k][1 + graph->array_anti_proximity_min_var_pos], -1);
+	isl_int_set_si(
+		graph->lp->eq[k][1 + graph->array_anti_proximity_max_var_pos], -1);
+
+	return isl_stat_ok;
+}
+
 /* Add a constraint to graph->lp that equates the value at position
  * "sum_pos" to the sum of the parameter coefficients of all nodes.
  */
@@ -2988,7 +3091,14 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		return isl_stat_error;
 	param_pos = 4;
 	total = param_pos + 2 * nparam;
+	// TODO position
 	if (use_async) {
+		graph->array_anti_proximity_min_var_pos = total++;
+		graph->array_anti_proximity_max_var_pos = total++;
+	}
+	if (use_async) {
+		// These are fine in this position because we do not try to minimize
+		// them or anything
 		graph->array_lrs_start_pos = total;
 		total += graph->n_array;
 	}
@@ -3019,8 +3129,9 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 
 	if (add_sum_constraint(graph, 0, param_pos, 2 * nparam) < 0)
 		return isl_stat_error;
-	// TODO need to decide the position for this
 	if (use_async && add_span_constraint(graph) < 0)
+		return isl_stat_error;
+	if (use_async && add_anti_proximity_constraint(graph) < 0)
 		return isl_stat_error;
 	if (parametric && add_param_sum_constraint(graph, 2) < 0)
 		return isl_stat_error;
@@ -3035,6 +3146,8 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (add_all_proximity_constraints(graph, use_coincidence) < 0)
 		return isl_stat_error;
 	if (use_async && add_all_live_range_span_constraints(graph) < 0)
+		return isl_stat_error;
+	if (use_async && add_all_anti_proximity_constraints(graph) < 0)
 		return isl_stat_error;
 
 	return isl_stat_ok;
