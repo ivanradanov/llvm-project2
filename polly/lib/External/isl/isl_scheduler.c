@@ -2089,9 +2089,9 @@ static isl_stat add_intra_proximity_constraints(struct isl_sched_graph *graph,
 	dim_map = intra_dim_map(ctx, graph, node, offset, -s);
 
 	if (!local) {
-		isl_dim_map_range(dim_map, 1, 0, 0, 0, 1, 1);
-		isl_dim_map_range(dim_map, 4, 2, 1, 1, nparam, -1);
-		isl_dim_map_range(dim_map, 5, 2, 1, 1, nparam, 1);
+		isl_dim_map_range(dim_map, graph->pos_remap[1], 0, 0, 0, 1, 1);
+		isl_dim_map_range(dim_map, graph->pos_remap[4], 2, 1, 1, nparam, -1);
+		isl_dim_map_range(dim_map, graph->pos_remap[5], 2, 1, 1, nparam, 1);
 	}
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
 
@@ -2277,9 +2277,9 @@ static isl_stat add_inter_proximity_constraints(struct isl_sched_graph *graph,
 	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -s);
 
 	if (!local) {
-		isl_dim_map_range(dim_map, 1, 0, 0, 0, 1, 1);
-		isl_dim_map_range(dim_map, 4, 2, 1, 1, nparam, -1);
-		isl_dim_map_range(dim_map, 5, 2, 1, 1, nparam, 1);
+		isl_dim_map_range(dim_map, graph->pos_remap[1], 0, 0, 0, 1, 1);
+		isl_dim_map_range(dim_map, graph->pos_remap[4], 2, 1, 1, nparam, -1);
+		isl_dim_map_range(dim_map, graph->pos_remap[5], 2, 1, 1, nparam, 1);
 	}
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
@@ -3073,12 +3073,16 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int n_eq, n_ineq;
 
 	bool use_async = graph->live_range_arrays;
+	int original_magic_const_vars = 6;
+
+	for (int i = 0; i < original_magic_const_vars; i++)
+		graph->pos_remap[i] = i;
 
 	parametric = ctx->opt->schedule_parametric;
 	nparam = isl_space_dim(graph->node[0].space, isl_dim_param);
 	if (nparam < 0)
 		return isl_stat_error;
-	param_pos = 4;
+	param_pos = graph->pos_remap[4];
 	total = param_pos + 2 * nparam;
 	// TODO position
 	if (use_async) {
@@ -3116,15 +3120,16 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 
 	graph->lp = isl_basic_set_alloc_space(space, 0, n_eq, n_ineq);
 
-	if (add_sum_constraint(graph, 0, param_pos, 2 * nparam) < 0)
+	if (add_sum_constraint(graph, graph->pos_remap[0], param_pos, 2 * nparam) <
+		0)
 		return isl_stat_error;
 	if (use_async && add_span_constraint(graph) < 0)
 		return isl_stat_error;
 	if (use_async && add_anti_proximity_constraint(graph) < 0)
 		return isl_stat_error;
-	if (parametric && add_param_sum_constraint(graph, 2) < 0)
+	if (parametric && add_param_sum_constraint(graph, graph->pos_remap[2]) < 0)
 		return isl_stat_error;
-	if (add_var_sum_constraint(graph, 3) < 0)
+	if (add_var_sum_constraint(graph, graph->pos_remap[3]) < 0)
 		return isl_stat_error;
 	if (add_bound_constant_constraints(ctx, graph) < 0)
 		return isl_stat_error;
