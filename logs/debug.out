@@ -674,23 +674,26 @@ conditional_validity: "[P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, 0] -> 
 New Schedule:
 domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }"
 child:
-  schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+  schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
   permutable: 1
   child:
-    sequence:
-    - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
-      child:
-        schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
-        permutable: 1
+    schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }]"
+    permutable: 1
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
         child:
-          sequence:
-          - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3]; RS0_affine_parallel[i0, i1, i2] }"
-            child:
-              set:
-              - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
-              - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
-          - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
-    - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+          schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+          permutable: 1
+          child:
+            sequence:
+            - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3]; RS0_affine_parallel[i0, i1, i2] }"
+              child:
+                set:
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
 New AST:
 iterator:
   id: c0
@@ -700,7 +703,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P0@0x42111160
+  - id: P1@0x1e600430
 inc:
   val: 1
 body:
@@ -712,7 +715,7 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P1@0x42111250
+    - id: P0@0x1e600340
   inc:
     val: 1
   body:
@@ -720,9 +723,9 @@ body:
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x42149ac0
-        - id: c1
+        - id: RS0_affine_parallel@0x1e632380
         - id: c0
+        - id: c1
         - val: 0
     - iterator:
         id: c2
@@ -736,7 +739,7 @@ body:
           args:
           - op: sub
             args:
-            - id: P2@0x42150140
+            - id: P2@0x1e63e730
             - val: 1
           - val: 16
       inc:
@@ -745,25 +748,25 @@ body:
       - user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x4210dd00
-          - id: c1
+          - id: RS1_affine_parallel@0x1e5fbce0
           - id: c0
+          - id: c1
           - val: 0
           - id: c2
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x4211dbe0
-          - id: c1
+          - id: RS2_affine_parallel@0x1e6131e0
           - id: c0
+          - id: c1
           - val: 0
           - id: c2
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x421248f0
-      - id: c1
+      - id: RS3_affine_parallel@0x1e636200
       - id: c0
+      - id: c1
       - val: 0
 /scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_ctx.c:295: isl_ctx not freed as some objects still reference it
 gpu-affine-opt: After opt:
