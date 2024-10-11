@@ -164,6 +164,8 @@ int isl_sched_edge_is_conditional_validity(struct isl_sched_edge *edge);
 int isl_sched_edge_scc_exactly(struct isl_sched_edge *edge, int scc);
 int isl_sched_edge_is_proximity(struct isl_sched_edge *edge);
 
+static const int original_magic_const_vars = 5;
+
 /* Internal information about the dependence graph used during
  * the construction of the schedule.
  *
@@ -260,7 +262,7 @@ struct isl_sched_graph {
 	// Originally the first 6 (0 to 5) variables were referred by magic
 	// constants. we remap them using this array so that we can move them around
 	// more easily.
-	int pos_remap[6];
+	int pos_remap[original_magic_const_vars];
 
 	int array_lrs_start_pos;
 	int n_array;
