@@ -261,6 +261,9 @@ struct isl_sched_graph {
 	int n_array;
 	isl_union_set *live_range_arrays;
 
+	int array_anti_proximity_min_var_pos;
+	int array_anti_proximity_max_var_pos;
+
 	struct isl_hash_table *array_table;
 };
 
