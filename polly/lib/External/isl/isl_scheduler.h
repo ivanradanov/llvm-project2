@@ -257,6 +257,11 @@ struct isl_sched_graph {
 
 	int max_weight;
 
+	// Originally the first 6 (0 to 5) variables were referred by magic
+	// constants. we remap them using this array so that we can move them around
+	// more easily.
+	int pos_remap[6];
+
 	int array_lrs_start_pos;
 	int n_array;
 	isl_union_set *live_range_arrays;
