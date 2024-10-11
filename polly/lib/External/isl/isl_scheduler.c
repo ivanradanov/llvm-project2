@@ -2102,7 +2102,7 @@ static isl_stat add_intra_proximity_constraints(struct isl_sched_graph *graph,
 	if (!local) {
 		isl_dim_map_range(dim_map, graph->pos_remap[1], 0, 0, 0, 1, 1);
 		isl_dim_map_range(dim_map, graph->pos_remap[4], 2, 1, 1, nparam, -1);
-		isl_dim_map_range(dim_map, graph->pos_remap[5], 2, 1, 1, nparam, 1);
+		isl_dim_map_range(dim_map, graph->pos_remap[4] + 1, 2, 1, 1, nparam, 1);
 	}
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
 
@@ -2290,7 +2290,7 @@ static isl_stat add_inter_proximity_constraints(struct isl_sched_graph *graph,
 	if (!local) {
 		isl_dim_map_range(dim_map, graph->pos_remap[1], 0, 0, 0, 1, 1);
 		isl_dim_map_range(dim_map, graph->pos_remap[4], 2, 1, 1, nparam, -1);
-		isl_dim_map_range(dim_map, graph->pos_remap[5], 2, 1, 1, nparam, 1);
+		isl_dim_map_range(dim_map, graph->pos_remap[4] + 1, 2, 1, 1, nparam, 1);
 	}
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
@@ -3073,8 +3073,7 @@ static isl_stat add_var_sum_constraint(struct isl_sched_graph *graph,
  * Otherwise, we ignore them.
  */
 static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
-	int use_coincidence)
-{
+						 int use_coincidence, int use_async) {
 	int i;
 	isl_size nparam;
 	unsigned total;
@@ -3083,11 +3082,14 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int param_pos;
 	int n_eq, n_ineq;
 
-	bool use_async = graph->live_range_arrays;
-	int original_magic_const_vars = 6;
-
 	for (int i = 0; i < original_magic_const_vars; i++)
 		graph->pos_remap[i] = i;
+
+	if (use_async) {
+		graph->array_anti_proximity_min_var_pos = 0;
+		for (int i = 0; i < original_magic_const_vars; i++)
+			graph->pos_remap[i] = i + 1;
+	}
 
 	parametric = ctx->opt->schedule_parametric;
 	nparam = isl_space_dim(graph->node[0].space, isl_dim_param);
@@ -3095,9 +3097,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		return isl_stat_error;
 	param_pos = graph->pos_remap[4];
 	total = param_pos + 2 * nparam;
-	// TODO position
 	if (use_async) {
-		graph->array_anti_proximity_min_var_pos = total++;
 		graph->array_anti_proximity_max_var_pos = total++;
 	}
 	if (use_async) {
@@ -6007,6 +6007,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 {
 	int has_coincidence;
 	int use_coincidence;
+	int use_async = 1;
 	int force_coincidence = 0;
 	int check_conditional;
 
@@ -6029,7 +6030,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 		graph->src_scc = -1;
 		graph->dst_scc = -1;
 
-		if (setup_lp(ctx, graph, use_coincidence) < 0)
+		if (setup_lp(ctx, graph, use_coincidence, use_async) < 0)
 			return isl_stat_error;
 		sol = solve_lp(ctx, graph);
 		if (!sol)
