@@ -2104,7 +2104,6 @@ static isl_stat add_intra_proximity_constraints(struct isl_sched_graph *graph,
 struct lrs_data {
 	struct isl_sched_graph *graph;
 	struct isl_sched_edge *edge;
-	int sign;
 };
 
 static isl_stat add_inter_lrs_cst(__isl_take isl_set *set, void *user) {
@@ -2139,7 +2138,7 @@ static isl_stat add_inter_lrs_cst(__isl_take isl_set *set, void *user) {
 	if (!coef)
 		return isl_stat_error;
 
-	dim_map = inter_dim_map(ctx, graph, src, dst, offset, data->sign);
+	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -1);
 	isl_dim_map_range(dim_map, graph->array_lrs_start_pos + array_id, 0, 0, 0,
 					  1, 1);
 
@@ -2170,7 +2169,7 @@ static isl_stat add_intra_lrs_cst(__isl_take isl_set *set, void *user) {
 	isl_basic_set *coef;
 	struct isl_sched_node *node = edge->src;
 
-	coef = intra_coefficients(graph, node, map, 0);
+	coef = intra_coefficients(graph, node, map, 1);
 	nparam = isl_space_dim(node->space, isl_dim_param);
 
 	offset = coef_var_offset(coef);
@@ -2179,7 +2178,7 @@ static isl_stat add_intra_lrs_cst(__isl_take isl_set *set, void *user) {
 	if (!coef)
 		return isl_stat_error;
 
-	dim_map = intra_dim_map(ctx, graph, node, offset, data->sign);
+	dim_map = intra_dim_map(ctx, graph, node, offset, -1);
 	isl_dim_map_range(dim_map, graph->array_lrs_start_pos + array_id, 0, 0, 0,
 					  1, 1);
 
@@ -2197,12 +2196,6 @@ add_intra_live_range_span_constraints(struct isl_sched_graph *graph,
 	struct lrs_data data;
 	data.graph = graph;
 	data.edge = edge;
-
-	data.sign = 1;
-	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_intra_lrs_cst,
-								  &data) < 0)
-		return isl_stat_error;
-	data.sign = -1;
 	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_intra_lrs_cst,
 								  &data) < 0)
 		return isl_stat_error;
@@ -2219,11 +2212,6 @@ add_inter_live_range_span_constraints(struct isl_sched_graph *graph,
 	data.graph = graph;
 	data.edge = edge;
 
-	data.sign = 1;
-	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_inter_lrs_cst,
-								  &data) < 0)
-		return isl_stat_error;
-	data.sign = -1;
 	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_inter_lrs_cst,
 								  &data) < 0)
 		return isl_stat_error;
@@ -2961,21 +2949,59 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	if (total < 0)
 		return isl_stat_error;
 
+	// First add the cst
+	// s_1 * a_1 + s_2 * a_2 + ... <= s_max
 	k = isl_basic_set_alloc_inequality(graph->lp);
 	if (k < 0)
 		return isl_stat_error;
 	isl_seq_clr(graph->lp->ineq[k], total + 1);
 	// TODO plug in the available memory amount here
-	isl_int_set_si(graph->lp->ineq[k][0], 43);
-	for (i = 0; i < graph->n_array; i++)
+	int max_avaliable_size = 43;
+	isl_int_set_si(graph->lp->ineq[k][0], max_avaliable_size);
+	for (i = 0; i < graph->n_array; i++) {
 		// TODO plug in the per-array multiplier (i.e. the array size) here
-		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos + i],
+		int array_size = 3 + i;
+		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos +
+										  graph->n_array + i],
+					   -array_size);
+	}
+
+	// Then
+	// a_i >= 1
+	// ie
+	// a_i - 1 >= 0
+	for (i = 0; i < graph->n_array; i++) {
+		k = isl_basic_set_alloc_inequality(graph->lp);
+		if (k < 0)
+			return isl_stat_error;
+		isl_seq_clr(graph->lp->ineq[k], total + 1);
+		isl_int_set_si(graph->lp->ineq[k][0], -1);
+		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos +
+										  graph->n_array + i],
+					   1);
+	}
+
+	// And
+	// a_i = 1 + a_i'
+	// ie
+	// a_i - 1 - a_i' = 0
+	for (i = 0; i < graph->n_array; i++) {
+		k = isl_basic_set_alloc_equality(graph->lp);
+		if (k < 0)
+			return isl_stat_error;
+		isl_seq_clr(graph->lp->eq[k], total + 1);
+		isl_int_set_si(graph->lp->eq[k][0], -1);
+		isl_int_set_si(graph->lp->eq[k][1 + graph->array_lrs_start_pos +
+										graph->n_array + i],
+					   1);
+		isl_int_set_si(graph->lp->eq[k][1 + graph->array_lrs_start_pos + i],
 					   -1);
+	}
 
 	return isl_stat_ok;
 }
 
-static const int VERY_BIG_NUMBER = 1000 * 1000;
+static const int VERY_BIG_NUMBER = 10000;
 
 static isl_stat add_anti_proximity_constraint(struct isl_sched_graph *graph) {
 	int i, k;
@@ -3120,7 +3146,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		// These are fine in this position because we do not try to minimize
 		// them or anything
 		graph->array_lrs_start_pos = total;
-		total += graph->n_array;
+		total += graph->n_array * 2;
 	}
 	for (i = 0; i < graph->n; ++i) {
 		struct isl_sched_node *node = &graph->node[graph->sorted[i]];
@@ -3136,10 +3162,15 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 		return isl_stat_error;
 	if (count_bound_coefficient_constraints(ctx, graph, &n_eq, &n_ineq) < 0)
 		return isl_stat_error;
-	// The weighed sum of the live range arrays bound by the max memory
-	// available
-	if (use_async)
+
+	if (use_async) {
+		// The weighed sum of the live range arrays bound by the max memory
+		// available
 		n_ineq += 1;
+		// Each array havin more than 1 instance
+		n_ineq += graph->n_array;
+		// TODO need to count the anti-proximity csts
+	}
 
 	space = isl_space_set_alloc(ctx, 0, total);
 	isl_basic_set_free(graph->lp);
