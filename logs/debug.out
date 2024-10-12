@@ -676,23 +676,19 @@ domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and
 child:
   schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
   permutable: 1
+  coincident: [ 1 ]
   child:
     schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }]"
     permutable: 1
+    coincident: [ 1 ]
     child:
       sequence:
-      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
         child:
-          schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+          schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(1000000 + 2000000i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(2000000i3)] }]"
           permutable: 1
-          child:
-            sequence:
-            - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3]; RS0_affine_parallel[i0, i1, i2] }"
-              child:
-                set:
-                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
-                - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
-            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+          coincident: [ 1 ]
       - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
 New AST:
 iterator:
@@ -703,7 +699,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P1@0x48590030
+  - id: P1@0x1ece0fb0
 inc:
   val: 1
 body:
@@ -715,56 +711,55 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P0@0x4858ff40
+    - id: P0@0x1ece0ec0
   inc:
     val: 1
   body:
-  - 
-    - user:
-        op: call
-        args:
-        - id: RS0_affine_parallel@0x485a2240
-        - id: c0
-        - id: c1
-        - val: 0
-    - iterator:
-        id: c2
-      init:
-        val: 0
-      cond:
-        op: le
-        args:
-        - id: c2
-        - op: fdiv_q
-          args:
-          - op: sub
-            args:
-            - id: P2@0x485c6da0
-            - val: 1
-          - val: 16
-      inc:
-        val: 1
-      body:
-      - user:
-          op: call
-          args:
-          - id: RS1_affine_parallel@0x4858c660
-          - id: c0
-          - id: c1
-          - val: 0
-          - id: c2
-      - user:
-          op: call
-          args:
-          - id: RS2_affine_parallel@0x485a24e0
-          - id: c0
-          - id: c1
-          - val: 0
-          - id: c2
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x485c5530
+      - id: RS0_affine_parallel@0x1ecf3260
+      - id: c0
+      - id: c1
+      - val: 0
+  - iterator:
+      id: c2
+    init:
+      val: 0
+    cond:
+      op: lt
+      args:
+      - id: c2
+      - id: P2@0x1ed1f130
+    inc:
+      val: 16
+    body:
+    - user:
+        op: call
+        args:
+        - id: RS1_affine_parallel@0x1ecdd5e0
+        - id: c0
+        - id: c1
+        - val: 0
+        - op: div
+          args:
+          - id: c2
+          - val: 16
+    - user:
+        op: call
+        args:
+        - id: RS2_affine_parallel@0x1ecf3460
+        - id: c0
+        - id: c1
+        - val: 0
+        - op: div
+          args:
+          - id: c2
+          - val: 16
+  - user:
+      op: call
+      args:
+      - id: RS3_affine_parallel@0x1ecf31c0
       - id: c0
       - id: c1
       - val: 0
