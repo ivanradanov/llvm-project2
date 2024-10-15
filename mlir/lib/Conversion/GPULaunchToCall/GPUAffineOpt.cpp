@@ -310,6 +310,11 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
     coincidence = isl_union_map_copy(validity);
     coincidence = isl_union_map_subtract(
         coincidence, isl_union_map_copy(scop->independence));
+    // TODO this is introducing unwanted dependencies, like these, dont know
+    // why, need to investigate
+    //   "[P0] -> { RS1[i0, 0, 0] -> RS0[o0, 0, 0] : i0 >= 0 and i0 < o0 < P0;
+    //   RS0_affine_parallel[i0, 0, 0] -> RS1_affine_parallel[i0, 0, 0] : 0 <=
+    //   i0 < P0 }"
     coincidence =
         isl_union_map_union(coincidence, isl_union_map_copy(scop->array_order));
   } else {
