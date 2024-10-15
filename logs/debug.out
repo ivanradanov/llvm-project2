@@ -686,9 +686,11 @@ child:
       - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
       - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
         child:
-          schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(10000 + 20000i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(20000i3)] }]"
-          permutable: 1
-          coincident: [ 1 ]
+          schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+          child:
+            sequence:
+            - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
       - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
 New AST:
 iterator:
@@ -699,7 +701,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P1@0x315686c0
+  - id: P1@0x3f2e7fb0
 inc:
   val: 1
 body:
@@ -711,14 +713,14 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P0@0x315685d0
+    - id: P0@0x3f2e7ec0
   inc:
     val: 1
   body:
   - user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x315793c0
+      - id: RS0_affine_parallel@0x3f2faf40
       - id: c0
       - id: c1
       - val: 0
@@ -727,39 +729,39 @@ body:
     init:
       val: 0
     cond:
-      op: lt
+      op: le
       args:
       - id: c2
-      - id: P2@0x315a6ec0
+      - op: fdiv_q
+        args:
+        - op: sub
+          args:
+          - id: P2@0x3f31fed0
+          - val: 1
+        - val: 16
     inc:
-      val: 16
+      val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x315643f0
+        - id: RS1_affine_parallel@0x3f2e45e0
         - id: c0
         - id: c1
         - val: 0
-        - op: div
-          args:
-          - id: c2
-          - val: 16
+        - id: c2
     - user:
         op: call
         args:
-        - id: RS2_affine_parallel@0x31573740
+        - id: RS2_affine_parallel@0x3f2fb1e0
         - id: c0
         - id: c1
         - val: 0
-        - op: div
-          args:
-          - id: c2
-          - val: 16
+        - id: c2
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x3157a450
+      - id: RS3_affine_parallel@0x3f31e2e0
       - id: c0
       - id: c1
       - val: 0
