@@ -257,8 +257,6 @@ SmallVector<Operation *> IslScop::getSequenceScheduleOpList(Operation *begin,
         ops.insert(ops.end(), elseOps.begin(), elseOps.end());
       }
       ops.insert(ops.end(), thenOps.begin(), thenOps.end());
-      // This statement will "store" the result of the `ifOp` if it exists
-      ops.push_back(op);
     } else {
       ops.push_back(op);
     }
