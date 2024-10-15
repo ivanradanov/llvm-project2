@@ -1372,6 +1372,45 @@ error:
 	return isl_stat_error;
 }
 
+static isl_stat
+sched_graph_extract_live_range_arrays(isl_ctx *ctx,
+									  struct isl_sched_graph *graph) {
+	int i;
+
+	if (graph->live_range_arrays) {
+		graph->n_array = isl_union_set_n_set(graph->live_range_arrays);
+		if (graph->n_array == isl_size_error)
+			return isl_stat_error;
+	} else {
+		graph->n_array = 0;
+		graph->array_table = 0;
+		return isl_stat_ok;
+	}
+
+	graph->array_table = isl_hash_table_alloc(ctx, graph->n_array);
+	if (!graph->array_table)
+		return isl_stat_error;
+	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+	for (i = 0; i < graph->n_array; ++i) {
+		isl_set *set = isl_set_list_get_set(sl, i);
+		isl_id *id = isl_set_get_tuple_id(set);
+		uint32_t hash = isl_id_get_hash(id);
+		// i is offset by one because null pointer as the data has a special
+		// meaning in the hash map
+		struct isl_hash_table_entry *entry =
+			isl_hash_table_find(isl_id_get_ctx(id), graph->array_table, hash,
+								always, (void *)(i + 1), 1);
+		if (entry == isl_hash_table_entry_none || !entry)
+			return isl_stat_error;
+		entry->data = (void *)i + 1;
+		isl_id_free(id);
+		isl_set_free(set);
+	}
+	isl_set_list_free(sl);
+
+	return isl_stat_ok;
+}
+
 /* Initialize the schedule graph "graph" from the schedule constraints "sc".
  *
  * The context is included in the domain before the nodes of
@@ -1445,30 +1484,8 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 			return isl_stat_error;
 	}
 
-	graph->array_table = isl_hash_table_alloc(ctx, graph->n_array);
-	if (!graph->array_table)
+	if (sched_graph_extract_live_range_arrays(ctx, graph) < 0)
 		return isl_stat_error;
-	isl_size n_array = isl_union_set_n_set(graph->live_range_arrays);
-	if (n_array == isl_size_error)
-		return isl_stat_error;
-	graph->n_array = n_array;
-	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
-	for (i = 0; i < graph->n_array; ++i) {
-		isl_set *set = isl_set_list_get_set(sl, i);
-		isl_id *id = isl_set_get_tuple_id(set);
-		uint32_t hash = isl_id_get_hash(id);
-		// i is offset by one because null pointer as the data has a special
-		// meaning in the hash map
-		struct isl_hash_table_entry *entry =
-			isl_hash_table_find(isl_id_get_ctx(id), graph->array_table, hash,
-								always, (void *)(i + 1), 1);
-		if (entry == isl_hash_table_entry_none || !entry)
-			return isl_stat_error;
-		entry->data = (void *)i + 1;
-		isl_id_free(id);
-		isl_set_free(set);
-	}
-	isl_set_list_free(sl);
 
 	return isl_stat_ok;
 }
@@ -3966,6 +3983,7 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		map = isl_map_copy(edge->map);
 		tagged_condition = isl_union_map_copy(edge->tagged_condition);
 		tagged_validity = isl_union_map_copy(edge->tagged_validity);
+		isl_union_set *lrs = isl_union_set_copy(edge->live_range_arrays);
 
 		dst->edge[dst->n_edge].src = dst_src;
 		dst->edge[dst->n_edge].dst = dst_dst;
@@ -3973,8 +3991,23 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		dst->edge[dst->n_edge].tagged_condition = tagged_condition;
 		dst->edge[dst->n_edge].tagged_validity = tagged_validity;
 		dst->edge[dst->n_edge].types = edge->types;
+		dst->edge[dst->n_edge].live_range_arrays = lrs;
+		if (lrs) {
+			if (!dst->live_range_arrays)
+				dst->live_range_arrays = isl_union_set_copy(
+					dst->edge[dst->n_edge].live_range_arrays);
+			else
+				dst->live_range_arrays = isl_union_set_union(
+					dst->live_range_arrays,
+					isl_union_set_copy(
+						dst->edge[dst->n_edge].live_range_arrays));
+		}
 		dst->n_edge++;
 
+		if (isl_sched_edge_is_live_range_span(edge) && !lrs)
+			return isl_stat_error;
+		if (edge->live_range_arrays && !lrs)
+			return isl_stat_error;
 		if (edge->tagged_condition && !tagged_condition)
 			return isl_stat_error;
 		if (edge->tagged_validity && !tagged_validity)
@@ -4050,6 +4083,8 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 	sub->max_row = graph->max_row;
 	sub->n_total_row = graph->n_total_row;
 	sub->band_start = graph->band_start;
+	if (sched_graph_extract_live_range_arrays(ctx, sub) < 0)
+		return isl_stat_error;
 
 	return isl_stat_ok;
 }
