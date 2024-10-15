@@ -52,6 +52,11 @@
  * see Verdoolaege and Janssens, "Scheduling for PPCG" (2017).
  */
 
+#define IRI_TEST(code)                                                         \
+	do {                                                                       \
+		code;                                                                  \
+	} while (0)
+
 static isl_bool always(const void *entry, const void *val) { return 1; }
 
 static isl_bool node_has_tuples(const void *entry, const void *val)
@@ -2973,7 +2978,7 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 		return isl_stat_error;
 	isl_seq_clr(graph->lp->ineq[k], total + 1);
 	// TODO plug in the available memory amount here
-	int max_avaliable_size = 43;
+	int max_avaliable_size = 535;
 	isl_int_set_si(graph->lp->ineq[k][0], max_avaliable_size);
 	for (i = 0; i < graph->n_array; i++) {
 		// TODO plug in the per-array multiplier (i.e. the array size) here
@@ -3018,7 +3023,7 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	return isl_stat_ok;
 }
 
-static const int VERY_BIG_NUMBER = 10000;
+static const int VERY_BIG_NUMBER = 100000;
 
 static isl_stat add_anti_proximity_constraint(struct isl_sched_graph *graph) {
 	int i, k;
@@ -3139,7 +3144,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int n_eq, n_ineq;
 
 	if (use_async)
-		use_coincidence = false;
+		use_coincidence = true;
 
 	for (int i = 0; i < original_magic_const_vars; i++)
 		graph->pos_remap[i] = i;
@@ -6115,7 +6120,15 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 
 		if (setup_lp(ctx, graph, use_coincidence, use_async) < 0)
 			return isl_stat_error;
+		IRI_TEST({
+			fputs("setup lp:\n", stderr);
+			isl_basic_set_dump(graph->lp);
+		});
 		sol = solve_lp(ctx, graph);
+		IRI_TEST({
+			fputs("sol:\n", stderr);
+			isl_vec_dump(sol);
+		});
 		if (!sol)
 			return isl_stat_error;
 		if (sol->size == 0) {
