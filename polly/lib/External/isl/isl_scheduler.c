@@ -3031,6 +3031,24 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 					   -1);
 	}
 
+	// IRI_TEST({
+	//     k = isl_basic_set_alloc_equality(graph->lp);
+	//     if (k < 0)
+	//       return isl_stat_error;
+	//     isl_seq_clr(graph->lp->eq[k], total + 1);
+	//     isl_int_set_si(graph->lp->eq[k][0], 1);
+	//     isl_int_set_si(graph->lp->eq[k][11 + 1],
+	//                    -1);
+
+	//     k = isl_basic_set_alloc_equality(graph->lp);
+	//     if (k < 0)
+	//       return isl_stat_error;
+	//     isl_seq_clr(graph->lp->eq[k], total + 1);
+	//     isl_int_set_si(graph->lp->eq[k][0], 1);
+	//     isl_int_set_si(graph->lp->eq[k][15 + 1],
+	//                    -1);
+	//   });
+
 	return isl_stat_ok;
 }
 
@@ -3155,7 +3173,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	int n_eq, n_ineq;
 
 	if (use_async)
-		use_coincidence = true;
+		use_coincidence = false;
 
 	for (int i = 0; i < original_magic_const_vars; i++)
 		graph->pos_remap[i] = i;
