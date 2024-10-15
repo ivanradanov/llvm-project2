@@ -300,8 +300,13 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
     validity = isl_union_map_copy(proximity);
     validity =
         isl_union_map_union(validity, isl_union_map_copy(scop->dep_forced));
-    proximity =
-        isl_union_map_union(proximity, isl_union_map_copy(scop->dep_false));
+// According to "Scheduling for PPCG": "Note that as explained in Section
+// 4.3 below, the false dependence relation is only used for historical
+// reasons." Try disabling for now.
+#if 0
+      proximity =
+          isl_union_map_union(proximity, isl_union_map_copy(scop->dep_false));
+#endif
     coincidence = isl_union_map_copy(validity);
     coincidence = isl_union_map_subtract(
         coincidence, isl_union_map_copy(scop->independence));
