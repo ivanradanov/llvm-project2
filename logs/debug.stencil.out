@@ -467,21 +467,37 @@ conditional_validity: "[P0] -> { [RS1_affine_parallel[i0, 0, 0] -> S18_affine_ve
 none:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] :  }
 w/ap:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 }
 w/lsr:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 }
 w/span:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i15 = i4 - i10 - i11 - i14 and i16 = i3 - i12 and i7 = 100000 - i0 and i6 = i1 - i5 and i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= i5 - i6 - i10 + i11 + i12 + i14 - i15 and i16 >= i5 - i6 + i12 and i17 >= -i2 + i5 - i6 + i12 + i13 - i16 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i15 = i4 - i10 - i11 - i14 and i16 = i3 - i12 and i7 = 100000 - i0 and i6 = i1 - i5 and i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= i5 - i6 - i10 + i11 + i12 + i14 - i15 and i16 >= i5 - i6 + i12 and i17 >= -i2 + i5 - i6 + i12 + i13 - i16 }
 sol:
-[1,99823,0,177,0,708,0,0,177,177,178,0,354,0,177,0,354,0,0]
+[1,99823,0,177,0,2,0,0,177,177,178,0,1,0,177,0,1,0,0]
+none:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] :  }
+w/ap:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 }
+w/lsr:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 }
+w/span:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 }
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i15 = i4 - i10 - i11 - i14 and i16 = i3 - i12 and i7 = 100000 - i0 and i6 = i1 - i5 and i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= i12 + i13 - i16 }
+sol:
+[1,100000,0,0,0,2,0,0,0,0,1,0,1,0,0,0,1,0,0]
 New Schedule:
 domain: "[P0] -> { RS1_affine_parallel[i0, 0, 0] : 0 <= i0 < P0; RS0_affine_parallel[i0, 0, 0] : 0 <= i0 < P0 }"
 child:
-  schedule: "[P0] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(354i0)]; RS1_affine_parallel[i0, i1, i2] -> [(177 + 354i0)] }]"
+  schedule: "[P0] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS1_affine_parallel[i0, i1, i2] -> [(i0)] }]"
   permutable: 1
   coincident: [ 1 ]
+  child:
+    sequence:
+    - filter: "[P0] -> { RS0_affine_parallel[i0, i1, i2] }"
+    - filter: "[P0] -> { RS1_affine_parallel[i0, i1, i2] }"
 New AST:
 iterator:
   id: c0
@@ -491,21 +507,21 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P0@0x4fb796a0
+  - id: P0@0x25703f20
 inc:
   val: 1
 body:
 - user:
     op: call
     args:
-    - id: RS0_affine_parallel@0x4fb973c0
+    - id: RS0_affine_parallel@0x25721540
     - id: c0
     - val: 0
     - val: 0
 - user:
     op: call
     args:
-    - id: RS1_affine_parallel@0x4fb94c00
+    - id: RS1_affine_parallel@0x2571ed80
     - id: c0
     - val: 0
     - val: 0

@@ -2512,6 +2512,8 @@ static int add_all_anti_proximity_constraints(struct isl_sched_graph *graph) {
 	for (i = 0; i < graph->n_edge; ++i) {
 		struct isl_sched_edge *edge = &graph->edge[i];
 		int zero;
+		if (!isl_sched_edge_is_anti_proximity(edge))
+			continue;
 		if (edge->src == edge->dst &&
 			add_intra_anti_proximity_constraints(graph, edge) < 0)
 			return -1;
@@ -3409,8 +3411,15 @@ static __isl_give isl_vec *solve_lp(isl_ctx *ctx, struct isl_sched_graph *graph)
 		graph->region[i].trivial = trivial;
 	}
 	lp = isl_basic_set_copy(graph->lp);
-	sol = isl_tab_basic_set_non_trivial_lexmin(lp, 2, graph->n,
-				       graph->region, &check_conflict, graph);
+	// 1. maximize the anti-proximity distances
+	// 2. minimize the proximity cst sum
+	// 3. minimize the proximity param sum
+	// 4. minimize the param sum cst
+	// 5. minimize the var sum cst
+	// so, 5
+	int num_vars_to_opt = 5;
+	sol = isl_tab_basic_set_non_trivial_lexmin(
+		lp, num_vars_to_opt, graph->n, graph->region, &check_conflict, graph);
 	for (i = 0; i < graph->n; ++i)
 		isl_mat_free(graph->region[i].trivial);
 	return sol;
