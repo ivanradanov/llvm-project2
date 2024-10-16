@@ -464,8 +464,16 @@ live_range_span: "[P0] -> { [RS0_affine_parallel[i0, 0, 0] -> A_memref_alloca_re
 coincidence: "[P0] -> { RS1_affine_parallel[i0, 0, 0] -> RS0_affine_parallel[o0, 0, 0] : i0 >= 0 and i0 < o0 < P0; RS0_affine_parallel[i0, 0, 0] -> RS1_affine_parallel[i0, 0, 0] : 0 <= i0 < P0 }"
 condition: "[P0] -> { [RS0_affine_parallel[i0, 0, 0] -> S6_affine_vector_store_Write0[]] -> [RS1_affine_parallel[i0, 0, 0] -> S18_affine_vector_load_Read0[]] : 0 <= i0 < P0; [RS0_affine_parallel[i0, 0, 0] -> S12_affine_vector_store_Write0[]] -> [RS1_affine_parallel[i0, 0, 0] -> S18_affine_vector_load_Read0[]] : 0 <= i0 < P0 }"
 conditional_validity: "[P0] -> { [RS1_affine_parallel[i0, 0, 0] -> S18_affine_vector_load_Read0[]] -> [RS0_affine_parallel[o0, 0, 0] -> S12_affine_vector_store_Write0[]] : i0 >= 0 and i0 < o0 < P0; [RS1_affine_parallel[i0, 0, 0] -> S18_affine_vector_load_Read0[]] -> [RS0_affine_parallel[o0, 0, 0] -> S6_affine_vector_store_Write0[]] : i0 >= 0 and i0 < o0 < P0; [RS0_affine_parallel[i0, 0, 0] -> S14_affine_vector_store_Write0[]] -> [RS0_affine_parallel[o0, 0, 0] -> S14_affine_vector_store_Write0[]] : i0 >= 0 and i0 < o0 < P0 }"
+none:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] :  }
+w/ap:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 }
+w/lsr:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 }
+w/span:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i7 = 100000 - i0 and i9 = 1 + i8 and i6 = i1 - i5 and i16 = i3 - i12 and i15 = i4 - i10 - i11 - i14 and 3i9 <= 535 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= i5 - i6 - i10 + i11 + i12 + i14 - i15 and i16 >= i5 - i6 + i12 and i17 >= -i2 + i5 - i6 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i15 = i4 - i10 - i11 - i14 and i16 = i3 - i12 and i7 = 100000 - i0 and i6 = i1 - i5 and i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 + i14 - i15 and i16 >= i12 and i17 >= i7 + 2i12 + i13 + i14 - i15 - 2i16 and i15 >= i14 and i15 >= i7 + i14 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= i5 - i6 - i10 + i11 + i12 + i14 - i15 and i16 >= i5 - i6 + i12 and i17 >= -i2 + i5 - i6 + i12 + i13 - i16 }
 sol:
 [1,99823,0,177,0,708,0,0,177,177,178,0,354,0,177,0,354,0,0]
 New Schedule:
@@ -483,21 +491,21 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P0@0x30eecf80
+  - id: P0@0x4fb796a0
 inc:
   val: 1
 body:
 - user:
     op: call
     args:
-    - id: RS0_affine_parallel@0x30f0b760
+    - id: RS0_affine_parallel@0x4fb973c0
     - id: c0
     - val: 0
     - val: 0
 - user:
     op: call
     args:
-    - id: RS1_affine_parallel@0x30f08fa0
+    - id: RS1_affine_parallel@0x4fb94c00
     - id: c0
     - val: 0
     - val: 0
