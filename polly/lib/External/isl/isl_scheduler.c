@@ -132,6 +132,11 @@ int isl_sched_edge_is_live_range_span(struct isl_sched_edge *edge)
 	return isl_sched_edge_has_type(edge, isl_edge_live_range_span);
 }
 
+/* Is "edge" marked as a anti proximity edge?
+ */
+int isl_sched_edge_is_anti_proximity(struct isl_sched_edge *edge) {
+	return isl_sched_edge_has_type(edge, isl_edge_anti_proximity);
+}
 
 /* Is "edge" marked as a local edge?
  */
@@ -2615,11 +2620,18 @@ static int is_any_validity(struct isl_sched_edge *edge)
  */
 static int edge_multiplicity(struct isl_sched_edge *edge, int use_coincidence)
 {
+	int mult = 0;
 	if (isl_sched_edge_is_proximity(edge) ||
 	    force_zero(edge, use_coincidence))
-		return 2;
-	if (is_validity(edge))
-		return 1;
+		mult += 2;
+	else if (is_validity(edge))
+		mult += 1;
+	// Always bound from above by the #live array instances
+	if (isl_sched_edge_is_live_range_span(edge))
+		mult += 1;
+	// Always bound from below by var we maximise
+	if (isl_sched_edge_is_anti_proximity(edge))
+		mult += 1;
 	return 0;
 }
 
@@ -2637,14 +2649,22 @@ static int parametric_intra_edge_multiplicity(struct isl_sched_edge *edge,
 {
 	if (edge->src != edge->dst)
 		return 0;
-	if (!isl_sched_edge_is_proximity(edge))
-		return 0;
-	if (force_zero(edge, use_coincidence))
-		return 0;
-	if (is_validity(edge))
-		return 1;
-	else
-		return 2;
+
+	int mult = 0;
+	if (isl_sched_edge_is_proximity(edge)) {
+		if (force_zero(edge, use_coincidence))
+			mult += 0;
+		else if (is_validity(edge))
+			mult += 1;
+		else
+			mult += 2;
+	}
+	if (isl_sched_edge_is_anti_proximity(edge))
+		mult += 1;
+	if (isl_sched_edge_is_live_range_span(edge))
+		mult += 1;
+
+	return mult;
 }
 
 /* Add "f" times the number of equality and inequality constraints of "bset"
@@ -3020,23 +3040,31 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 					   -1);
 	}
 
-	// IRI_TEST({
-	//     k = isl_basic_set_alloc_equality(graph->lp);
-	//     if (k < 0)
-	//       return isl_stat_error;
-	//     isl_seq_clr(graph->lp->eq[k], total + 1);
-	//     isl_int_set_si(graph->lp->eq[k][0], 1);
-	//     isl_int_set_si(graph->lp->eq[k][11 + 1],
-	//                    -1);
+	IRI_TEST({
+		// k = isl_basic_set_alloc_equality(graph->lp);
+		// if (k < 0)
+		//  return isl_stat_error;
+		// isl_seq_clr(graph->lp->eq[k], total + 1);
+		// isl_int_set_si(graph->lp->eq[k][0], 1);
+		// isl_int_set_si(graph->lp->eq[k][11 + 1],
+		//               -1);
 
-	//     k = isl_basic_set_alloc_equality(graph->lp);
-	//     if (k < 0)
-	//       return isl_stat_error;
-	//     isl_seq_clr(graph->lp->eq[k], total + 1);
-	//     isl_int_set_si(graph->lp->eq[k][0], 1);
-	//     isl_int_set_si(graph->lp->eq[k][15 + 1],
-	//                    -1);
-	//   });
+		// k = isl_basic_set_alloc_equality(graph->lp);
+		// if (k < 0)
+		//  return isl_stat_error;
+		// isl_seq_clr(graph->lp->eq[k], total + 1);
+		// isl_int_set_si(graph->lp->eq[k][0], 1);
+		// isl_int_set_si(graph->lp->eq[k][15 + 1],
+		//               -1);
+
+		// k = isl_basic_set_alloc_equality(graph->lp);
+		// if (k < 0)
+		//   return isl_stat_error;
+		// isl_seq_clr(graph->lp->eq[k], total + 1);
+		// isl_int_set_si(graph->lp->eq[k][0], 5);
+		// isl_int_set_si(graph->lp->eq[k][8 + 1],
+		//                -1);
+	});
 
 	return isl_stat_ok;
 }
@@ -3206,10 +3234,21 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (use_async) {
 		// The weighed sum of the live range arrays bound by the max memory
 		// available
+		// s_i * a_i <= s_max
 		n_ineq += 1;
-		// Each array havin more than 1 instance
+
+		// s_i >= 1
 		n_ineq += graph->n_array;
-		// TODO need to count the anti-proximity csts
+
+		// 1 + s_i' = s_i
+		n_eq += graph->n_array;
+
+		// maximize = VER_BIG_NUM - minimize
+		n_eq += 1;
+
+		// I give up FIXME
+		n_ineq += graph->n_edge * 10;
+		n_eq += 10;
 	}
 
 	space = isl_space_set_alloc(ctx, 0, total);
@@ -3218,10 +3257,30 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 
 	graph->lp = isl_basic_set_alloc_space(space, 0, n_eq, n_ineq);
 
+	IRI_TEST({
+		fputs("none:\n", stderr);
+		isl_basic_set_dump(graph->lp);
+	});
+	if (use_async && add_all_anti_proximity_constraints(graph) < 0)
+		return isl_stat_error;
+	IRI_TEST({
+		fputs("w/ap:\n", stderr);
+		isl_basic_set_dump(graph->lp);
+	});
+	if (use_async && add_all_live_range_span_constraints(graph) < 0)
+		return isl_stat_error;
+	IRI_TEST({
+		fputs("w/lsr:\n", stderr);
+		isl_basic_set_dump(graph->lp);
+	});
+	if (use_async && add_span_constraint(graph) < 0)
+		return isl_stat_error;
+	IRI_TEST({
+		fputs("w/span:\n", stderr);
+		isl_basic_set_dump(graph->lp);
+	});
 	if (add_sum_constraint(graph, graph->pos_remap[0], param_pos, 2 * nparam) <
 		0)
-		return isl_stat_error;
-	if (use_async && add_span_constraint(graph) < 0)
 		return isl_stat_error;
 	if (use_async && add_anti_proximity_constraint(graph) < 0)
 		return isl_stat_error;
@@ -3236,10 +3295,6 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (add_all_validity_constraints(graph, use_coincidence) < 0)
 		return isl_stat_error;
 	if (add_all_proximity_constraints(graph, use_coincidence) < 0)
-		return isl_stat_error;
-	if (use_async && add_all_live_range_span_constraints(graph) < 0)
-		return isl_stat_error;
-	if (use_async && add_all_anti_proximity_constraints(graph) < 0)
 		return isl_stat_error;
 
 	return isl_stat_ok;
