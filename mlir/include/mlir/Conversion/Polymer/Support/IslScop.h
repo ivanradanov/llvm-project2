@@ -9,6 +9,9 @@
 #include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "polly/ScopInfo.h"
 #include "polly/Support/ScopHelper.h"
@@ -27,6 +30,7 @@
 #include <cassert>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -191,11 +195,29 @@ public:
     makeIslCompatible(name);
     id = isl::id::alloc(space.ctx(), name.c_str(), val.getAsOpaquePointer());
     this->space = space.set_tuple_id(isl::dim::set, id);
+
+    if (auto mt = dyn_cast<MemRefType>(val.getType())) {
+      if (mt.hasStaticShape()) {
+        unsigned size = 1;
+        for (auto s : mt.getShape()) {
+          assert(s != ShapedType::kDynamic);
+          size *= s;
+        }
+
+        // FIXME we need the data size analysis here
+        size *= mt.getElementType().getIntOrFloatBitWidth() / 8;
+        this->size = size;
+      }
+    }
   }
   mlir::Value val;
   std::string name;
   isl::id id;
   isl::space space;
+
+  std::optional<unsigned> size;
+
+  std::optional<unsigned> getSize() { return size; }
 
   isl::union_map dep_order;
 };
@@ -268,6 +290,14 @@ public:
 
   void
   rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope);
+
+  ScopArrayInfo *getArray(mlir::Value memref) {
+    auto found =
+        llvm::find_if(arrays, [&](auto array) { return array.val == memref; });
+    if (found != arrays.end())
+      return &*found;
+    return nullptr;
+  }
 
   ScopArrayInfo &getOrAddArray(isl::space space, mlir::Value memref) {
     auto found =
