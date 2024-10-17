@@ -39,7 +39,6 @@
  * A dependence is local within a band if domain and range are mapped
  * to the same schedule point by the band.
  */
-#define ISL_MAX_CACHES 1
 struct isl_schedule_constraints {
 	isl_union_set *domain;
 	isl_set *context;
@@ -378,6 +377,22 @@ __isl_give isl_union_map *isl_schedule_constraints_get_conditional_validity(
 	__isl_keep isl_schedule_constraints *sc)
 {
 	return isl_schedule_constraints_get(sc, isl_edge_conditional_validity);
+}
+
+__isl_give int
+isl_schedule_constraints_get_n_cache(__isl_keep isl_schedule_constraints *sc) {
+	return sc->n_cache;
+}
+
+__isl_give int
+isl_schedule_constraints_get_cache_size(__isl_keep isl_schedule_constraints *sc,
+										int i) {
+	return sc->cache_size[i];
+}
+
+__isl_give isl_union_map *isl_schedule_constraints_get_array_size(
+	__isl_keep isl_schedule_constraints *sc) {
+	return isl_union_map_copy(sc->array_size);
 }
 
 /* Return the conditions for the conditional validity constraints of "sc".
