@@ -1011,58 +1011,59 @@ public:
     }
 
     ScopStmt &stmt = scop.getIslStmt(CalleeName);
-    llvm_unreachable("TODO");
-    // func::CallOp origCaller = stmt.getCaller();
-    // SmallVector<Value> args;
-    // for (Value origArg : origCaller.getArgOperands()) {
-    //   auto ba = origArg.dyn_cast<BlockArgument>();
-    //   if (ba) {
-    //     Operation *owner = ba.getOwner()->getParentOp();
-    //     if (isa<func::FuncOp>(owner)) {
-    //       args.push_back(funcMapping.lookup(ba));
-    //     } else if (isa<affine::AffineForOp, affine::AffineParallelOp>(owner))
-    //     {
-    //       SmallVector<Operation *> enclosing;
-    //       stmt.getEnclosingOps(enclosing);
-    //       unsigned ivId = 0;
-    //       for (auto *op : enclosing) {
-    //         if (isa<affine::AffineIfOp>(op)) {
-    //           continue;
-    //         } else if (isa<affine::AffineForOp,
-    //         affine::AffineParallelOp>(op)) {
-    //           if (owner == op)
-    //             break;
-    //           ivId++;
-    //         } else {
-    //           llvm_unreachable("non-affine enclosing op");
-    //         }
-    //       }
-    //       Value arg = ivs[ivId];
-    //       if (arg.getType() != origArg.getType()) {
-    //         // This can only happen to index types as we may have replaced
-    //         them
-    //         // with the target system width
-    //         assert(origArg.getType().isa<IndexType>());
-    //         arg = b.create<arith::IndexCastOp>(loc, origArg.getType(), arg);
-    //       }
-    //       args.push_back(arg);
-    //     } else {
-    //       llvm_unreachable("unexpected");
-    //     }
-    //   } else {
-    //     Operation *op = origArg.getDefiningOp();
-    //     assert(op);
-    //     if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
-    //       assert(alloca->getAttr("scop.scratchpad"));
-    //       auto newAlloca = funcMapping.lookup(op)->getResult(0);
-    //       args.push_back(newAlloca);
-    //     } else {
-    //       assert("unexpected");
-    //     }
-    //   }
-    // }
 
-    // b.create<func::CallOp>(loc, StringRef(CalleeName), TypeRange(), args);
+    Operation *origCaller = stmt.getOperation();
+    llvm::DenseSet<Value> origArgs;
+    origCaller->walk([&](Operation *op) {
+      for (auto &opr : op->getOpOperands())
+        if (opr.get().getParentRegion()->getParentOp()->isProperAncestor(
+                origCaller))
+          origArgs.insert(opr.get());
+    });
+    // The remapping for each statement is different so we need to construct a
+    // new mapping for each one.
+    IRMapping stmtMapping = funcMapping;
+    for (Value origArg : origArgs) {
+      auto ba = dyn_cast<BlockArgument>(origArg);
+      if (ba) {
+        Operation *owner = ba.getOwner()->getParentOp();
+        // if (isa<func::FuncOp>(owner)) {
+        //   args.push_back(funcMapping.lookup(ba));
+        // }
+        if (isa<affine::AffineForOp, affine::AffineParallelOp>(owner)) {
+          SmallVector<Operation *> enclosing;
+          stmt.getEnclosingOps(enclosing);
+          unsigned ivId = 0;
+          for (auto *op : enclosing) {
+            if (isa<affine::AffineIfOp>(op)) {
+              continue;
+            } else if (isa<affine::AffineForOp, affine::AffineParallelOp>(op)) {
+              if (owner == op)
+                break;
+              ivId++;
+            } else {
+              llvm_unreachable("non-affine enclosing op");
+            }
+          }
+          Value arg = ivs[ivId];
+          if (arg.getType() != origArg.getType()) {
+            // This can only happen to index types as we may have replaced them
+            // with the target system width
+            assert(origArg.getType().isa<IndexType>());
+            arg = b.create<arith::IndexCastOp>(loc, origArg.getType(), arg);
+          }
+          stmtMapping.map(origArg, arg);
+        } else {
+          llvm_unreachable("unexpected");
+        }
+      } else {
+        assert(funcMapping.contains(origArg));
+        // TODO originally we had some code to remap scratchpad allocations. Do
+        // we need that?
+      }
+    }
+
+    b.clone(*origCaller, stmtMapping);
 
     isl_ast_expr_free(Expr);
     isl_ast_node_free(User);
@@ -1300,7 +1301,7 @@ public:
     for (int i = 0; i < nparams; i++) {
       isl_id *Id = isl_space_get_dim_id(space, isl_dim_param, i);
       const char *paramName = isl_id_get_name(Id);
-      Value V = scop.symbolTable[paramName];
+      Value V = Value::getFromOpaquePointer(isl_id_get_user(Id));
       IDToValue[Id] = funcMapping.lookup(V);
       isl_id_free(Id);
     }
@@ -1315,27 +1316,30 @@ Operation *IslScop::applySchedule(isl_schedule *newSchedule,
   IRMapping oldToNewMapping;
   OpBuilder moduleBuilder(originalFunc);
   Operation *f =
-      cast<func::FuncOp>(moduleBuilder.clone(*originalFunc, oldToNewMapping));
+      moduleBuilder.cloneWithoutRegions(*originalFunc, oldToNewMapping);
 
-  assert(f->getRegion(0).getBlocks().size() == 1);
+  assert(originalFunc->getNumRegions() == 1);
+  assert(originalFunc->getRegion(0).getBlocks().size() == 1);
 
-  // Cleanup body. Leave only scratchpad allocations and tarminator.
-  // TODO is there anything else we need to keep?
-  Operation *op = &f->getRegion(0).front().front();
-  while (true) {
-    if (auto alloca = dyn_cast<memref::AllocaOp>(op)) {
-      assert(alloca->getAttr("scop.scratchpad"));
-      op = op->getNextNode();
-      continue;
+  {
+    OpBuilder b(f->getContext());
+    b.createBlock(&f->getRegion(0), f->getRegion(0).begin(),
+                  originalFunc->getRegion(0).front().getArgumentTypes(),
+                  originalFunc->getRegion(0).front().getArgumentLocs());
+
+    oldToNewMapping.map(originalFunc->getRegion(0).front().getArguments(),
+                        f->getRegion(0).front().getArguments());
+
+    for (auto &op : originalFunc->getRegion(0).front().getOperations()) {
+      if (isa<affine::AffineDialect>(op.getDialect())) {
+        assert(op.getNumResults() == 0);
+        op.walk([&](memref::AllocaOp allocaOp) {
+          b.clone(*allocaOp, oldToNewMapping);
+        });
+      } else {
+        b.clone(op, oldToNewMapping);
+      }
     }
-    auto next = op->getNextNode();
-    if (!next)
-      break;
-    // TODO should check it is a stmt call and not some random one
-    assert(isa<affine::AffineDialect>(op->getDialect()) ||
-           isa<func::CallOp>(op));
-    op->erase();
-    op = next;
   }
 
   // TODO we also need to allocate new arrays which may have been introduced,
@@ -1363,6 +1367,14 @@ Operation *IslScop::applySchedule(isl_schedule *newSchedule,
   return f;
 }
 
+// TODO we can do flow analysis on the operation to check that:
+// 1. all live-in memory come from global memory
+// 2. all live-out memory locations are in shared memory
+// 3. any live-out memory location that does not flow from global memory is
+//    either undefined, or flows from a 0-constant (because cuda async copy
+//    supports padding with 0s)
+//
+// then, it is a valid async copy
 static bool isValidAsyncCopy(Operation *op) {
   return !op->walk([&](Operation *nested) {
               if (isa<affine::AffineParallelOp, affine::AffineForOp,

@@ -15,6 +15,7 @@
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -420,6 +421,13 @@ void transform(LLVM::LLVMFuncOp f) {
   LLVM_DEBUG({
     llvm::dbgs() << "New AST:\n";
     isl_ast_node_dump(node);
+  });
+
+  Operation *g = scop->applySchedule(newSchedule, f);
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "New func:\n";
+    llvm::dbgs() << *g << "\n";
   });
 
   isl_ast_build_free(build);

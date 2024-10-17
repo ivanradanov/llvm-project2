@@ -353,6 +353,7 @@ def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
 def GPUAffineOptPass : Pass<"gpu-affine-opt"> {
   let summary = "";
   let dependentDialects = [
+    "scf::SCFDialect",
     "arith::ArithDialect",
     "affine::AffineDialect",
     "nvgpu::NVGPUDialect",
