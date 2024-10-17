@@ -2991,6 +2991,37 @@ static isl_stat add_sum_constraint(struct isl_sched_graph *graph,
 	return isl_stat_ok;
 }
 
+struct gas_data {
+	isl_id *id;
+	int size;
+};
+static int gas_func(isl_map *m, void *user) {
+	struct gas_data *data = user;
+	isl_id *id = isl_map_get_tuple_id(m, isl_dim_in);
+	if (id != data->id)
+		return isl_stat_ok;
+	isl_set *s = isl_map_range(isl_map_copy(m));
+	// TODO leak
+	if (!isl_set_is_singleton(s)) {
+		isl_set_free(s);
+		return isl_stat_error;
+	}
+	isl_val *v =
+		isl_point_get_coordinate_val(isl_set_sample_point(s), isl_dim_set, 0);
+	data->size = isl_val_get_num_si(v);
+	isl_val_free(v);
+	return isl_stat_ok;
+}
+static int get_array_size(struct isl_sched_graph *graph, isl_id *id) {
+	struct gas_data data;
+	data.id = id;
+	data.size = -1;
+	isl_stat r = isl_union_map_foreach_map(graph->array_size, gas_func, &data);
+	if (r == isl_stat_error)
+		return -1;
+	return data.size;
+}
+
 static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	int i, k;
 	isl_size total;
@@ -3005,16 +3036,28 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	if (k < 0)
 		return isl_stat_error;
 	isl_seq_clr(graph->lp->ineq[k], total + 1);
-	// TODO plug in the available memory amount here
-	int max_avaliable_size = 535;
+	if (graph->n_cache != 1)
+		return isl_stat_error;
+	int max_avaliable_size = graph->cache_size[0];
 	isl_int_set_si(graph->lp->ineq[k][0], max_avaliable_size);
-	for (i = 0; i < graph->n_array; i++) {
-		// TODO plug in the per-array multiplier (i.e. the array size) here
-		int array_size = 3 + i;
+
+	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+	for (i = 0; i < graph->n_array; ++i) {
+		if (!graph->array_size)
+			return isl_stat_error;
+
+		isl_set *set = isl_set_list_get_set(sl, i);
+		isl_id *id = isl_set_get_tuple_id(set);
+
+		int array_size = get_array_size(graph, id);
+
 		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos +
 										  graph->n_array + i],
 					   -array_size);
+		isl_id_free(id);
+		isl_set_free(set);
 	}
+	isl_set_list_free(sl);
 
 	// Then
 	// a_i >= 1
