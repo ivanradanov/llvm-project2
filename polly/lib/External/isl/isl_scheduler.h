@@ -272,6 +272,9 @@ struct isl_sched_graph {
 	int array_anti_proximity_max_var_pos;
 
 	struct isl_hash_table *array_table;
+	int n_cache;
+	int cache_size[ISL_MAX_CACHES];
+	isl_union_map *array_size;
 };
 
 isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
