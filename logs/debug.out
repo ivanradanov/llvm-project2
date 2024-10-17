@@ -692,9 +692,9 @@ w/lsr:
 w/span:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i38 and i58 = i38 and i58 = i27 and i38 = i27 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -i29 + i30 + 16i37 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and i56 <= -i31 + i32 + i36 + i51 - i52 and i59 <= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= i26 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and i59 <= i24 + i25 + i28 - i55 - i56 and i37 <= i26 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and i39 <= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i11 - i12 + i38 and i58 = -i11 + i12 + i38 and i58 = -i11 + i12 + i27 and i38 = -i11 + i12 + i27 and i12 = i11 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= i7 - i8 - i31 + i32 + i36 + i42 - i43 and i47 >= i7 - i8 + i36 and i46 >= i5 - i6 - i33 + i34 + i35 + i44 - i45 and i46 >= i5 - i6 + i35 and 16i48 >= 16i9 - 16i10 - i29 + i30 + 16i37 + i40 - i41 and i48 >= i9 - i10 + i37 and i50 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -16i9 + 16i10 - i29 + i30 + 16i37 and i56 <= -i7 + i8 + i36 and i55 <= -i5 + i6 - i33 + i34 + i35 + i53 - i54 and i55 <= -i5 + i6 + i35 and i56 <= -i7 + i8 - i31 + i32 + i36 + i51 - i52 and i59 <= i2 - i5 + i6 - i7 + i8 - i9 + i10 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 16i2 - 16i5 + 16i6 - 16i7 + 16i8 - 16i9 + 16i10 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= -i9 + i10 + i26 and i56 <= -i7 + i8 - i20 + i21 + i25 + i51 - i52 and i56 <= -i7 + i8 + i25 and i55 <= -i5 + i6 - i22 + i23 + i24 + i53 - i54 and i55 <= -i5 + i6 + i24 and i59 <= i2 - i5 + i6 - i7 + i8 + i24 + i25 + i28 - i55 - i56 and i37 <= -i9 + i10 + i26 and i36 <= -i7 + i8 - i20 + i21 + i25 + i31 - i32 and i36 <= -i7 + i8 + i25 and i35 <= -i5 + i6 - i22 + i23 + i24 + i33 - i34 and i35 <= -i5 + i6 + i24 and i39 <= i2 - i5 + i6 - i7 + i8 - i9 + i10 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i30 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i29 }
 sol:
-[1,100000,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0]
+[1,99942,0,58,0,4,0,0,0,0,0,0,0,0,58,0,58,58,1,59,59,0,1,0,0,0,0,0,0,58,0,0,0,1,0,0,0,0,0,0,58,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,58]
 none:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] :  }
 w/ap:
@@ -704,19 +704,7 @@ w/lsr:
 w/span:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i38 and i58 = i38 and i58 = i27 and i38 = i27 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -i29 + i30 + 16i37 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and i56 <= -i31 + i32 + i36 + i51 - i52 and i59 <= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= i26 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and i59 <= i24 + i25 + i28 - i55 - i56 and i37 <= i26 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and i39 <= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 }
-sol:
-[1,100000,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
-none:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] :  }
-w/ap:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i49 = i38 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 }
-w/lsr:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 }
-w/span:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 }
-setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i38 and i58 = i38 and i58 = i27 and i38 = i27 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -i29 + i30 + 16i37 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and i56 <= -i31 + i32 + i36 + i51 - i52 and i59 <= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= i26 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and i59 <= i24 + i25 + i28 - i55 - i56 and i37 <= i26 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and i39 <= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i11 - i12 + i38 and i58 = -i11 + i12 + i38 and i58 = -i11 + i12 + i27 and i38 = -i11 + i12 + i27 and i12 = i11 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= i7 - i8 - i31 + i32 + i36 + i42 - i43 and i47 >= i7 - i8 + i36 and i46 >= i5 - i6 - i33 + i34 + i35 + i44 - i45 and i46 >= i5 - i6 + i35 and 16i48 >= 16i9 - 16i10 - i29 + i30 + 16i37 + i40 - i41 and i48 >= i9 - i10 + i37 and i50 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -16i9 + 16i10 - i29 + i30 + 16i37 and i56 <= -i7 + i8 + i36 and i55 <= -i5 + i6 - i33 + i34 + i35 + i53 - i54 and i55 <= -i5 + i6 + i35 and i56 <= -i7 + i8 - i31 + i32 + i36 + i51 - i52 and i59 <= i2 - i5 + i6 - i7 + i8 - i9 + i10 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 16i2 - 16i5 + 16i6 - 16i7 + 16i8 - 16i9 + 16i10 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= -i9 + i10 + i26 and i56 <= -i7 + i8 - i20 + i21 + i25 + i51 - i52 and i56 <= -i7 + i8 + i25 and i55 <= -i5 + i6 - i22 + i23 + i24 + i53 - i54 and i55 <= -i5 + i6 + i24 and i59 <= i2 - i5 + i6 - i7 + i8 + i24 + i25 + i28 - i55 - i56 and i37 <= -i9 + i10 + i26 and i36 <= -i7 + i8 - i20 + i21 + i25 + i31 - i32 and i36 <= -i7 + i8 + i25 and i35 <= -i5 + i6 - i22 + i23 + i24 + i33 - i34 and i35 <= -i5 + i6 + i24 and i39 <= i2 - i5 + i6 - i7 + i8 - i9 + i10 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i30 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i29 }
 sol:
 []
 none:
@@ -728,123 +716,297 @@ w/lsr:
 w/span:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i38 and i58 = i38 and i58 = i27 and i38 = i27 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -i29 + i30 + 16i37 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and i56 <= -i31 + i32 + i36 + i51 - i52 and i59 <= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= i26 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and i59 <= i24 + i25 + i28 - i55 - i56 and i37 <= i26 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and i39 <= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51, i52, i53, i54, i55, i56, i57, i58, i59] : i58 = i38 and i49 = i38 and i54 = i4 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 - i34 - i40 - i41 - i42 - i43 - i44 - i45 - i51 - i52 - i53 and i58 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 - i38 - i46 - i47 - i48 - i49 - i55 - i56 - i57 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and i57 = i26 and i58 = i27 and i58 = i38 and 0 = 0 and i38 = i27 and i49 = i38 and i49 = i38 and i49 = i38 and i58 = i27 and i38 = i27 and i49 = i11 - i12 + i38 and i58 = -i11 + i12 + i38 and i58 = -i11 + i12 + i27 and i38 = -i11 + i12 + i27 and i12 = i11 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= -i13 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i15 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i47 >= -i31 + i32 + i36 + i42 - i43 and i47 >= i36 and i46 >= -i33 + i34 + i35 + i44 - i45 and i46 >= i35 and 16i48 >= -i29 + i30 + 16i37 + i40 - i41 and i48 >= i37 and i50 >= -i16 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= 16i26 + i29 - i30 and i37 <= i26 and i39 <= i14 + i24 + i25 + 17i26 + i28 + i29 - i30 - i35 - i36 - 17i37 and i39 <= i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i30 <= i29 and i30 <= i14 + i29 and i56 <= -i31 + i32 + i36 + i51 - i52 and i56 <= i36 and i55 <= -i33 + i34 + i35 + i53 - i54 and i55 <= i35 and 16i57 <= -i29 + i30 + 16i37 and i57 <= i37 and i59 <= i14 + i35 + i36 + 17i37 + i39 - i55 - i56 - 17i57 and 16i59 <= 16i14 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i59 <= i14 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and i59 <= i14 + i24 + i25 + i28 - i55 - i56 and i56 <= -i20 + i21 + i25 + i51 - i52 and i56 <= i25 and i55 <= -i22 + i23 + i24 + i53 - i54 and i55 <= i24 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i30 >= i29 and i47 <= -i31 + i32 + i36 + i42 - i43 and i47 <= i36 and i46 <= -i33 + i34 + i35 + i44 - i45 and i46 <= i35 and 16i48 <= -i29 + i30 + 16i37 + i40 - i41 and i48 <= i37 and i50 <= i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 >= -i29 + i30 + 16i37 and i56 >= i36 and i55 >= -i33 + i34 + i35 + i53 - i54 and i55 >= i35 and i56 >= -i31 + i32 + i36 + i51 - i52 and i59 >= i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 >= 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 <= i26 and i56 >= -i20 + i21 + i25 + i51 - i52 and i56 >= i25 and i55 >= -i22 + i23 + i24 + i53 - i54 and i55 >= i24 and i59 >= i24 + i25 + i28 - i55 - i56 and i37 >= i26 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and i39 >= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i47 >= i7 - i8 - i31 + i32 + i36 + i42 - i43 and i47 >= i7 - i8 + i36 and i46 >= i5 - i6 - i33 + i34 + i35 + i44 - i45 and i46 >= i5 - i6 + i35 and 16i48 >= 16i9 - 16i10 - i29 + i30 + 16i37 + i40 - i41 and i48 >= i9 - i10 + i37 and i50 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i35 + i36 + i37 + i39 - i46 - i47 - i48 and 16i57 <= -16i9 + 16i10 - i29 + i30 + 16i37 and i56 <= -i7 + i8 + i36 and i55 <= -i5 + i6 - i33 + i34 + i35 + i53 - i54 and i55 <= -i5 + i6 + i35 and i56 <= -i7 + i8 - i31 + i32 + i36 + i51 - i52 and i59 <= i2 - i5 + i6 - i7 + i8 - i9 + i10 + i35 + i36 + i37 + i39 - i55 - i56 - i57 and 16i59 <= 16i2 - 16i5 + 16i6 - 16i7 + 16i8 - 16i9 + 16i10 + 15i29 - 15i30 + 16i35 + 16i36 + 16i37 + 16i39 - 16i55 - 16i56 - 16i57 and i57 >= -i9 + i10 + i26 and i56 <= -i7 + i8 - i20 + i21 + i25 + i51 - i52 and i56 <= -i7 + i8 + i25 and i55 <= -i5 + i6 - i22 + i23 + i24 + i53 - i54 and i55 <= -i5 + i6 + i24 and i59 <= i2 - i5 + i6 - i7 + i8 + i24 + i25 + i28 - i55 - i56 and i37 <= -i9 + i10 + i26 and i36 <= -i7 + i8 - i20 + i21 + i25 + i31 - i32 and i36 <= -i7 + i8 + i25 and i35 <= -i5 + i6 - i22 + i23 + i24 + i33 - i34 and i35 <= -i5 + i6 + i24 and i39 <= i2 - i5 + i6 - i7 + i8 - i9 + i10 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i30 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i29 }
 sol:
 []
 none:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] :  }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26] :  }
 w/ap:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26] :  }
 w/lsr:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : 0 = 0i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26] : 0 = 0i17 <= i16 and i17 <= i14 + i16 }
 w/span:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and 0 = 0 and i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26] : i15 = 1 + i14 and 0 = 0 and i17 <= i16 and i17 <= i14 + i16 and 3i15 <= 535 and i15 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i12 = i11 and i40 = i11 - i12 + i29 and i40 = i29 and i36 = i4 - i20 - i21 - i22 - i23 - i24 - i25 - i31 - i32 - i33 - i34 - i35 and i40 = i3 - i26 - i27 - i28 - i29 - i37 - i38 - i39 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and 0 = 0 and i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i21 >= i20 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= i7 - i8 - i22 + i23 + i27 + i33 - i34 and i38 >= i7 - i8 + i27 and i37 >= i5 - i6 - i24 + i25 + i26 + i35 - i36 and i37 >= i5 - i6 + i26 and 16i39 >= 16i9 - 16i10 - i20 + i21 + 16i28 + i31 - i32 and i39 >= i9 - i10 + i28 and i41 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i21 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i20 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26] : i12 = i11 and i21 = i4 - i16 - i17 - i18 - i19 - i20 and i25 = i3 - i22 - i23 - i24 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i15 = 1 + i14 and 0 = 0 and i17 <= i16 and i17 <= i14 + i16 and 3i15 <= 535 and i15 > 0 and i17 >= i16 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i17 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i16 }
 sol:
 []
 none:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] :  }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24] :  }
 w/ap:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24] :  }
 w/lsr:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : 0 = 0i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24] :  }
 w/span:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and 0 = 0 and i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24] : 535 >= 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i12 = i11 and i40 = i11 - i12 + i29 and i40 = i29 and i36 = i4 - i20 - i21 - i22 - i23 - i24 - i25 - i31 - i32 - i33 - i34 - i35 and i40 = i3 - i26 - i27 - i28 - i29 - i37 - i38 - i39 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and 0 = 0 and i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 and 5i19 <= 535 - 3i17 - 4i18 and i17 > 0 and i18 > 0 and i19 > 0 and i21 >= i20 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= i7 - i8 - i22 + i23 + i27 + i33 - i34 and i38 >= i7 - i8 + i27 and i37 >= i5 - i6 - i24 + i25 + i26 + i35 - i36 and i37 >= i5 - i6 + i26 and 16i39 >= 16i9 - 16i10 - i20 + i21 + 16i28 + i31 - i32 and i39 >= i9 - i10 + i28 and i41 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i21 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i20 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24] : i19 = i4 - i14 - i15 - i16 - i17 - i18 and i23 = i3 - i20 - i21 - i22 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and 535 >= 0 }
 sol:
-[]
+[1,0,0,0,0,1,0,0,0,0,0,0,0,0,100000,0,1,0,0,0,0,0,0,0,0,0]
 New Schedule:
 domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }"
 child:
-  schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+  schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(58 + i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(58 + i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(58 + i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(58 + i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(58 + i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(58 + i0)] }]"
   permutable: 1
   coincident: [ 1, 1 ]
   child:
     sequence:
     - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
-    - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+    - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
       child:
-        schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
-        child:
-          sequence:
-          - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
-          - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
-    - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+        schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+    - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2]; RS1_affine_parallel[i0, i1, i2, i3] }"
+      child:
+        set:
+        - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+        - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+          child:
+            schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+            permutable: 1
+            coincident: [ 1 ]
 New AST:
-iterator:
-  id: c0
-init:
-  val: 0
-cond:
-  op: lt
-  args:
-  - id: c0
-  - id: P0@0x1c5630d0
-inc:
-  val: 1
-body:
-  iterator:
-    id: c1
+
+- iterator:
+    id: c0
   init:
     val: 0
   cond:
-    op: lt
+    op: le
     args:
-    - id: c1
-    - id: P1@0x1c5631c0
+    - id: c0
+    - op: min
+      args:
+      - val: 57
+      - op: sub
+        args:
+        - id: P0@0x4e6b9a70
+        - val: 1
   inc:
     val: 1
   body:
-  - user:
-      op: call
-      args:
-      - id: RS0_affine_parallel@0x1c505510
-      - id: c1
-      - id: c0
-      - val: 0
-  - iterator:
-      id: c2
+    iterator:
+      id: c1
     init:
       val: 0
     cond:
+      op: lt
+      args:
+      - id: c1
+      - id: P1@0x4e6b9b60
+    inc:
+      val: 1
+    body:
+      iterator:
+        id: c2
+      init:
+        val: 0
+      cond:
+        op: le
+        args:
+        - id: c2
+        - op: fdiv_q
+          args:
+          - op: sub
+            args:
+            - id: P2@0x4e6f83c0
+            - val: 1
+          - val: 16
+      inc:
+        val: 1
+      body:
+        user:
+          op: call
+          args:
+          - id: RS1_affine_parallel@0x4e6b6610
+          - id: c1
+          - id: c0
+          - val: 0
+          - id: c2
+- iterator:
+    id: c0
+  init:
+    val: 58
+  cond:
+    op: le
+    args:
+    - id: c0
+    - op: add
+      args:
+      - id: P0@0x4e6b9a70
+      - val: 57
+  inc:
+    val: 1
+  body:
+  - guard:
+      op: ge
+      args:
+      - id: P0@0x4e6b9a70
+      - op: add
+        args:
+        - id: c0
+        - val: 1
+    then:
+      iterator:
+        id: c1
+      init:
+        val: 0
+      cond:
+        op: le
+        args:
+        - id: c1
+        - op: min
+          args:
+          - val: 57
+          - op: sub
+            args:
+            - id: P1@0x4e6b9b60
+            - val: 1
+      inc:
+        val: 1
+      body:
+        iterator:
+          id: c2
+        init:
+          val: 0
+        cond:
+          op: le
+          args:
+          - id: c2
+          - op: fdiv_q
+            args:
+            - op: sub
+              args:
+              - id: P2@0x4e6f83c0
+              - val: 1
+            - val: 16
+        inc:
+          val: 1
+        body:
+          user:
+            op: call
+            args:
+            - id: RS1_affine_parallel@0x4e6b6610
+            - id: c1
+            - id: c0
+            - val: 0
+            - id: c2
+  - iterator:
+      id: c1
+    init:
+      val: 58
+    cond:
       op: le
       args:
-      - id: c2
-      - op: fdiv_q
+      - id: c1
+      - op: add
         args:
-        - op: sub
-          args:
-          - id: P2@0x1c5a15d0
-          - val: 1
-        - val: 16
+        - id: P1@0x4e6b9b60
+        - val: 57
     inc:
       val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x1c55f370
-        - id: c1
-        - id: c0
+        - id: RS0_affine_parallel@0x4e64b180
+        - op: sub
+          args:
+          - id: c1
+          - val: 58
+        - op: sub
+          args:
+          - id: c0
+          - val: 58
         - val: 0
+    - iterator:
+        id: c2
+      init:
+        val: 0
+      cond:
+        op: le
+        args:
         - id: c2
+        - op: fdiv_q
+          args:
+          - op: sub
+            args:
+            - id: P2@0x4e6f83c0
+            - val: 1
+          - val: 16
+      inc:
+        val: 1
+      body:
+        user:
+          op: call
+          args:
+          - id: RS2_affine_parallel@0x4e6cd920
+          - op: sub
+            args:
+            - id: c1
+            - val: 58
+          - op: sub
+            args:
+            - id: c0
+            - val: 58
+          - val: 0
+          - id: c2
     - user:
         op: call
         args:
-        - id: RS2_affine_parallel@0x1c576f80
-        - id: c1
-        - id: c0
+        - id: RS3_affine_parallel@0x4e6cd680
+        - op: sub
+          args:
+          - id: c1
+          - val: 58
+        - op: sub
+          args:
+          - id: c0
+          - val: 58
         - val: 0
-        - id: c2
-  - user:
-      op: call
-      args:
-      - id: RS3_affine_parallel@0x1c576ce0
-      - id: c1
-      - id: c0
-      - val: 0
+    - guard:
+        op: and
+        args:
+        - op: ge
+          args:
+          - id: P0@0x4e6b9a70
+          - op: add
+            args:
+            - id: c0
+            - val: 1
+        - op: ge
+          args:
+          - id: P1@0x4e6b9b60
+          - op: add
+            args:
+            - id: c1
+            - val: 1
+      then:
+        iterator:
+          id: c2
+        init:
+          val: 0
+        cond:
+          op: le
+          args:
+          - id: c2
+          - op: fdiv_q
+            args:
+            - op: sub
+              args:
+              - id: P2@0x4e6f83c0
+              - val: 1
+            - val: 16
+        inc:
+          val: 1
+        body:
+          user:
+            op: call
+            args:
+            - id: RS1_affine_parallel@0x4e6b6610
+            - id: c1
+            - id: c0
+            - val: 0
+            - id: c2
 /scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_ctx.c:295: isl_ctx not freed as some objects still reference it
 gpu-affine-opt: After opt:
 "llvm.func"() <{CConv = #llvm.cconv<ccc>, arg_attrs = [{}, {}, {}, {}, {}, {}, {}, {llvm.nocapture, llvm.noundef, llvm.writeonly}, {llvm.nocapture, llvm.noundef, llvm.readonly}, {llvm.nocapture, llvm.noundef, llvm.readonly}, {llvm.noundef}, {llvm.noundef}], comdat = @__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii, function_type = !llvm.func<void (i64, i64, i64, i64, i64, i64, i32, ptr, ptr, ptr, i32, i32)>, linkage = #llvm.linkage<private>, sym_name = "__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764", sym_visibility = "private", unnamed_addr = 1 : i64, visibility_ = 0 : i64}> ({

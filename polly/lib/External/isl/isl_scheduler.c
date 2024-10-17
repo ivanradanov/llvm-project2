@@ -6186,6 +6186,11 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 
 	clear_local_edges(graph);
 	check_conditional = need_condition_check(graph);
+	if (use_async)
+		// TODO we need to filter the actual needed conditional checks. or more
+		// like allow the "condition" to be true even with live range array
+		// overlaps
+		check_conditional = 0;
 	has_coincidence = has_any_coincidence(graph);
 
 	if (ctx->opt->schedule_outer_coincidence)
