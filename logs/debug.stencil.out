@@ -472,15 +472,15 @@ w/ap:
 w/lsr:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 }
 w/span:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 1080i9 <= 48000 and i9 > 0 }
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i15 = i4 - i10 - i11 - i14 and i16 = i3 - i12 and i7 = 100000 - i0 and i6 = i1 - i5 and i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 3i9 <= 535 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= i5 - i6 - i10 + i11 + i12 + i14 - i15 and i16 >= i5 - i6 + i12 and i17 >= -i2 + i5 - i6 + i12 + i13 - i16 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17] : i15 = i4 - i10 - i11 - i14 and i16 = i3 - i12 and i7 = 100000 - i0 and i6 = i1 - i5 and i9 = 1 + i8 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= -i7 + i12 + i13 - i16 and i16 >= -i10 + i11 + i12 + i14 - i15 and i16 >= i12 and i17 >= -i8 + i12 + i13 - i16 and 1080i9 <= 48000 and i9 > 0 and i16 <= -i10 + i11 + i12 + i14 - i15 and i16 <= i12 and i17 <= i12 + i13 - i16 and i16 >= i5 - i6 - i10 + i11 + i12 + i14 - i15 and i16 >= i5 - i6 + i12 and i17 >= -i2 + i5 - i6 + i12 + i13 - i16 }
 sol:
-[1,99823,0,177,0,2,0,0,177,177,178,0,1,0,177,0,1,0,0]
+[1,99957,0,43,0,2,0,0,43,43,44,0,1,0,43,0,1,0,0]
 New Schedule:
 domain: "[P0] -> { RS1_affine_parallel[i0, 0, 0] : 0 <= i0 < P0; RS0_affine_parallel[i0, 0, 0] : 0 <= i0 < P0 }"
 child:
-  schedule: "[P0] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS1_affine_parallel[i0, i1, i2] -> [(177 + i0)] }]"
+  schedule: "[P0] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS1_affine_parallel[i0, i1, i2] -> [(43 + i0)] }]"
   permutable: 1
   coincident: [ 1 ]
   child:
@@ -499,10 +499,10 @@ New AST:
     - id: c0
     - op: min
       args:
-      - val: 176
+      - val: 42
       - op: sub
         args:
-        - id: P0@0x3d0ce610
+        - id: P0@0x31416400
         - val: 1
   inc:
     val: 1
@@ -510,39 +510,39 @@ New AST:
     user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x3d0eb4c0
+      - id: RS0_affine_parallel@0x314349e0
       - id: c0
       - val: 0
       - val: 0
 - iterator:
     id: c0
   init:
-    val: 177
+    val: 43
   cond:
     op: le
     args:
     - id: c0
     - op: add
       args:
-      - id: P0@0x3d0ce610
-      - val: 176
+      - id: P0@0x31416400
+      - val: 42
   inc:
     val: 1
   body:
   - user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x3d0eb670
+      - id: RS1_affine_parallel@0x31432220
       - op: sub
         args:
         - id: c0
-        - val: 177
+        - val: 43
       - val: 0
       - val: 0
   - guard:
       op: ge
       args:
-      - id: P0@0x3d0ce610
+      - id: P0@0x31416400
       - op: add
         args:
         - id: c0
@@ -551,7 +551,7 @@ New AST:
       user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x3d0eb4c0
+        - id: RS0_affine_parallel@0x314349e0
         - id: c0
         - val: 0
         - val: 0
