@@ -1508,6 +1508,12 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 	if (sched_graph_extract_live_range_arrays(ctx, graph) < 0)
 		return isl_stat_error;
 
+	graph->array_size = isl_schedule_constraints_get_array_size(sc);
+
+	graph->n_cache = isl_schedule_constraints_get_n_cache(sc);
+	for (int i = 0; i < graph->n_cache; i++)
+		graph->cache_size[i] = isl_schedule_constraints_get_cache_size(sc, i);
+
 	return isl_stat_ok;
 }
 
@@ -4183,6 +4189,16 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 	sub->band_start = graph->band_start;
 	if (sched_graph_extract_live_range_arrays(ctx, sub) < 0)
 		return isl_stat_error;
+
+	if (graph->array_size) {
+		sub->array_size = isl_union_map_copy(graph->array_size);
+		if (!sub->array_size)
+			return isl_stat_error;
+	}
+
+	sub->n_cache = graph->n_cache;
+	for (int i = 0; i < sub->n_cache; i++)
+		sub->cache_size[i] = graph->cache_size[i];
 
 	return isl_stat_ok;
 }
