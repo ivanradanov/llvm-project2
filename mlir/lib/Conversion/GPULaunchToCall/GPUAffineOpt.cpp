@@ -31,13 +31,17 @@
 #include "LoopDistribute.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "polly/Support/GICHelper.h"
 
 #include "isl/ast.h"
 #include "isl/ast_build.h"
+#include "isl/constraint.h"
+#include "isl/id.h"
 #include "isl/isl-noexceptions.h"
 #include "isl/map.h"
 #include "isl/schedule.h"
 #include "isl/schedule_node.h"
+#include "isl/space.h"
 #include "isl/union_map.h"
 #include "isl/union_set.h"
 
@@ -283,7 +287,7 @@ static inline unsigned unsignedFromIslSize(const isl_size &size) {
 }
 
 static __isl_give isl_schedule_constraints *
-construct_schedule_constraints(struct ppcg_scop *scop) {
+construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
   isl_union_set *domain;
   isl_union_map *dep_raw, *dep;
   isl_union_map *validity, *proximity, *coincidence, *anti_proximity;
@@ -336,6 +340,42 @@ construct_schedule_constraints(struct ppcg_scop *scop) {
   lrs = isl_union_map_transitive_closure(lrs, &exact);
   sc = isl_schedule_constraints_set_live_range_span(sc, lrs);
 
+  isl_union_set *arrays = isl_union_map_range(isl_union_set_unwrap(
+      isl_union_map_domain(isl_union_map_copy(scop->atagged_dep_flow))));
+  arrays = isl_union_set_universe(arrays);
+  isl::union_map arraySizes =
+      isl::manage(isl_union_map_empty(isl_union_set_get_space(arrays)));
+
+  auto r = isl::manage(arrays).foreach_set([&](isl::set set) -> isl::stat {
+    Value v = Value::getFromOpaquePointer(set.get_tuple_id().get_user());
+    auto *sai = S.getArray(v);
+    assert(sai);
+    auto size = sai->getSize();
+    if (!size)
+      return isl::stat::error();
+
+    auto space = set.get_space();
+    space = space.add_dims(isl::dim::out, 1);
+    auto sizeSet = isl::set::universe(isl::space(set.ctx(), 0, 1));
+    auto cst =
+        isl::constraint::alloc_equality(isl::local_space(sizeSet.get_space()));
+    cst = cst.set_constant_si(-*size);
+    cst = cst.set_coefficient_si(isl::dim::out, 0, 1);
+    sizeSet = sizeSet.add_constraint(cst);
+    isl::map map = isl::map::from_domain_and_range(set, sizeSet);
+    arraySizes = arraySizes.unite(isl::union_map(map));
+
+    return isl::stat::ok();
+  });
+
+  if (r.is_ok()) {
+    // TODO get this from the gpu module target info
+    // 48kB is it KiB or KB???
+    const int maxShmemPerBlock = 48 * 1000;
+    sc = isl_schedule_constraints_set_caches(sc, 1, &maxShmemPerBlock);
+    sc = isl_schedule_constraints_set_array_sizes(sc, arraySizes.release());
+  }
+
   return sc;
 }
 
@@ -361,7 +401,7 @@ void transform(LLVM::LLVMFuncOp f) {
   });
 
   ppcg_scop *ps = computeDeps(*scop);
-  isl_schedule_constraints *sc = construct_schedule_constraints(ps);
+  isl_schedule_constraints *sc = construct_schedule_constraints(ps, *scop);
 
   LLVM_DEBUG({
     llvm::dbgs() << "Schedule constraints:\n";

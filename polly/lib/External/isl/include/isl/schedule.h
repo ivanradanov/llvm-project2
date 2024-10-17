@@ -75,8 +75,15 @@ isl_schedule_constraints_set_live_range_span(
     __isl_take isl_schedule_constraints *sc,
     __isl_take isl_union_map *live_range_span);
 __isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_array_sizes(
+	__isl_take isl_schedule_constraints *sc,
+	__isl_take isl_union_map *live_range_span);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_caches(__isl_take isl_schedule_constraints *sc,
+									int n_cache, const int *cache_size);
+__isl_export __isl_give isl_schedule_constraints *
 isl_schedule_constraints_set_proximity(__isl_take isl_schedule_constraints *sc,
-                                       __isl_take isl_union_map *proximity);
+									   __isl_take isl_union_map *proximity);
 __isl_export
 __isl_give isl_schedule_constraints *
 isl_schedule_constraints_set_conditional_validity(
