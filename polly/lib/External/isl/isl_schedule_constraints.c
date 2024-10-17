@@ -263,7 +263,8 @@ isl_schedule_constraints_set_caches(__isl_take isl_schedule_constraints *sc,
 __isl_give isl_schedule_constraints *isl_schedule_constraints_set_array_sizes(
 	__isl_take isl_schedule_constraints *sc,
 	__isl_take isl_union_map *array_sizes) {
-	return isl_schedule_constraints_set(sc, isl_edge_array_sizes, array_sizes);
+	sc->array_size = array_sizes;
+	return sc;
 }
 
 /* Replace the proximity constraints of "sc" by "proximity".
@@ -516,7 +517,7 @@ enum isl_sc_key {
 	isl_sc_key_proximity = isl_edge_proximity,
 	isl_sc_key_anti_proximity = isl_edge_anti_proximity,
 	isl_sc_key_live_range_span = isl_edge_live_range_span,
-	isl_sc_key_array_sizes = isl_edge_array_sizes,
+	isl_sc_key_array_size,
 	isl_sc_key_domain,
 	isl_sc_key_context,
 	isl_sc_key_end
@@ -533,7 +534,7 @@ static char *key_str[] = {
 	[isl_sc_key_proximity] = "proximity",
 	[isl_sc_key_anti_proximity] = "anti_proximity",
 	[isl_sc_key_live_range_span] = "live_range_span",
-	[isl_sc_key_array_sizes] = "array_sizes",
+	[isl_sc_key_array_size] = "array_sizes",
 	[isl_sc_key_domain] = "domain",
 	[isl_sc_key_context] = "context",
 };
@@ -596,6 +597,8 @@ __isl_give isl_printer *isl_printer_print_schedule_constraints(
 						sc->context);
 	for (int i = isl_edge_first; i <= isl_edge_last; i++)
 		p = print_constraint(p, sc, i);
+	p = print_yaml_field_union_set(p, key_str[isl_sc_key_array_size],
+								   sc->array_size);
 	p = isl_printer_yaml_end_mapping(p);
 
 	return p;
