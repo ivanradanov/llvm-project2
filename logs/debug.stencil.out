@@ -502,7 +502,7 @@ New AST:
       - val: 42
       - op: sub
         args:
-        - id: P0@0x31416400
+        - id: P0@0x1e87ad00
         - val: 1
   inc:
     val: 1
@@ -510,7 +510,7 @@ New AST:
     user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x314349e0
+      - id: RS0_affine_parallel@0x1e899780
       - id: c0
       - val: 0
       - val: 0
@@ -524,7 +524,7 @@ New AST:
     - id: c0
     - op: add
       args:
-      - id: P0@0x31416400
+      - id: P0@0x1e87ad00
       - val: 42
   inc:
     val: 1
@@ -532,7 +532,7 @@ New AST:
   - user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x31432220
+      - id: RS1_affine_parallel@0x1e896fc0
       - op: sub
         args:
         - id: c0
@@ -542,7 +542,7 @@ New AST:
   - guard:
       op: ge
       args:
-      - id: P0@0x31416400
+      - id: P0@0x1e87ad00
       - op: add
         args:
         - id: c0
@@ -551,7 +551,7 @@ New AST:
       user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x314349e0
+        - id: RS0_affine_parallel@0x1e899780
         - id: c0
         - val: 0
         - val: 0
