@@ -275,6 +275,8 @@ struct isl_sched_graph {
 	int n_cache;
 	int cache_size[ISL_MAX_CACHES];
 	isl_union_map *array_size;
+
+	int n_bands_found;
 };
 
 isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,

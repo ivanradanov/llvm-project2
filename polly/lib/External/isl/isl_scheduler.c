@@ -54,7 +54,8 @@
 
 #define IRI_TEST(code)                                                         \
 	do {                                                                       \
-		code;                                                                  \
+		if (getenv("IRI_TEST"))                                                \
+			code;                                                              \
 	} while (0)
 
 static isl_bool always(const void *entry, const void *val) { return 1; }
@@ -3102,32 +3103,6 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 					   -1);
 	}
 
-	IRI_TEST({
-		// k = isl_basic_set_alloc_equality(graph->lp);
-		// if (k < 0)
-		//  return isl_stat_error;
-		// isl_seq_clr(graph->lp->eq[k], total + 1);
-		// isl_int_set_si(graph->lp->eq[k][0], 1);
-		// isl_int_set_si(graph->lp->eq[k][11 + 1],
-		//               -1);
-
-		// k = isl_basic_set_alloc_equality(graph->lp);
-		// if (k < 0)
-		//  return isl_stat_error;
-		// isl_seq_clr(graph->lp->eq[k], total + 1);
-		// isl_int_set_si(graph->lp->eq[k][0], 1);
-		// isl_int_set_si(graph->lp->eq[k][15 + 1],
-		//               -1);
-
-		// k = isl_basic_set_alloc_equality(graph->lp);
-		// if (k < 0)
-		//   return isl_stat_error;
-		// isl_seq_clr(graph->lp->eq[k], total + 1);
-		// isl_int_set_si(graph->lp->eq[k][0], 5);
-		// isl_int_set_si(graph->lp->eq[k][8 + 1],
-		//                -1);
-	});
-
 	return isl_stat_ok;
 }
 
@@ -3319,28 +3294,12 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 
 	graph->lp = isl_basic_set_alloc_space(space, 0, n_eq, n_ineq);
 
-	IRI_TEST({
-		fputs("none:\n", stderr);
-		isl_basic_set_dump(graph->lp);
-	});
 	if (use_async && add_all_anti_proximity_constraints(graph) < 0)
 		return isl_stat_error;
-	IRI_TEST({
-		fputs("w/ap:\n", stderr);
-		isl_basic_set_dump(graph->lp);
-	});
 	if (use_async && add_all_live_range_span_constraints(graph) < 0)
 		return isl_stat_error;
-	IRI_TEST({
-		fputs("w/lsr:\n", stderr);
-		isl_basic_set_dump(graph->lp);
-	});
 	if (use_async && add_span_constraint(graph) < 0)
 		return isl_stat_error;
-	IRI_TEST({
-		fputs("w/span:\n", stderr);
-		isl_basic_set_dump(graph->lp);
-	});
 	if (add_sum_constraint(graph, graph->pos_remap[0], param_pos, 2 * nparam) <
 		0)
 		return isl_stat_error;
@@ -4242,6 +4201,8 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 	sub->n_cache = graph->n_cache;
 	for (int i = 0; i < sub->n_cache; i++)
 		sub->cache_size[i] = graph->cache_size[i];
+
+	sub->n_bands_found = graph->n_bands_found;
 
 	return isl_stat_ok;
 }
@@ -6246,9 +6207,10 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 {
 	int has_coincidence;
 	int use_coincidence;
-	int use_async = 1;
 	int force_coincidence = 0;
 	int check_conditional;
+
+	int use_async = graph->n_bands_found >= 1;
 
 	if (sort_sccs(graph) < 0)
 		return isl_stat_error;
@@ -6279,6 +6241,10 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 		IRI_TEST({
 			fputs("setup lp:\n", stderr);
 			isl_basic_set_dump(graph->lp);
+			fprintf(stderr, "is_empty: %d\n",
+					isl_basic_set_is_empty(graph->lp));
+			isl_basic_set_dump(
+				isl_basic_set_sample(isl_basic_set_copy(graph->lp)));
 		});
 		sol = solve_lp(ctx, graph);
 		IRI_TEST({
@@ -6295,6 +6261,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 				use_coincidence = 0;
 				continue;
 			}
+			graph->n_bands_found += 1;
 			return isl_stat_ok;
 		}
 		coincident = !has_coincidence || use_coincidence;
@@ -6313,6 +6280,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 		use_coincidence = has_coincidence;
 	}
 
+	graph->n_bands_found += 1;
 	return isl_stat_ok;
 }
 

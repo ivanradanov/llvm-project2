@@ -309,19 +309,22 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
 // 4.3 below, the false dependence relation is only used for historical
 // reasons." Try disabling for now.
 #if 0
-      proximity =
-          isl_union_map_union(proximity, isl_union_map_copy(scop->dep_false));
+    proximity =
+        isl_union_map_union(proximity, isl_union_map_copy(scop->dep_false));
 #endif
     coincidence = isl_union_map_copy(validity);
     coincidence = isl_union_map_subtract(
         coincidence, isl_union_map_copy(scop->independence));
-    // TODO this is introducing unwanted dependencies, like these, dont know
-    // why, need to investigate
-    //   "[P0] -> { RS1[i0, 0, 0] -> RS0[o0, 0, 0] : i0 >= 0 and i0 < o0 < P0;
-    //   RS0_affine_parallel[i0, 0, 0] -> RS1_affine_parallel[i0, 0, 0] : 0 <=
-    //   i0 < P0 }"
+// TODO this is introducing unwanted dependencies, like these, dont know
+// why, need to investigate
+//   "[P0] -> { RS1[i0, 0, 0] -> RS0[o0, 0, 0] : i0 >= 0 and i0 < o0 < P0;
+//   RS0_affine_parallel[i0, 0, 0] -> RS1_affine_parallel[i0, 0, 0] : 0 <=
+//   i0 < P0 }"
+// Disable for now.
+#if 0
     coincidence =
         isl_union_map_union(coincidence, isl_union_map_copy(scop->array_order));
+#endif
   } else {
     dep_raw = isl_union_map_copy(scop->dep_flow);
     dep = isl_union_map_copy(scop->dep_false);
