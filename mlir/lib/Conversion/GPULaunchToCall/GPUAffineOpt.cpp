@@ -26,13 +26,11 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/Support/ErrorHandling.h"
-
-#include "LoopDistribute.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "polly/Support/GICHelper.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include "isl/ast.h"
 #include "isl/ast_build.h"
@@ -45,6 +43,9 @@
 #include "isl/space.h"
 #include "isl/union_map.h"
 #include "isl/union_set.h"
+
+#include "ISLUtils.h"
+#include "LoopDistribute.h"
 
 using namespace mlir;
 
@@ -340,8 +341,7 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
   sc = isl_schedule_constraints_set_proximity(sc, proximity);
   sc = isl_schedule_constraints_set_anti_proximity(sc, anti_proximity);
   isl_union_map *lrs = isl_union_map_copy(scop->atagged_dep_flow);
-  isl_bool exact;
-  lrs = isl_union_map_transitive_closure(lrs, &exact);
+  lrs = get_maximal_paths(isl::manage(lrs)).release();
   sc = isl_schedule_constraints_set_live_range_span(sc, lrs);
 
   isl_union_set *arrays = isl_union_map_range(isl_union_set_unwrap(
