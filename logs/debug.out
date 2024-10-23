@@ -670,7 +670,7 @@ condition: "[P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, 0] -> S11_affine_
 conditional_validity: "[P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS2_affine_parallel[o0, o1, 0, o3] -> S27_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS2_affine_parallel[i0, o1, 0, o3] -> S27_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS2_affine_parallel[o0, o1, 0, o3] -> S27_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS2_affine_parallel[i0, o1, 0, o3] -> S27_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS2_affine_parallel[i0, i1, 0, o3] -> S27_affine_store_Write0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2; [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS0_affine_parallel[o0, o1, 0] -> S11_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0; [RS3_affine_parallel[i0, i1, 0] -> S30_affine_load_Read0[]] -> [RS0_affine_parallel[i0, o1, 0] -> S11_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] -> [RS1_affine_parallel[o0, o1, 0, o3] -> S14_affine_vector_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, o1, 0, o3] -> S14_affine_vector_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S20_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, i1, 0, o3] -> S14_affine_vector_store_Write0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS0_affine_parallel[o0, o1, 0] -> S11_affine_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> S18_affine_load_Read0[]] -> [RS0_affine_parallel[i0, o1, 0] -> S11_affine_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0; [RS3_affine_parallel[i0, i1, 0] -> S32_affine_vector_store_MayWrite0[]] -> [RS3_affine_parallel[o0, o1, 0] -> S32_affine_vector_store_MayWrite0[]] : i0 >= 0 and 0 <= i1 < P0 and i0 < o0 < P1 and 0 <= o1 < P0; [RS3_affine_parallel[i0, i1, 0] -> S32_affine_vector_store_MayWrite0[]] -> [RS3_affine_parallel[i0, o1, 0] -> S32_affine_vector_store_MayWrite0[]] : 0 <= i0 < P1 and i1 >= 0 and i1 < o1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] -> [RS1_affine_parallel[o0, o1, 0, o3] -> S16_affine_vector_store_Write0[]] : i0 >= 0 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 and i0 < o0 < P1 and 0 <= o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, o1, 0, o3] -> S16_affine_vector_store_Write0[]] : 0 <= i0 < P1 and i1 >= 0 and i3 >= 0 and 16i3 < P2 and i1 < o1 < P0 and o3 >= 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> S22_affine_vector_load_Read0[]] -> [RS1_affine_parallel[i0, i1, 0, o3] -> S16_affine_vector_store_Write0[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and o3 > i3 and 16o3 < P2 }"
 proximity: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] -> RS2_affine_parallel[i0, i1, 0, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] -> RS3_affine_parallel[i0, i1, 0] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and -16 + P2 <= 16i3 < P2; RS2_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, 1 + i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; RS1_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS0_affine_parallel[i0, i1, 0] -> RS3_affine_parallel[i0, i1, 0] : P2 <= 0 and 0 <= i0 < P1 and 0 <= i1 < P0 }"
 anti_proximity: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, 0, i3] -> RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 }"
-live_range_span: "[P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_7[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; [RS0_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[i0, i1, 0, o3] -> A_memref_alloca_res_4[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and o3 > 0 and 16o3 < P2; [RS0_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[i0, i1, 0, 0] -> A_memref_alloca_res_4[]] : P2 > 0 and 0 <= i0 < P1 and 0 <= i1 < P0; [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[i0, i1, 0, o3] -> A_memref_alloca_res_4[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2 and o3 > i3 and o3 > 0 and 16o3 < P2; [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and 16i3 < P2 and ((P2 > 0 and 16i3 >= -16 + P2) or (i3 >= 0 and 16i3 <= -17 + P2)); [RS0_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and (P2 <= 0 or P2 >= 17 or (0 < P2 <= 16)); [RS1_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_10[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 }"
+live_range_span: "[P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_7[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; [RS0_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[i0, i1, 0] -> A_memref_alloca_res_4[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and (P2 >= 17 or P2 <= 0 or (0 < P2 <= 16)); [RS1_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[i0, i1, 0, i3] -> A_memref_alloca_res_10[]] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2 }"
 array_sizes: "[P0, P1, P2, P3] -> { A_memref_alloca_res_10[] -> [1024]; A_memref_alloca_res_4[] -> [1024]; A_memref_alloca_res_7[] -> [1024] }"
 setup lp:
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51] : i11 = i10 and i30 = i19 and i50 = i19 and i50 = i30 and i41 = i30 and i46 = i3 - i12 - i13 - i14 - i15 - i21 - i22 - i23 - i24 - i25 - i26 - i32 - i33 - i34 - i35 - i36 - i37 - i43 - i44 - i45 and i50 = i2 - i16 - i17 - i18 - i19 - i27 - i28 - i29 - i30 - i38 - i39 - i40 - i41 - i47 - i48 - i49 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i41 = i30 and i50 = i30 and i50 = i19 and i30 = i19 and i22 >= i21 and i39 <= -i23 + i24 + i28 + i34 - i35 and i39 <= i28 and i38 <= -i25 + i26 + i27 + i36 - i37 and i38 <= i27 and 16i40 <= -i21 + i22 + 16i29 + i32 - i33 and i40 <= i29 and i42 <= i27 + i28 + i29 + i31 - i38 - i39 - i40 and 16i49 >= -i21 + i22 + 16i29 and i48 >= i28 and i47 >= -i25 + i26 + i27 + i45 - i46 and i47 >= i27 and i48 >= -i23 + i24 + i28 + i43 - i44 and i51 >= i27 + i28 + i29 + i31 - i47 - i48 - i49 and 16i51 >= 15i21 - 15i22 + 16i27 + 16i28 + 16i29 + 16i31 - 16i47 - 16i48 - 16i49 and i49 <= i18 and i48 >= -i12 + i13 + i17 + i43 - i44 and i48 >= i17 and i47 >= -i14 + i15 + i16 + i45 - i46 and i47 >= i16 and i51 >= i16 + i17 + i20 - i47 - i48 and i29 >= i18 and i28 >= -i12 + i13 + i17 + i23 - i24 and i28 >= i17 and i27 >= -i14 + i15 + i16 + i25 - i26 and i27 >= i16 and i31 >= i16 + i17 + i18 + i20 - i27 - i28 - i29 and i39 >= -i23 + i24 + i28 + i34 - i35 and i39 >= i28 and i38 >= -i25 + i26 + i27 + i36 - i37 and i38 >= i27 and 16i40 >= -i21 + i22 + 16i29 + i32 - i33 and i40 >= i29 and i42 >= i27 + i28 + i29 + i31 - i38 - i39 - i40 and 16i49 <= -i21 + i22 + 16i29 and i48 <= i28 and i47 <= -i25 + i26 + i27 + i45 - i46 and i47 <= i27 and i48 <= -i23 + i24 + i28 + i43 - i44 and i51 <= i27 + i28 + i29 + i31 - i47 - i48 - i49 and 16i51 <= 15i21 - 15i22 + 16i27 + 16i28 + 16i29 + 16i31 - 16i47 - 16i48 - 16i49 and i49 >= i18 and i48 <= -i12 + i13 + i17 + i43 - i44 and i48 <= i17 and i47 <= -i14 + i15 + i16 + i45 - i46 and i47 <= i16 and i51 <= i16 + i17 + i20 - i47 - i48 and i29 <= i18 and i28 <= -i12 + i13 + i17 + i23 - i24 and i28 <= i17 and i27 <= -i14 + i15 + i16 + i25 - i26 and i27 <= i16 and i31 <= i16 + i17 + i18 + i20 - i27 - i28 - i29 and i5 >= i4 and i7 >= i6 and i9 >= i8 and i22 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i21 }
@@ -697,15 +697,57 @@ is_empty: 0
 sol:
 []
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i12 = i11 and i40 = i11 - i12 + i29 and i40 = i29 and i36 = i4 - i20 - i21 - i22 - i23 - i24 - i25 - i31 - i32 - i33 - i34 - i35 and i40 = i3 - i26 - i27 - i28 - i29 - i37 - i38 - i39 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and 0 = 0 and i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 and 1024i19 <= 48000 - 1024i17 - 1024i18 and i17 > 0 and i18 > 0 and i19 > 0 and i21 >= i20 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= i7 - i8 - i22 + i23 + i27 + i33 - i34 and i38 >= i7 - i8 + i27 and i37 >= i5 - i6 - i24 + i25 + i26 + i35 - i36 and i37 >= i5 - i6 + i26 and 16i39 >= 16i9 - 16i10 - i20 + i21 + 16i28 + i31 - i32 and i39 >= i9 - i10 + i28 and i41 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i21 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i20 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39] : i12 = i11 and i38 = i11 - i12 + i27 and i38 = i27 and i34 = i4 - i18 - i19 - i20 - i21 - i22 - i23 - i29 - i30 - i31 - i32 - i33 and i38 = i3 - i24 - i25 - i26 - i27 - i35 - i36 - i37 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i17 = 1 + i15 and i16 = 1 + i14 and i38 = i27 and i38 = i27 and i38 = i27 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= -i18 + i19 + 16i26 + i29 - i30 and i37 <= i26 and i39 <= -i13 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and 16i37 >= -i18 + i19 + 16i26 + i29 - i30 and i37 >= i26 and i39 >= -i14 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i36 >= -i20 + i21 + i25 + i31 - i32 and i36 >= i25 and i35 >= -i22 + i23 + i24 + i33 - i34 and i35 >= i24 and 16i37 >= -i18 + i19 + 16i26 + i29 - i30 and i37 >= i26 and i39 >= -i15 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and 1024i17 <= 48000 - 1024i16 and i16 > 0 and i17 > 0 and i19 >= i18 and i36 <= -i20 + i21 + i25 + i31 - i32 and i36 <= i25 and i35 <= -i22 + i23 + i24 + i33 - i34 and i35 <= i24 and 16i37 <= -i18 + i19 + 16i26 + i29 - i30 and i37 <= i26 and i39 <= i24 + i25 + i26 + i28 - i35 - i36 - i37 and i36 >= i7 - i8 - i20 + i21 + i25 + i31 - i32 and i36 >= i7 - i8 + i25 and i35 >= i5 - i6 - i22 + i23 + i24 + i33 - i34 and i35 >= i5 - i6 + i24 and 16i37 >= 16i9 - 16i10 - i18 + i19 + 16i26 + i29 - i30 and i37 >= i9 - i10 + i26 and i39 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i24 + i25 + i26 + i28 - i35 - i36 - i37 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i19 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i18 }
 is_empty: 0
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i0 = 100000 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 43 and i16 = 0 and i17 = 1 and i18 = 44 and i19 = 1 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 and i24 = 0 and i25 = 0 and i26 = 0 and i27 = 0 and i28 = 0 and i29 = 0 and i30 = 0 and i31 = 0 and i32 = 0 and i33 = 0 and i34 = 0 and i35 = 0 and i36 = 0 and i37 = 0 and i38 = 0 and i39 = 0 and i40 = 0 and i41 = 0 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39] : i0 = 99978 and i1 = 22 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 22 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 22 and i14 = 22 and i15 = 22 and i16 = 23 and i17 = 23 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 and i24 = 0 and i25 = 0 and i26 = 0 and i27 = 0 and i28 = 22 and i29 = 0 and i30 = 0 and i31 = 0 and i32 = 0 and i33 = 0 and i34 = 0 and i35 = 0 and i36 = 0 and i37 = 0 and i38 = 0 and i39 = 0 }
+sol:
+[1,99978,0,22,0,2,0,0,0,0,0,0,0,0,22,22,22,23,23,0,1,0,0,0,0,0,0,0,0,22,0,1,0,0,0,0,0,0,0,0,0]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and 22i13 >= 22i12 and i19 >= i14 and i20 >= i15 and 16i21 >= -i12 + i13 + 16i16 and i23 >= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 >= -337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 <= i14 and i20 <= i15 and 16i21 <= -i12 + i13 + 16i16 and i23 <= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 <= -337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and 22i13 <= 22i12 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
 sol:
 []
 setup lp:
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i12 = i11 and i40 = i11 - i12 + i29 and i40 = i29 and i36 = i4 - i20 - i21 - i22 - i23 - i24 - i25 - i31 - i32 - i33 - i34 - i35 and i40 = i3 - i26 - i27 - i28 - i29 - i37 - i38 - i39 and i13 = 100000 - i0 and i12 = i1 - i5 - i6 - i7 - i8 - i9 - i10 - i11 and i19 = 1 + i16 and i18 = 1 + i15 and i17 = 1 + i14 and 0 = 0 and i40 = i29 and i40 = i29 and i40 = i29 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= -i13 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i15 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= -i22 + i23 + i27 + i33 - i34 and i38 >= i27 and i37 >= -i24 + i25 + i26 + i35 - i36 and i37 >= i26 and 16i39 >= -i20 + i21 + 16i28 + i31 - i32 and i39 >= i28 and i41 >= -i16 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i21 <= i20 and i21 <= i14 + i20 and 1024i19 <= 48000 - 1024i17 - 1024i18 and i17 > 0 and i18 > 0 and i19 > 0 and i21 >= i20 and i38 <= -i22 + i23 + i27 + i33 - i34 and i38 <= i27 and i37 <= -i24 + i25 + i26 + i35 - i36 and i37 <= i26 and 16i39 <= -i20 + i21 + 16i28 + i31 - i32 and i39 <= i28 and i41 <= i26 + i27 + i28 + i30 - i37 - i38 - i39 and i38 >= i7 - i8 - i22 + i23 + i27 + i33 - i34 and i38 >= i7 - i8 + i27 and i37 >= i5 - i6 - i24 + i25 + i26 + i35 - i36 and i37 >= i5 - i6 + i26 and 16i39 >= 16i9 - 16i10 - i20 + i21 + 16i28 + i31 - i32 and i39 >= i9 - i10 + i28 and i41 >= -i2 + i5 - i6 + i7 - i8 + i9 - i10 + i26 + i27 + i28 + i30 - i37 - i38 - i39 and i6 >= i5 and i8 >= i7 and i10 >= i9 and i21 <= i2 - i5 + i6 - i7 + i8 - 17i9 + 17i10 + i20 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = -i10 + i11 + i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and i19 >= i14 and i20 >= i15 and 16i21 >= -i12 + i13 + 16i16 and i23 >= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 >= -337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 <= -i4 + i5 + i14 and i20 <= -i6 + i7 + i15 and 16i21 <= -16i8 + 16i9 - i12 + i13 + 16i16 and i23 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 - 22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 <= 16i1 - 16i4 + 16i5 - 16i6 + 16i7 - 16i8 + 16i9 - 337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 }
 is_empty: 0
-{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41] : i0 = 100000 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 43 and i16 = 0 and i17 = 1 and i18 = 44 and i19 = 1 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 and i24 = 0 and i25 = 0 and i26 = 0 and i27 = 0 and i28 = 0 and i29 = 0 and i30 = 0 and i31 = 0 and i32 = 0 and i33 = 0 and i34 = 0 and i35 = 0 and i36 = 0 and i37 = 0 and i38 = 0 and i39 = 0 and i40 = 0 and i41 = 0 }
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
+sol:
+[1,0,352,1,16,0,0,0,0,0,0,0,0,0,16,0,0,0,0,0,0,0,1,0,351]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and 22i13 >= 22i12 and i19 >= i14 and i20 >= i15 and 16i21 >= -i12 + i13 + 16i16 and i23 >= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 >= -337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 <= i14 and i20 <= i15 and 16i21 <= -i12 + i13 + 16i16 and i23 <= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 <= -337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and 22i13 <= 22i12 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
+sol:
+[]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = -i10 + i11 + i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and 22i13 >= 22i12 and i19 >= i14 and i20 >= i15 and 16i21 >= -i12 + i13 + 16i16 and i23 >= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 >= -337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 <= -i4 + i5 + i14 and i20 <= -i6 + i7 + i15 and 16i21 <= -16i8 + 16i9 - i12 + i13 + 16i16 and i23 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 - 22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 16i23 <= 16i1 - 16i4 + 16i5 - 16i6 + 16i7 - 16i8 + 16i9 - 337i12 + 337i13 + 16i14 + 16i15 + 16i16 + 16i18 - 16i19 - 16i20 - 16i21 and 22i13 <= 22i12 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
+sol:
+[]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and 22i13 >= 22i12 and i19 <= i14 and i20 <= i15 and i21 <= i16 and i23 <= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 >= i14 and i20 >= i15 and i21 >= i16 and i23 >= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 22i13 <= 22i12 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
+sol:
+[]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = i10 - i11 + i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and i19 <= i14 and i20 <= i15 and i21 <= i16 and i23 <= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 >= i4 - i5 + i14 and i20 >= i6 - i7 + i15 and i21 >= i8 - i9 + i16 and i23 >= -i1 + i4 - i5 + i6 - i7 + i8 - i9 - 22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
+sol:
+[1,0,22,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and 22i13 >= 22i12 and i19 <= i14 and i20 <= i15 and i21 <= i16 and i23 <= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 >= i14 and i20 >= i15 and i21 >= i16 and i23 >= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 22i13 <= 22i12 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
+sol:
+[]
+setup lp:
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i22 = i10 - i11 + i17 and i11 = i10 and i13 = i3 - i12 and i22 = i2 - i14 - i15 - i16 - i17 - i19 - i20 - i21 and i11 = i0 - i4 - i5 - i6 - i7 - i8 - i9 - i10 and i22 = i17 and 22i13 >= 22i12 and i13 >= i12 and 22i13 >= 22i12 and i19 <= i14 and i20 <= i15 and i21 <= i16 and i23 <= -22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and i5 >= i4 and i7 >= i6 and i9 >= i8 and 22i13 <= i1 - i4 + i5 - i6 + i7 - i8 + i9 + 22i12 and i13 <= i1 - i4 + i5 - i6 + i7 - 17i8 + 17i9 + i12 and i19 >= i4 - i5 + i14 and i20 >= i6 - i7 + i15 and i21 >= i8 - i9 + i16 and i23 >= -i1 + i4 - i5 + i6 - i7 + i8 - i9 - 22i12 + 22i13 + i14 + i15 + i16 + i18 - i19 - i20 - i21 and 22i13 <= 22i12 }
+is_empty: 0
+{ [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 }
 sol:
 []
 New Schedule:
@@ -719,11 +761,13 @@ child:
     - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
     - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
       child:
-        schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+        schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(22 + i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+        permutable: 1
+        coincident: [ 1 ]
         child:
           sequence:
-          - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
           - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+          - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
     - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
 New AST:
 iterator:
@@ -734,7 +778,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P0@0x1bba5860
+  - id: P0@0x46ff35d0
 inc:
   val: 1
 body:
@@ -746,14 +790,14 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P1@0x1bba5dd0
+    - id: P1@0x46ff36c0
   inc:
     val: 1
   body:
   - user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x1bb38880
+      - id: RS0_affine_parallel@0x47006ff0
       - id: c1
       - id: c0
       - val: 0
@@ -765,36 +809,83 @@ body:
       op: le
       args:
       - id: c2
-      - op: fdiv_q
+      - op: min
         args:
-        - op: sub
+        - val: 21
+        - op: fdiv_q
           args:
-          - id: P2@0x1bbe2040
-          - val: 1
-        - val: 16
+          - op: sub
+            args:
+            - id: P2@0x4702bc50
+            - val: 1
+          - val: 16
+    inc:
+      val: 1
+    body:
+      user:
+        op: call
+        args:
+        - id: RS1_affine_parallel@0x46ff0170
+        - id: c1
+        - id: c0
+        - val: 0
+        - id: c2
+  - iterator:
+      id: c2
+    init:
+      val: 22
+    cond:
+      op: le
+      args:
+      - id: c2
+      - op: add
+        args:
+        - op: fdiv_q
+          args:
+          - op: sub
+            args:
+            - id: P2@0x4702bc50
+            - val: 1
+          - val: 16
+        - val: 22
     inc:
       val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x1bba1b00
+        - id: RS2_affine_parallel@0x46fff040
         - id: c1
         - id: c0
         - val: 0
-        - id: c2
-    - user:
-        op: call
+        - op: sub
+          args:
+          - id: c2
+          - val: 22
+    - guard:
+        op: ge
         args:
-        - id: RS2_affine_parallel@0x1bbb9700
-        - id: c1
-        - id: c0
-        - val: 0
-        - id: c2
+        - id: P2@0x4702bc50
+        - op: add
+          args:
+          - op: mul
+            args:
+            - val: 16
+            - id: c2
+          - val: 1
+      then:
+        user:
+          op: call
+          args:
+          - id: RS1_affine_parallel@0x46ff0170
+          - id: c1
+          - id: c0
+          - val: 0
+          - id: c2
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x1bbb9460
+      - id: RS3_affine_parallel@0x47006f50
       - id: c1
       - id: c0
       - val: 0
@@ -824,67 +915,114 @@ New func:
     ^bb0(%arg13: i64):
       %17 = "arith.constant"() <{value = 0 : i64}> : () -> i64
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-      ^bb0(%arg26: index, %arg27: index, %arg28: index):
-        "affine.store"(%0, %10, %arg26, %arg27, %arg28) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S11_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
+      ^bb0(%arg30: index, %arg31: index, %arg32: index):
+        "affine.store"(%0, %10, %arg30, %arg31, %arg32) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S11_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
         "affine.yield"() {polymer.stmt.name = "S12_affine_yield"} : () -> ()
       }) {gpu.par.block, polymer.stmt.name = "RS0_affine_parallel"} : () -> ()
       %18 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %19 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %20 = "arith.index_cast"(%5) : (index) -> i64
-      %21 = "arith.subi"(%20, %19) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %22 = "arith.constant"() <{value = 16 : i64}> : () -> i64
-      %23 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %24 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %25 = "arith.subi"(%21, %22) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %26 = "arith.addi"(%25, %23) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %27 = "arith.cmpi"(%21, %24) <{predicate = 2 : i64}> : (i64, i64) -> i1
-      %28 = "arith.select"(%27, %26, %21) : (i1, i64, i64) -> i64
-      %29 = "arith.divsi"(%28, %22) : (i64, i64) -> i64
-      %30 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %31 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %32 = "arith.addi"(%29, %31) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      "scf.for"(%18, %32, %30) ({
-      ^bb0(%arg17: i64):
-        %38 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-        %39 = "arith.index_cast"(%arg12) : (i64) -> index
-        %40 = "arith.index_cast"(%arg13) : (i64) -> index
-        %41 = "arith.index_cast"(%arg13) : (i64) -> index
+      %19 = "arith.constant"() <{value = 21 : i64}> : () -> i64
+      %20 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %21 = "arith.index_cast"(%5) : (index) -> i64
+      %22 = "arith.subi"(%21, %20) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %23 = "arith.constant"() <{value = 16 : i64}> : () -> i64
+      %24 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %25 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+      %26 = "arith.subi"(%22, %23) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %27 = "arith.addi"(%26, %24) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %28 = "arith.cmpi"(%22, %25) <{predicate = 2 : i64}> : (i64, i64) -> i1
+      %29 = "arith.select"(%28, %27, %22) : (i1, i64, i64) -> i64
+      %30 = "arith.divsi"(%29, %23) : (i64, i64) -> i64
+      %31 = "arith.minsi"(%30, %19) : (i64, i64) -> i64
+      %32 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %33 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %34 = "arith.addi"(%31, %33) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      "scf.for"(%18, %34, %32) ({
+      ^bb0(%arg26: i64):
+        %80 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+        %81 = "arith.index_cast"(%arg13) : (i64) -> index
+        %82 = "arith.index_cast"(%arg12) : (i64) -> index
+        %83 = "arith.index_cast"(%arg13) : (i64) -> index
         "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-        ^bb0(%arg23: index, %arg24: index, %arg25: index):
-          %51 = "affine.vector_load"(%2, %arg24, %arg23, %41, %39, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-          "affine.vector_store"(%51, %8, %arg24, %arg23) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
-          %52 = "affine.vector_load"(%1, %arg24, %arg23, %39, %40, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-          "affine.vector_store"(%52, %9, %arg24, %arg23) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        ^bb0(%arg27: index, %arg28: index, %arg29: index):
+          %84 = "affine.vector_load"(%2, %arg28, %arg27, %83, %82, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+          "affine.vector_store"(%84, %8, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+          %85 = "affine.vector_load"(%1, %arg28, %arg27, %82, %81, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+          "affine.vector_store"(%85, %9, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
           "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
         }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
-        %42 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-        "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-        ^bb0(%arg18: index, %arg19: index, %arg20: index):
-          %43 = "affine.load"(%10, %arg18, %arg19, %arg20) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
-          "affine.store_var"(%43, %44) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
-          %44 = "affine.for"(%43) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
-          ^bb0(%arg21: index, %arg22: f32):
-            %45 = "affine.vector_load"(%8, %arg19, %arg21) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
-            %46 = "llvm.bitcast"(%45) {polymer.stmt.name = "S21_llvm_bitcast"} : (vector<4xi8>) -> f32
-            %47 = "affine.vector_load"(%9, %arg21, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
-            %48 = "llvm.bitcast"(%47) {polymer.stmt.name = "S23_llvm_bitcast"} : (vector<4xi8>) -> f32
-            %49 = "llvm.fmul"(%46, %48) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S24_llvm_fmul"} : (f32, f32) -> f32
-            %50 = "llvm.fadd"(%arg22, %49) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S25_llvm_fadd"} : (f32, f32) -> f32
-            "affine.yield"(%50) {polymer.stmt.name = "S26_affine_yield"} : (f32) -> ()
-          }) : (f32) -> f32
-          "affine.store"(%44, %10, %arg18, %arg19, %arg20) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S27_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
-          "affine.yield"() {polymer.stmt.name = "S28_affine_yield"} : () -> ()
-        }) {gpu.par.block, polymer.stmt.name = "RS2_affine_parallel"} : () -> ()
         "scf.yield"() : () -> ()
       }) : (i64, i64, i64) -> ()
-      %33 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %34 = "arith.index_cast"(%arg13) : (i64) -> index
-      %35 = "arith.index_cast"(%arg13) : (i64) -> index
+      %35 = "arith.constant"() <{value = 22 : i64}> : () -> i64
+      %36 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %37 = "arith.index_cast"(%5) : (index) -> i64
+      %38 = "arith.subi"(%37, %36) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %39 = "arith.constant"() <{value = 16 : i64}> : () -> i64
+      %40 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %41 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+      %42 = "arith.subi"(%38, %39) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %43 = "arith.addi"(%42, %40) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %44 = "arith.cmpi"(%38, %41) <{predicate = 2 : i64}> : (i64, i64) -> i1
+      %45 = "arith.select"(%44, %43, %38) : (i1, i64, i64) -> i64
+      %46 = "arith.divsi"(%45, %39) : (i64, i64) -> i64
+      %47 = "arith.constant"() <{value = 22 : i64}> : () -> i64
+      %48 = "arith.addi"(%46, %47) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %49 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %50 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %51 = "arith.addi"(%48, %50) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      "scf.for"(%35, %51, %49) ({
+      ^bb0(%arg17: i64):
+        %57 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+        %58 = "arith.constant"() <{value = 22 : i64}> : () -> i64
+        %59 = "arith.subi"(%arg17, %58) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+        "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
+        ^bb0(%arg21: index, %arg22: index, %arg23: index):
+          %72 = "affine.load"(%10, %arg21, %arg22, %arg23) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
+          "affine.store_var"(%72, %73) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
+          %73 = "affine.for"(%72) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
+          ^bb0(%arg24: index, %arg25: f32):
+            %74 = "affine.vector_load"(%8, %arg22, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+            %75 = "llvm.bitcast"(%74) {polymer.stmt.name = "S21_llvm_bitcast"} : (vector<4xi8>) -> f32
+            %76 = "affine.vector_load"(%9, %arg24, %arg21) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+            %77 = "llvm.bitcast"(%76) {polymer.stmt.name = "S23_llvm_bitcast"} : (vector<4xi8>) -> f32
+            %78 = "llvm.fmul"(%75, %77) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S24_llvm_fmul"} : (f32, f32) -> f32
+            %79 = "llvm.fadd"(%arg25, %78) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S25_llvm_fadd"} : (f32, f32) -> f32
+            "affine.yield"(%79) {polymer.stmt.name = "S26_affine_yield"} : (f32) -> ()
+          }) : (f32) -> f32
+          "affine.store"(%73, %10, %arg21, %arg22, %arg23) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S27_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
+          "affine.yield"() {polymer.stmt.name = "S28_affine_yield"} : () -> ()
+        }) {gpu.par.block, polymer.stmt.name = "RS2_affine_parallel"} : () -> ()
+        %60 = "arith.constant"() <{value = 16 : i64}> : () -> i64
+        %61 = "arith.muli"(%60, %arg17) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+        %62 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+        %63 = "arith.addi"(%61, %62) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+        %64 = "arith.index_cast"(%5) : (index) -> i64
+        %65 = "arith.cmpi"(%64, %63) <{predicate = 5 : i64}> : (i64, i64) -> i1
+        "scf.if"(%65) ({
+          %66 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+          %67 = "arith.index_cast"(%arg13) : (i64) -> index
+          %68 = "arith.index_cast"(%arg12) : (i64) -> index
+          %69 = "arith.index_cast"(%arg13) : (i64) -> index
+          "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
+          ^bb0(%arg18: index, %arg19: index, %arg20: index):
+            %70 = "affine.vector_load"(%2, %arg19, %arg18, %69, %68, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+            "affine.vector_store"(%70, %8, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+            %71 = "affine.vector_load"(%1, %arg19, %arg18, %68, %67, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+            "affine.vector_store"(%71, %9, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+            "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
+          }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
+          "scf.yield"() : () -> ()
+        }, {
+        }) : (i1) -> ()
+        "scf.yield"() : () -> ()
+      }) : (i64, i64, i64) -> ()
+      %52 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+      %53 = "arith.index_cast"(%arg13) : (i64) -> index
+      %54 = "arith.index_cast"(%arg13) : (i64) -> index
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
       ^bb0(%arg14: index, %arg15: index, %arg16: index):
-        %36 = "affine.load"(%10, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S30_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
-        %37 = "llvm.bitcast"(%36) {polymer.stmt.name = "S31_llvm_bitcast"} : (f32) -> vector<4xi8>
-        "affine.vector_store"(%37, %3, %34, %arg14, %arg15, %35, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> (d0 * 64 + d1 * 4 + (d2 * s0) * 4 + (d3 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S32_affine_vector_store"} : (vector<4xi8>, memref<?xi8>, index, index, index, index, index) -> ()
+        %55 = "affine.load"(%10, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S30_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
+        %56 = "llvm.bitcast"(%55) {polymer.stmt.name = "S31_llvm_bitcast"} : (f32) -> vector<4xi8>
+        "affine.vector_store"(%56, %3, %53, %arg14, %arg15, %54, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> (d0 * 64 + d1 * 4 + (d2 * s0) * 4 + (d3 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S32_affine_vector_store"} : (vector<4xi8>, memref<?xi8>, index, index, index, index, index) -> ()
         "affine.yield"() {polymer.stmt.name = "S33_affine_yield"} : () -> ()
       }) {gpu.par.block, polymer.stmt.name = "RS3_affine_parallel"} : () -> ()
       "scf.yield"() : () -> ()
@@ -1001,6 +1139,6 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
 /scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/llvm-to-affine-access3.mlir:122:19: error: 'affine.vector_load' op index must be a valid dimension or symbol identifier
             %34 = llvm.load %33 {alignment = 4 : i64, tbaa = [#tbaa_tag1]} : !llvm.ptr -> f32
                   ^
-/scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/llvm-to-affine-access3.mlir:122:19: note: see current operation: %51 = "affine.vector_load"(%2, %arg24, %arg23, %41, %39, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+/scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/llvm-to-affine-access3.mlir:122:19: note: see current operation: %84 = "affine.vector_load"(%2, %arg28, %arg27, %83, %82, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
 Eliminated dead instances: [P0, P1, P2, P3] -> { S4_arith_index_cast[]; S1_memref_ataddr[]; S9_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S8_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S5_arith_index_cast[]; S3_memref_ataddr[]; S6_arith_index_cast[]; S2_memref_ataddr[]; S29_affine_yield[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; S7_arith_index_cast[]; S34_affine_yield[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S0_llvm_mlir_constant[]; S10_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }
 Eliminated dead instances: [P0, P1, P2, P3] -> { S4_arith_index_cast[]; S1_memref_ataddr[]; S9_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S8_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S5_arith_index_cast[]; S3_memref_ataddr[]; S6_arith_index_cast[]; S2_memref_ataddr[]; S29_affine_yield[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; S7_arith_index_cast[]; S34_affine_yield[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S0_llvm_mlir_constant[]; S10_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }
