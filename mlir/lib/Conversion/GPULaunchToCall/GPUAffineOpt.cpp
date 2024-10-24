@@ -486,7 +486,6 @@ void transform(LLVM::LLVMFuncOp f) {
   }
 
   isl_ast_build_free(build);
-  isl_schedule_free(newSchedule);
 }
 
 } // namespace affine_opt
