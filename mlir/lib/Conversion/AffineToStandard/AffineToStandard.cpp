@@ -495,9 +495,12 @@ public:
     if (!resultOperands)
       return failure();
 
+    auto attr = op->getAttr("polymer.access.type");
     // Build vector.load memref[expandedMap.results].
-    rewriter.replaceOpWithNewOp<vector::LoadOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<vector::LoadOp>(
         op, op.getVectorType(), op.getMemRef(), *resultOperands);
+    if (attr)
+      newOp->setAttr("polymer.access.type", attr);
     return success();
   }
 };
@@ -518,8 +521,12 @@ public:
     if (!maybeExpandedMap)
       return failure();
 
-    rewriter.replaceOpWithNewOp<vector::StoreOp>(
+    auto attr = op->getAttr("polymer.access.type");
+    auto newOp = rewriter.replaceOpWithNewOp<vector::StoreOp>(
         op, op.getValueToStore(), op.getMemRef(), *maybeExpandedMap);
+    if (attr)
+      newOp->setAttr("polymer.access.type", attr);
+
     return success();
   }
 };
