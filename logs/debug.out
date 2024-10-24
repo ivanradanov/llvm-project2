@@ -161,15 +161,15 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
     %alloca_0 = memref.alloca() : memref<1024xi8, 3>
     affine.parallel (%arg15, %arg16, %arg17) = (0, 0, 0) to (16, 16, 1) {
       %13 = affine.for %arg18 = 0 to affine_map<()[s0] -> ((s0 - 1) floordiv 16 + 1)>()[%10] iter_args(%arg19 = %0) -> (f32) {
-        %15 = affine.vector_load %2[(%arg16 * symbol(%7)) * 4 + %arg15 * 4 + %arg18 * 64 + (%arg13 * (symbol(%6) * 16)) * 4] : memref<?xi8>, vector<4xi8>
-        affine.vector_store %15, %alloca[%arg16 * 64 + %arg15 * 4] : memref<1024xi8, 3>, vector<4xi8>
-        %16 = affine.vector_load %1[(%arg16 * symbol(%5)) * 4 + %arg15 * 4 + %arg12 * 64 + (%arg18 * (symbol(%4) * 16)) * 4] : memref<?xi8>, vector<4xi8>
-        affine.vector_store %16, %alloca_0[%arg16 * 64 + %arg15 * 4] : memref<1024xi8, 3>, vector<4xi8>
+        %15 = affine.vector_load %2[(%arg16 * symbol(%7)) * 4 + %arg15 * 4 + %arg18 * 64 + (%arg13 * (symbol(%6) * 16)) * 4] {polymer.access.type = [f32]} : memref<?xi8>, vector<4xi8>
+        affine.vector_store %15, %alloca[%arg16 * 64 + %arg15 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
+        %16 = affine.vector_load %1[(%arg16 * symbol(%5)) * 4 + %arg15 * 4 + %arg12 * 64 + (%arg18 * (symbol(%4) * 16)) * 4] {polymer.access.type = [f32]} : memref<?xi8>, vector<4xi8>
+        affine.vector_store %16, %alloca_0[%arg16 * 64 + %arg15 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
         "affine.barrier"(%arg15, %arg16, %arg17) : (index, index, index) -> ()
         %17 = affine.for %arg20 = 0 to 16 iter_args(%arg21 = %arg19) -> (f32) {
-          %18 = affine.vector_load %alloca[%arg16 * 64 + %arg20 * 4] : memref<1024xi8, 3>, vector<4xi8>
+          %18 = affine.vector_load %alloca[%arg16 * 64 + %arg20 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
           %19 = llvm.bitcast %18 : vector<4xi8> to f32
-          %20 = affine.vector_load %alloca_0[%arg20 * 64 + %arg15 * 4] : memref<1024xi8, 3>, vector<4xi8>
+          %20 = affine.vector_load %alloca_0[%arg20 * 64 + %arg15 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
           %21 = llvm.bitcast %20 : vector<4xi8> to f32
           %22 = llvm.fmul %19, %21  {fastmathFlags = #llvm.fastmath<contract>} : f32
           %23 = llvm.fadd %arg21, %22  {fastmathFlags = #llvm.fastmath<contract>} : f32
@@ -179,7 +179,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
         affine.yield %17 : f32
       }
       %14 = llvm.bitcast %13 : f32 to vector<4xi8>
-      affine.vector_store %14, %3[%arg12 * 64 + %arg15 * 4 + (%arg16 * symbol(%9)) * 4 + (%arg13 * (symbol(%8) * 16)) * 4] : memref<?xi8>, vector<4xi8>
+      affine.vector_store %14, %3[%arg12 * 64 + %arg15 * 4 + (%arg16 * symbol(%9)) * 4 + (%arg13 * (symbol(%8) * 16)) * 4] {polymer.access.type = [f32]} : memref<?xi8>, vector<4xi8>
     } {gpu.par.block}
   } {gpu.par.grid}
   llvm.return
@@ -210,17 +210,17 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
     } {gpu.par.block}
     affine.for %arg15 = 0 to affine_map<()[s0] -> ((s0 - 1) floordiv 16 + 1)>()[%10] {
       affine.parallel (%arg16, %arg17, %arg18) = (0, 0, 0) to (16, 16, 1) {
-        %13 = affine.vector_load %2[(%arg17 * symbol(%7)) * 4 + %arg16 * 4 + %arg15 * 64 + (%arg13 * (symbol(%6) * 16)) * 4] : memref<?xi8>, vector<4xi8>
-        affine.vector_store %13, %alloca[%arg17 * 64 + %arg16 * 4] : memref<1024xi8, 3>, vector<4xi8>
-        %14 = affine.vector_load %1[(%arg17 * symbol(%5)) * 4 + %arg16 * 4 + %arg12 * 64 + (%arg15 * (symbol(%4) * 16)) * 4] : memref<?xi8>, vector<4xi8>
-        affine.vector_store %14, %alloca_0[%arg17 * 64 + %arg16 * 4] : memref<1024xi8, 3>, vector<4xi8>
+        %13 = affine.vector_load %2[(%arg17 * symbol(%7)) * 4 + %arg16 * 4 + %arg15 * 64 + (%arg13 * (symbol(%6) * 16)) * 4] {polymer.access.type = [f32]} : memref<?xi8>, vector<4xi8>
+        affine.vector_store %13, %alloca[%arg17 * 64 + %arg16 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
+        %14 = affine.vector_load %1[(%arg17 * symbol(%5)) * 4 + %arg16 * 4 + %arg12 * 64 + (%arg15 * (symbol(%4) * 16)) * 4] {polymer.access.type = [f32]} : memref<?xi8>, vector<4xi8>
+        affine.vector_store %14, %alloca_0[%arg17 * 64 + %arg16 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
       } {gpu.par.block}
       affine.parallel (%arg16, %arg17, %arg18) = (0, 0, 0) to (16, 16, 1) {
         %13 = affine.load %alloca_1[%arg16, %arg17, %arg18] : memref<?x?x?xf32, 16>
         %14 = affine.for %arg19 = 0 to 16 iter_args(%arg20 = %13) -> (f32) {
-          %15 = affine.vector_load %alloca[%arg17 * 64 + %arg19 * 4] : memref<1024xi8, 3>, vector<4xi8>
+          %15 = affine.vector_load %alloca[%arg17 * 64 + %arg19 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
           %16 = llvm.bitcast %15 : vector<4xi8> to f32
-          %17 = affine.vector_load %alloca_0[%arg19 * 64 + %arg16 * 4] : memref<1024xi8, 3>, vector<4xi8>
+          %17 = affine.vector_load %alloca_0[%arg19 * 64 + %arg16 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
           %18 = llvm.bitcast %17 : vector<4xi8> to f32
           %19 = llvm.fmul %16, %18  {fastmathFlags = #llvm.fastmath<contract>} : f32
           %20 = llvm.fadd %arg20, %19  {fastmathFlags = #llvm.fastmath<contract>} : f32
@@ -232,7 +232,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
     affine.parallel (%arg15, %arg16, %arg17) = (0, 0, 0) to (16, 16, 1) {
       %13 = affine.load %alloca_1[%arg15, %arg16, %arg17] : memref<?x?x?xf32, 16>
       %14 = llvm.bitcast %13 : f32 to vector<4xi8>
-      affine.vector_store %14, %3[%arg12 * 64 + %arg15 * 4 + (%arg16 * symbol(%9)) * 4 + (%arg13 * (symbol(%8) * 16)) * 4] : memref<?xi8>, vector<4xi8>
+      affine.vector_store %14, %3[%arg12 * 64 + %arg15 * 4 + (%arg16 * symbol(%9)) * 4 + (%arg13 * (symbol(%8) * 16)) * 4] {polymer.access.type = [f32]} : memref<?xi8>, vector<4xi8>
     } {gpu.par.block}
   } {gpu.par.grid}
   llvm.return
@@ -257,16 +257,16 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
     affine.for %arg15 = 0 to affine_map<()[s0] -> ((s0 - 1) floordiv 16 + 1)>()[%5] {
       affine.parallel (%arg16, %arg17, %arg18) = (0, 0, 0) to (16, 16, 1) {
         %8 = affine.vector_load %2[(%arg17 * symbol(%5)) * 4 + %arg16 * 4 + %arg15 * 64 + (%arg13 * (symbol(%5) * 16)) * 4] : memref<?xi8>, vector<4xi8>
-        affine.vector_store %8, %alloca[%arg17 * 64 + %arg16 * 4] : memref<1024xi8, 3>, vector<4xi8>
+        affine.vector_store %8, %alloca[%arg17 * 64 + %arg16 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
         %9 = affine.vector_load %1[(%arg17 * symbol(%4)) * 4 + %arg16 * 4 + %arg12 * 64 + (%arg15 * (symbol(%4) * 16)) * 4] : memref<?xi8>, vector<4xi8>
-        affine.vector_store %9, %alloca_0[%arg17 * 64 + %arg16 * 4] : memref<1024xi8, 3>, vector<4xi8>
+        affine.vector_store %9, %alloca_0[%arg17 * 64 + %arg16 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
       } {gpu.par.block}
       affine.parallel (%arg16, %arg17, %arg18) = (0, 0, 0) to (16, 16, 1) {
         %8 = affine.load %alloca_1[%arg16, %arg17, %arg18] : memref<16x16x1xf32, 16>
         %9 = affine.for %arg19 = 0 to 16 iter_args(%arg20 = %8) -> (f32) {
-          %10 = affine.vector_load %alloca[%arg17 * 64 + %arg19 * 4] : memref<1024xi8, 3>, vector<4xi8>
+          %10 = affine.vector_load %alloca[%arg17 * 64 + %arg19 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
           %11 = llvm.bitcast %10 : vector<4xi8> to f32
-          %12 = affine.vector_load %alloca_0[%arg19 * 64 + %arg16 * 4] : memref<1024xi8, 3>, vector<4xi8>
+          %12 = affine.vector_load %alloca_0[%arg19 * 64 + %arg16 * 4] {polymer.access.type = [f32]} : memref<1024xi8, 3>, vector<4xi8>
           %13 = llvm.bitcast %12 : vector<4xi8> to f32
           %14 = llvm.fmul %11, %13  {fastmathFlags = #llvm.fastmath<contract>} : f32
           %15 = llvm.fadd %arg20, %14  {fastmathFlags = #llvm.fastmath<contract>} : f32
@@ -801,7 +801,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P0@0x50b2aed0
+    - id: P0@0x2aee8150
   inc:
     val: 1
   body:
@@ -813,14 +813,14 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P1@0x50b2afc0
+      - id: P1@0x2aee8240
     inc:
       val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x50b14370
+        - id: RS0_affine_parallel@0x2af2e160
         - id: c1
         - id: c0
         - val: 0
@@ -839,7 +839,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P2@0x50b5f8c0
+              - id: P2@0x2af26470
               - val: 1
             - val: 16
       inc:
@@ -848,7 +848,7 @@ node:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x50b275f0
+          - id: RS1_affine_parallel@0x2aee4870
           - id: c1
           - id: c0
           - val: 0
@@ -867,7 +867,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P2@0x50b5f8c0
+              - id: P2@0x2af26470
               - val: 1
             - val: 16
           - val: 22
@@ -877,7 +877,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x50b3d8f0
+          - id: RS2_affine_parallel@0x2aefb470
           - id: c1
           - id: c0
           - val: 0
@@ -888,7 +888,7 @@ node:
       - guard:
           op: ge
           args:
-          - id: P2@0x50b5f8c0
+          - id: P2@0x2af26470
           - op: add
             args:
             - op: mul
@@ -900,7 +900,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x50b275f0
+            - id: RS1_affine_parallel@0x2aee4870
             - id: c1
             - id: c0
             - val: 0
@@ -908,7 +908,7 @@ node:
     - user:
         op: call
         args:
-        - id: RS3_affine_parallel@0x50b3d650
+        - id: RS3_affine_parallel@0x2aefb1d0
         - id: c1
         - id: c0
         - val: 0
@@ -969,9 +969,9 @@ New func:
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
       ^bb0(%arg27: index, %arg28: index, %arg29: index):
         %82 = "affine.vector_load"(%2, %arg28, %arg27, %arg13, %arg12, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-        "affine.vector_store"(%82, %8, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        "affine.vector_store"(%82, %8, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
         %83 = "affine.vector_load"(%1, %arg28, %arg27, %arg12, %arg13, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-        "affine.vector_store"(%83, %9, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        "affine.vector_store"(%83, %9, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
         "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
       }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
       "scf.yield"() : () -> ()
@@ -1004,9 +1004,9 @@ New func:
         "affine.store_var"(%73, %74) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
         %74 = "affine.for"(%73) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg24: index, %arg25: f32):
-          %75 = "affine.vector_load"(%8, %arg22, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+          %75 = "affine.vector_load"(%8, %arg22, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
           %76 = "llvm.bitcast"(%75) {polymer.stmt.name = "S21_llvm_bitcast"} : (vector<4xi8>) -> f32
-          %77 = "affine.vector_load"(%9, %arg24, %arg21) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+          %77 = "affine.vector_load"(%9, %arg24, %arg21) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
           %78 = "llvm.bitcast"(%77) {polymer.stmt.name = "S23_llvm_bitcast"} : (vector<4xi8>) -> f32
           %79 = "llvm.fmul"(%76, %78) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S24_llvm_fmul"} : (f32, f32) -> f32
           %80 = "llvm.fadd"(%arg25, %79) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S25_llvm_fadd"} : (f32, f32) -> f32
@@ -1026,9 +1026,9 @@ New func:
         "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
         ^bb0(%arg18: index, %arg19: index, %arg20: index):
           %71 = "affine.vector_load"(%2, %arg19, %arg18, %arg13, %arg12, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-          "affine.vector_store"(%71, %8, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+          "affine.vector_store"(%71, %8, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
           %72 = "affine.vector_load"(%1, %arg19, %arg18, %arg12, %arg13, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-          "affine.vector_store"(%72, %9, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+          "affine.vector_store"(%72, %9, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
           "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
         }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
         "scf.yield"() : () -> ()
@@ -1075,9 +1075,9 @@ gpu-affine-opt: After opt:
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
       ^bb0(%arg24: index, %arg25: index, %arg26: index):
         %21 = "affine.vector_load"(%2, %arg25, %arg24, %arg13, %arg18, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-        "affine.vector_store"(%21, %8, %arg25, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        "affine.vector_store"(%21, %8, %arg25, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
         %22 = "affine.vector_load"(%1, %arg25, %arg24, %arg18, %arg12, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-        "affine.vector_store"(%22, %9, %arg25, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        "affine.vector_store"(%22, %9, %arg25, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
         "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
       }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
@@ -1086,9 +1086,9 @@ gpu-affine-opt: After opt:
         "affine.store_var"(%13, %14) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
         %14 = "affine.for"(%13) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg22: index, %arg23: f32):
-          %15 = "affine.vector_load"(%8, %arg20, %arg22) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+          %15 = "affine.vector_load"(%8, %arg20, %arg22) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
           %16 = "llvm.bitcast"(%15) {polymer.stmt.name = "S21_llvm_bitcast"} : (vector<4xi8>) -> f32
-          %17 = "affine.vector_load"(%9, %arg22, %arg19) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+          %17 = "affine.vector_load"(%9, %arg22, %arg19) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.access.type = [f32], polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
           %18 = "llvm.bitcast"(%17) {polymer.stmt.name = "S23_llvm_bitcast"} : (vector<4xi8>) -> f32
           %19 = "llvm.fmul"(%16, %18) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S24_llvm_fmul"} : (f32, f32) -> f32
           %20 = "llvm.fadd"(%arg23, %19) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S25_llvm_fadd"} : (f32, f32) -> f32
@@ -1129,15 +1129,15 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
       "affine.barrier"(%arg15, %arg16, %arg17) : (index, index, index) -> ()
       affine.for %arg18 = 0 to affine_map<()[s0] -> ((s0 - 1) floordiv 16 + 1)>()[%5] {
         %10 = affine.vector_load %2[(%arg16 * symbol(%5)) * 4 + %arg15 * 4 + %arg18 * 64 + (%arg13 * (symbol(%5) * 16)) * 4] {polymer.stmt.name = "S13_affine_vector_load"} : memref<?xi8>, vector<4xi8>
-        affine.vector_store %10, %alloca[%arg16 * 64 + %arg15 * 4] {polymer.stmt.name = "S14_affine_vector_store"} : memref<1024xi8, 3>, vector<4xi8>
+        affine.vector_store %10, %alloca[%arg16 * 64 + %arg15 * 4] {polymer.access.type = [f32], polymer.stmt.name = "S14_affine_vector_store"} : memref<1024xi8, 3>, vector<4xi8>
         %11 = affine.vector_load %1[(%arg16 * symbol(%4)) * 4 + %arg15 * 4 + %arg12 * 64 + (%arg18 * (symbol(%4) * 16)) * 4] {polymer.stmt.name = "S15_affine_vector_load"} : memref<?xi8>, vector<4xi8>
-        affine.vector_store %11, %alloca_0[%arg16 * 64 + %arg15 * 4] {polymer.stmt.name = "S16_affine_vector_store"} : memref<1024xi8, 3>, vector<4xi8>
+        affine.vector_store %11, %alloca_0[%arg16 * 64 + %arg15 * 4] {polymer.access.type = [f32], polymer.stmt.name = "S16_affine_vector_store"} : memref<1024xi8, 3>, vector<4xi8>
         "affine.barrier"(%arg15, %arg16, %arg17) : (index, index, index) -> ()
         %12 = affine.load %alloca_1[%arg15, %arg16, %arg17] {polymer.stmt.name = "S18_affine_load"} : memref<16x16x1xf32, 16>
         %13 = affine.for %arg19 = 0 to 16 iter_args(%arg20 = %12) -> (f32) {
-          %14 = affine.vector_load %alloca[%arg16 * 64 + %arg19 * 4] {polymer.stmt.name = "S20_affine_vector_load"} : memref<1024xi8, 3>, vector<4xi8>
+          %14 = affine.vector_load %alloca[%arg16 * 64 + %arg19 * 4] {polymer.access.type = [f32], polymer.stmt.name = "S20_affine_vector_load"} : memref<1024xi8, 3>, vector<4xi8>
           %15 = llvm.bitcast %14 {polymer.stmt.name = "S21_llvm_bitcast"} : vector<4xi8> to f32
-          %16 = affine.vector_load %alloca_0[%arg19 * 64 + %arg15 * 4] {polymer.stmt.name = "S22_affine_vector_load"} : memref<1024xi8, 3>, vector<4xi8>
+          %16 = affine.vector_load %alloca_0[%arg19 * 64 + %arg15 * 4] {polymer.access.type = [f32], polymer.stmt.name = "S22_affine_vector_load"} : memref<1024xi8, 3>, vector<4xi8>
           %17 = llvm.bitcast %16 {polymer.stmt.name = "S23_llvm_bitcast"} : vector<4xi8> to f32
           %18 = llvm.fmul %15, %17  {fastmathFlags = #llvm.fastmath<contract>, polymer.stmt.name = "S24_llvm_fmul"} : f32
           %19 = llvm.fadd %arg20, %18  {fastmathFlags = #llvm.fastmath<contract>, polymer.stmt.name = "S25_llvm_fadd"} : f32
