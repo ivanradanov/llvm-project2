@@ -281,6 +281,7 @@ public:
   isl::union_map getSchedule() const { return getScheduleTree().get_map(); }
   mlir::Operation *applySchedule(__isl_take isl_schedule *newSchedule,
                                  mlir::Operation *f);
+  void cleanup(mlir::Operation *);
 
   isl_ctx *getIslCtx() const { return IslCtx.get(); }
   std::shared_ptr<isl_ctx> getSharedIslCtx() { return IslCtx; }
