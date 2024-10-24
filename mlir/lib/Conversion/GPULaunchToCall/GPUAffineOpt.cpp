@@ -603,6 +603,18 @@ struct ParallelizeSequential
   }
 };
 
+struct AffineVectorStoreLower
+    : public OpRewritePattern<affine::AffineVectorStoreOp> {
+  using OpRewritePattern<affine::AffineVectorStoreOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(affine::AffineVectorStoreOp op,
+                                PatternRewriter &rewriter) const override {
+    auto ty = cast_or_null<TypeAttr>(op->getAttr("polymer.access.type")).getValue();
+    if (!ty)
+      return rewriter.notifyMatchFailure(op, "Access type attribute missing.");
+    return failure();
+  }
+};
+
 } // namespace
 
 namespace mlir {
