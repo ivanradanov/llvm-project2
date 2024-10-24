@@ -881,11 +881,15 @@ static affine::AffineScopeOp insertAffineScope(Block *block,
 
 static constexpr bool useVectorLoadStore = true;
 
-static Operation *createVectorStore(OpBuilder &b, Location loc,
+static Operation *createVectorStore(OpBuilder &b, Location loc, Type ty,
                                     TypedValue<VectorType> v, MemRefVal m,
                                     AffineMap map, ValueRange mapOperands) {
-  if (useVectorLoadStore)
-    return b.create<affine::AffineVectorStoreOp>(loc, v, m, map, mapOperands);
+  if (useVectorLoadStore) {
+    auto vs =
+        b.create<affine::AffineVectorStoreOp>(loc, v, m, map, mapOperands);
+    vs->setAttr("polymer.access.type", b.getTypeArrayAttr({ty}));
+    return vs;
+  }
 
   SmallVector<Value> newMapOperands(mapOperands);
 
@@ -923,11 +927,15 @@ static Operation *createVectorStore(OpBuilder &b, Location loc,
   return par;
 }
 
-static Value createVectorLoad(OpBuilder &b, Location loc, VectorType vty,
-                              MemRefVal m, AffineMap map,
+static Value createVectorLoad(OpBuilder &b, Location loc, Type ty,
+                              VectorType vty, MemRefVal m, AffineMap map,
                               ValueRange mapOperands) {
-  if (useVectorLoadStore)
-    return b.create<affine::AffineVectorLoadOp>(loc, vty, m, map, mapOperands);
+  if (useVectorLoadStore) {
+    auto vl =
+        b.create<affine::AffineVectorLoadOp>(loc, vty, m, map, mapOperands);
+    vl->setAttr("polymer.access.type", b.getTypeArrayAttr({ty}));
+    return vl;
+  }
 
   SmallVector<Value> newMapOperands(mapOperands);
 
@@ -1155,8 +1163,8 @@ convertLLVMToAffineAccess(Operation *op,
       auto vty = VectorType::get({(int64_t)dl.getTypeSize(load.getType())},
                                  rewriter.getI8Type());
       auto vecLoad =
-          createVectorLoad(rewriter, load.getLoc(), vty, mc(aab.getBase()),
-                           mao.map, ic(mao.operands));
+          createVectorLoad(rewriter, load.getLoc(), load.getType(), vty,
+                           mc(aab.getBase()), mao.map, ic(mao.operands));
       Operation *newLoad;
       if (isa<LLVM::LLVMPointerType>(load.getType())) {
         Type intTy = rewriter.getIntegerType(
@@ -1186,7 +1194,7 @@ convertLLVMToAffineAccess(Operation *op,
                                              store.getValue());
       }
       Operation *newStore = createVectorStore(
-          rewriter, store.getLoc(), cast<TypedValue<VectorType>>(v),
+          rewriter, store.getLoc(), ty, cast<TypedValue<VectorType>>(v),
           mc(aab.base), mao.map, ic(mao.operands));
       mapping.map(store.getOperation(), newStore);
     } else {
