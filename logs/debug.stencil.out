@@ -404,33 +404,47 @@ child:
     sequence:
     - filter: "[P0] -> { RS0_affine_parallel[i0, i1, i2] }"
     - filter: "[P0] -> { RS1_affine_parallel[i0, i1, i2] }"
+New Schedule Prepared for GPU:
+domain: "[P0] -> { RS1_affine_parallel[i0, 0, 0] : 0 <= i0 < P0; RS0_affine_parallel[i0, 0, 0] : 0 <= i0 < P0 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS1_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1 ]
+    child:
+      sequence:
+      - filter: "[P0] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0] -> { RS1_affine_parallel[i0, i1, i2] }"
 New AST:
-iterator:
-  id: c0
-init:
-  val: 0
-cond:
-  op: lt
-  args:
-  - id: c0
-  - id: P0@0x30381880
-inc:
-  val: 1
-body:
-- user:
-    op: call
+mark: grid_parallel@0x1
+node:
+  iterator:
+    id: c0
+  init:
+    val: 0
+  cond:
+    op: lt
     args:
-    - id: RS0_affine_parallel@0x303a5d50
     - id: c0
-    - val: 0
-    - val: 0
-- user:
-    op: call
-    args:
-    - id: RS1_affine_parallel@0x303a5ed0
-    - id: c0
-    - val: 0
-    - val: 0
+    - id: P0@0x189f5a80
+  inc:
+    val: 1
+  body:
+  - user:
+      op: call
+      args:
+      - id: RS0_affine_parallel@0x18a1b2d0
+      - id: c0
+      - val: 0
+      - val: 0
+  - user:
+      op: call
+      args:
+      - id: RS1_affine_parallel@0x18a1b450
+      - id: c0
+      - val: 0
+      - val: 0
 New func:
 "llvm.func"() <{CConv = #llvm.cconv<ccc>, function_type = !llvm.func<void (i64, i64, i64, i64, i64, i64, i32, ptr, ptr)>, linkage = #llvm.linkage<private>, sym_name = "stencil", sym_visibility = "private", unnamed_addr = 0 : i64, visibility_ = 0 : i64}> ({
 ^bb0(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: i32, %arg7: !llvm.ptr, %arg8: !llvm.ptr):
@@ -442,51 +456,52 @@ New func:
   %5 = "arith.constant"() <{value = 0 : i64}> : () -> i64
   %6 = "arith.constant"() <{value = 1 : i64}> : () -> i64
   %7 = "arith.index_cast"(%3) : (index) -> i64
-  "scf.for"(%5, %7, %6) ({
-  ^bb0(%arg9: i64):
-    %8 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-    %9 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-    %10 = "arith.index_cast"(%arg9) : (i64) -> index
+  %8 = "arith.index_cast"(%5) : (i64) -> index
+  %9 = "arith.index_cast"(%7) : (i64) -> index
+  %10 = "arith.index_cast"(%6) : (i64) -> index
+  "scf.parallel"(%8, %9, %10) <{operandSegmentSizes = array<i32: 1, 1, 1, 0>}> ({
+  ^bb0(%arg9: index):
+    %11 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    %12 = "arith.constant"() <{value = 0 : i64}> : () -> i64
     "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (256, 1, 1)>}> ({
     ^bb0(%arg15: index, %arg16: index, %arg17: index):
-      %19 = "affine.vector_load"(%1, %10, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4)>}> {polymer.stmt.name = "S5_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
-      "affine.vector_store"(%19, %4, %arg15) <{map = affine_map<(d0) -> (d0 * 4 + 28)>}> {polymer.stmt.name = "S6_affine_vector_store"} : (vector<4xi8>, memref<1080xi8, 3>, index) -> ()
+      %20 = "affine.vector_load"(%1, %arg9, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4)>}> {polymer.stmt.name = "S5_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
+      "affine.vector_store"(%20, %4, %arg15) <{map = affine_map<(d0) -> (d0 * 4 + 28)>}> {polymer.stmt.name = "S6_affine_vector_store"} : (vector<4xi8>, memref<1080xi8, 3>, index) -> ()
       "affine.if"(%arg15) ({
-        %20 = "affine.if"(%10, %arg15) ({
+        %21 = "affine.if"(%arg9, %arg15) ({
           "affine.yield"(%0) {polymer.stmt.name = "S7_affine_yield"} : (i32) -> ()
         }, {
-          %23 = "affine.vector_load"(%1, %10, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4 - 28)>}> {polymer.stmt.name = "S8_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
-          %24 = "llvm.bitcast"(%23) {polymer.stmt.name = "S9_llvm_bitcast"} : (vector<4xi8>) -> i32
-          "affine.yield"(%24) {polymer.stmt.name = "S10_affine_yield"} : (i32) -> ()
+          %24 = "affine.vector_load"(%1, %arg9, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4 - 28)>}> {polymer.stmt.name = "S8_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
+          %25 = "llvm.bitcast"(%24) {polymer.stmt.name = "S9_llvm_bitcast"} : (vector<4xi8>) -> i32
+          "affine.yield"(%25) {polymer.stmt.name = "S10_affine_yield"} : (i32) -> ()
         }) {condition = affine_set<(d0, d1) : (d0 * 256 + d1 - 8 >= 0)>} : (index, index) -> i32
-        %21 = "llvm.bitcast"(%20) {polymer.stmt.name = "S11_llvm_bitcast"} : (i32) -> vector<4xi8>
-        "affine.vector_store"(%21, %4, %arg15) <{map = affine_map<(d0) -> (d0 * 4)>}> {polymer.stmt.name = "S12_affine_vector_store"} : (vector<4xi8>, memref<1080xi8, 3>, index) -> ()
-        %22 = "affine.vector_load"(%1, %10, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4 + 1024)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
-        "affine.vector_store"(%22, %4, %arg15) <{map = affine_map<(d0) -> (d0 * 4 + 1052)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1080xi8, 3>, index) -> ()
+        %22 = "llvm.bitcast"(%21) {polymer.stmt.name = "S11_llvm_bitcast"} : (i32) -> vector<4xi8>
+        "affine.vector_store"(%22, %4, %arg15) <{map = affine_map<(d0) -> (d0 * 4)>}> {polymer.stmt.name = "S12_affine_vector_store"} : (vector<4xi8>, memref<1080xi8, 3>, index) -> ()
+        %23 = "affine.vector_load"(%1, %arg9, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4 + 1024)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
+        "affine.vector_store"(%23, %4, %arg15) <{map = affine_map<(d0) -> (d0 * 4 + 1052)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1080xi8, 3>, index) -> ()
         "affine.yield"() {polymer.stmt.name = "S15_affine_yield"} : () -> ()
       }, {
       }) {condition = affine_set<(d0) : (d0 - 8 >= 0)>} : (index) -> ()
       "affine.yield"() {polymer.stmt.name = "S16_affine_yield"} : () -> ()
     }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS0_affine_parallel"} : () -> ()
-    %11 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-    %12 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-    %13 = "arith.index_cast"(%arg9) : (i64) -> index
+    %13 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    %14 = "arith.constant"() <{value = 0 : i64}> : () -> i64
     "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (256, 1, 1)>}> ({
     ^bb0(%arg10: index, %arg11: index, %arg12: index):
-      "affine.store_var"(%0, %14) <{type = "for.iv.init"}> {polymer.stmt.name = "S17_affine_store_var"} : (i32, i32) -> ()
-      %14 = "affine.for"(%0) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (15)>}> ({
+      "affine.store_var"(%0, %15) <{type = "for.iv.init"}> {polymer.stmt.name = "S17_affine_store_var"} : (i32, i32) -> ()
+      %15 = "affine.for"(%0) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (15)>}> ({
       ^bb0(%arg13: index, %arg14: i32):
-        %16 = "affine.vector_load"(%4, %arg13, %arg10) <{map = affine_map<(d0, d1) -> (d0 * 4 + d1 * 4)>}> {polymer.stmt.name = "S18_affine_vector_load"} : (memref<1080xi8, 3>, index, index) -> vector<4xi8>
-        %17 = "llvm.bitcast"(%16) {polymer.stmt.name = "S19_llvm_bitcast"} : (vector<4xi8>) -> i32
-        %18 = "arith.addi"(%17, %arg14) <{overflowFlags = #arith.overflow<none>}> {polymer.stmt.name = "S20_arith_addi"} : (i32, i32) -> i32
-        "affine.yield"(%18) {polymer.stmt.name = "S21_affine_yield"} : (i32) -> ()
+        %17 = "affine.vector_load"(%4, %arg13, %arg10) <{map = affine_map<(d0, d1) -> (d0 * 4 + d1 * 4)>}> {polymer.stmt.name = "S18_affine_vector_load"} : (memref<1080xi8, 3>, index, index) -> vector<4xi8>
+        %18 = "llvm.bitcast"(%17) {polymer.stmt.name = "S19_llvm_bitcast"} : (vector<4xi8>) -> i32
+        %19 = "arith.addi"(%18, %arg14) <{overflowFlags = #arith.overflow<none>}> {polymer.stmt.name = "S20_arith_addi"} : (i32, i32) -> i32
+        "affine.yield"(%19) {polymer.stmt.name = "S21_affine_yield"} : (i32) -> ()
       }) : (i32) -> i32
-      %15 = "llvm.bitcast"(%14) {polymer.stmt.name = "S22_llvm_bitcast"} : (i32) -> vector<4xi8>
-      "affine.vector_store"(%15, %2, %13, %arg10) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4)>}> {polymer.stmt.name = "S23_affine_vector_store"} : (vector<4xi8>, memref<?xi8>, index, index) -> ()
+      %16 = "llvm.bitcast"(%15) {polymer.stmt.name = "S22_llvm_bitcast"} : (i32) -> vector<4xi8>
+      "affine.vector_store"(%16, %2, %arg9, %arg10) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4)>}> {polymer.stmt.name = "S23_affine_vector_store"} : (vector<4xi8>, memref<?xi8>, index, index) -> ()
       "affine.yield"() {polymer.stmt.name = "S24_affine_yield"} : () -> ()
     }) {gpu.par.block, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
-    "scf.yield"() : () -> ()
-  }) : (i64, i64, i64) -> ()
+    "scf.reduce"() : () -> ()
+  }) : (index, index, index) -> ()
   "llvm.return"() {polymer.stmt.name = "S26_llvm_return"} : () -> ()
 }) {gpu.par.kernel} : () -> ()
 /scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_ctx.c:295: isl_ctx not freed as some objects still reference it
@@ -579,4 +594,4 @@ llvm.func private @stencil(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i64, %arg4
 /scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/gpu-affine-opt-stencil.mlir:13:16: error: 'affine.vector_load' op index must be a valid dimension or symbol identifier
           %3 = affine.vector_load %0[%arg9 * 1024 + %arg10 * 4] : memref<?xi8>, vector<4xi8>
                ^
-/scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/gpu-affine-opt-stencil.mlir:13:16: note: see current operation: %19 = "affine.vector_load"(%1, %10, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4)>}> {polymer.stmt.name = "S5_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>
+/scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/gpu-affine-opt-stencil.mlir:13:16: note: see current operation: %20 = "affine.vector_load"(%1, %arg9, %arg15) <{map = affine_map<(d0, d1) -> (d0 * 1024 + d1 * 4)>}> {polymer.stmt.name = "S5_affine_vector_load"} : (memref<?xi8>, index, index) -> vector<4xi8>

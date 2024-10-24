@@ -769,126 +769,149 @@ child:
           - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
           - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
     - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+New Schedule Prepared for GPU:
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS2_affine_parallel[i0, i1, i2, i3] -> [(22 + i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          child:
+            sequence:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
 New AST:
-iterator:
-  id: c0
-init:
-  val: 0
-cond:
-  op: lt
-  args:
-  - id: c0
-  - id: P0@0x46ff35d0
-inc:
-  val: 1
-body:
+mark: grid_parallel@0x2
+node:
   iterator:
-    id: c1
+    id: c0
   init:
     val: 0
   cond:
     op: lt
     args:
-    - id: c1
-    - id: P1@0x46ff36c0
+    - id: c0
+    - id: P0@0x50b2aed0
   inc:
     val: 1
   body:
-  - user:
-      op: call
-      args:
-      - id: RS0_affine_parallel@0x47006ff0
-      - id: c1
-      - id: c0
-      - val: 0
-  - iterator:
-      id: c2
+    iterator:
+      id: c1
     init:
       val: 0
     cond:
-      op: le
+      op: lt
       args:
-      - id: c2
-      - op: min
-        args:
-        - val: 21
-        - op: fdiv_q
-          args:
-          - op: sub
-            args:
-            - id: P2@0x4702bc50
-            - val: 1
-          - val: 16
-    inc:
-      val: 1
-    body:
-      user:
-        op: call
-        args:
-        - id: RS1_affine_parallel@0x46ff0170
-        - id: c1
-        - id: c0
-        - val: 0
-        - id: c2
-  - iterator:
-      id: c2
-    init:
-      val: 22
-    cond:
-      op: le
-      args:
-      - id: c2
-      - op: add
-        args:
-        - op: fdiv_q
-          args:
-          - op: sub
-            args:
-            - id: P2@0x4702bc50
-            - val: 1
-          - val: 16
-        - val: 22
+      - id: c1
+      - id: P1@0x50b2afc0
     inc:
       val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS2_affine_parallel@0x46fff040
+        - id: RS0_affine_parallel@0x50b14370
         - id: c1
         - id: c0
         - val: 0
-        - op: sub
-          args:
-          - id: c2
-          - val: 22
-    - guard:
-        op: ge
+    - iterator:
+        id: c2
+      init:
+        val: 0
+      cond:
+        op: le
         args:
-        - id: P2@0x4702bc50
-        - op: add
+        - id: c2
+        - op: min
           args:
-          - op: mul
+          - val: 21
+          - op: fdiv_q
             args:
+            - op: sub
+              args:
+              - id: P2@0x50b5f8c0
+              - val: 1
             - val: 16
-            - id: c2
-          - val: 1
-      then:
+      inc:
+        val: 1
+      body:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x46ff0170
+          - id: RS1_affine_parallel@0x50b275f0
           - id: c1
           - id: c0
           - val: 0
           - id: c2
-  - user:
-      op: call
-      args:
-      - id: RS3_affine_parallel@0x47006f50
-      - id: c1
-      - id: c0
-      - val: 0
+    - iterator:
+        id: c2
+      init:
+        val: 22
+      cond:
+        op: le
+        args:
+        - id: c2
+        - op: add
+          args:
+          - op: fdiv_q
+            args:
+            - op: sub
+              args:
+              - id: P2@0x50b5f8c0
+              - val: 1
+            - val: 16
+          - val: 22
+      inc:
+        val: 1
+      body:
+      - user:
+          op: call
+          args:
+          - id: RS2_affine_parallel@0x50b3d8f0
+          - id: c1
+          - id: c0
+          - val: 0
+          - op: sub
+            args:
+            - id: c2
+            - val: 22
+      - guard:
+          op: ge
+          args:
+          - id: P2@0x50b5f8c0
+          - op: add
+            args:
+            - op: mul
+              args:
+              - val: 16
+              - id: c2
+            - val: 1
+        then:
+          user:
+            op: call
+            args:
+            - id: RS1_affine_parallel@0x50b275f0
+            - id: c1
+            - id: c0
+            - val: 0
+            - id: c2
+    - user:
+        op: call
+        args:
+        - id: RS3_affine_parallel@0x50b3d650
+        - id: c1
+        - id: c0
+        - val: 0
 New func:
 "llvm.func"() <{CConv = #llvm.cconv<ccc>, arg_attrs = [{}, {}, {}, {}, {}, {}, {}, {llvm.nocapture, llvm.noundef, llvm.writeonly}, {llvm.nocapture, llvm.noundef, llvm.readonly}, {llvm.nocapture, llvm.noundef, llvm.readonly}, {llvm.noundef}, {llvm.noundef}], comdat = @__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii, function_type = !llvm.func<void (i64, i64, i64, i64, i64, i64, i32, ptr, ptr, ptr, i32, i32)>, linkage = #llvm.linkage<private>, sym_name = "__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764", sym_visibility = "private", unnamed_addr = 1 : i64, visibility_ = 0 : i64}> ({
 ^bb0(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: i32, %arg7: !llvm.ptr, %arg8: !llvm.ptr, %arg9: !llvm.ptr, %arg10: i32, %arg11: i32):
@@ -906,129 +929,123 @@ New func:
   %11 = "arith.constant"() <{value = 0 : i64}> : () -> i64
   %12 = "arith.constant"() <{value = 1 : i64}> : () -> i64
   %13 = "arith.index_cast"(%6) : (index) -> i64
-  "scf.for"(%11, %13, %12) ({
-  ^bb0(%arg12: i64):
-    %14 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-    %15 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-    %16 = "arith.index_cast"(%7) : (index) -> i64
-    "scf.for"(%14, %16, %15) ({
-    ^bb0(%arg13: i64):
-      %17 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+  %14 = "arith.index_cast"(%11) : (i64) -> index
+  %15 = "arith.index_cast"(%13) : (i64) -> index
+  %16 = "arith.index_cast"(%12) : (i64) -> index
+  %17 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+  %18 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+  %19 = "arith.index_cast"(%7) : (index) -> i64
+  %20 = "arith.index_cast"(%17) : (i64) -> index
+  %21 = "arith.index_cast"(%19) : (i64) -> index
+  %22 = "arith.index_cast"(%18) : (i64) -> index
+  "scf.parallel"(%14, %20, %15, %21, %16, %22) <{operandSegmentSizes = array<i32: 2, 2, 2, 0>}> ({
+  ^bb0(%arg12: index, %arg13: index):
+    %23 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
+    ^bb0(%arg30: index, %arg31: index, %arg32: index):
+      "affine.store"(%0, %10, %arg30, %arg31, %arg32) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S11_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
+      "affine.yield"() {polymer.stmt.name = "S12_affine_yield"} : () -> ()
+    }) {gpu.par.block, polymer.stmt.name = "RS0_affine_parallel"} : () -> ()
+    %24 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    %25 = "arith.constant"() <{value = 21 : i64}> : () -> i64
+    %26 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %27 = "arith.index_cast"(%5) : (index) -> i64
+    %28 = "arith.subi"(%27, %26) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %29 = "arith.constant"() <{value = 16 : i64}> : () -> i64
+    %30 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %31 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    %32 = "arith.subi"(%28, %29) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %33 = "arith.addi"(%32, %30) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %34 = "arith.cmpi"(%28, %31) <{predicate = 2 : i64}> : (i64, i64) -> i1
+    %35 = "arith.select"(%34, %33, %28) : (i1, i64, i64) -> i64
+    %36 = "arith.divsi"(%35, %29) : (i64, i64) -> i64
+    %37 = "arith.minsi"(%36, %25) : (i64, i64) -> i64
+    %38 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %39 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %40 = "arith.addi"(%37, %39) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    "scf.for"(%24, %40, %38) ({
+    ^bb0(%arg26: i64):
+      %81 = "arith.constant"() <{value = 0 : i64}> : () -> i64
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-      ^bb0(%arg30: index, %arg31: index, %arg32: index):
-        "affine.store"(%0, %10, %arg30, %arg31, %arg32) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S11_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
-        "affine.yield"() {polymer.stmt.name = "S12_affine_yield"} : () -> ()
-      }) {gpu.par.block, polymer.stmt.name = "RS0_affine_parallel"} : () -> ()
-      %18 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %19 = "arith.constant"() <{value = 21 : i64}> : () -> i64
-      %20 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %21 = "arith.index_cast"(%5) : (index) -> i64
-      %22 = "arith.subi"(%21, %20) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %23 = "arith.constant"() <{value = 16 : i64}> : () -> i64
-      %24 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %25 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %26 = "arith.subi"(%22, %23) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %27 = "arith.addi"(%26, %24) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %28 = "arith.cmpi"(%22, %25) <{predicate = 2 : i64}> : (i64, i64) -> i1
-      %29 = "arith.select"(%28, %27, %22) : (i1, i64, i64) -> i64
-      %30 = "arith.divsi"(%29, %23) : (i64, i64) -> i64
-      %31 = "arith.minsi"(%30, %19) : (i64, i64) -> i64
-      %32 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %33 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %34 = "arith.addi"(%31, %33) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      "scf.for"(%18, %34, %32) ({
-      ^bb0(%arg26: i64):
-        %80 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-        %81 = "arith.index_cast"(%arg13) : (i64) -> index
-        %82 = "arith.index_cast"(%arg12) : (i64) -> index
-        %83 = "arith.index_cast"(%arg13) : (i64) -> index
+      ^bb0(%arg27: index, %arg28: index, %arg29: index):
+        %82 = "affine.vector_load"(%2, %arg28, %arg27, %arg13, %arg12, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+        "affine.vector_store"(%82, %8, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        %83 = "affine.vector_load"(%1, %arg28, %arg27, %arg12, %arg13, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+        "affine.vector_store"(%83, %9, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
+      }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
+      "scf.yield"() : () -> ()
+    }) : (i64, i64, i64) -> ()
+    %41 = "arith.constant"() <{value = 22 : i64}> : () -> i64
+    %42 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %43 = "arith.index_cast"(%5) : (index) -> i64
+    %44 = "arith.subi"(%43, %42) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %45 = "arith.constant"() <{value = 16 : i64}> : () -> i64
+    %46 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %47 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    %48 = "arith.subi"(%44, %45) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %49 = "arith.addi"(%48, %46) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %50 = "arith.cmpi"(%44, %47) <{predicate = 2 : i64}> : (i64, i64) -> i1
+    %51 = "arith.select"(%50, %49, %44) : (i1, i64, i64) -> i64
+    %52 = "arith.divsi"(%51, %45) : (i64, i64) -> i64
+    %53 = "arith.constant"() <{value = 22 : i64}> : () -> i64
+    %54 = "arith.addi"(%52, %53) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    %55 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %56 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+    %57 = "arith.addi"(%54, %56) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+    "scf.for"(%41, %57, %55) ({
+    ^bb0(%arg17: i64):
+      %61 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+      %62 = "arith.constant"() <{value = 22 : i64}> : () -> i64
+      %63 = "arith.subi"(%arg17, %62) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
+      ^bb0(%arg21: index, %arg22: index, %arg23: index):
+        %73 = "affine.load"(%10, %arg21, %arg22, %arg23) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
+        "affine.store_var"(%73, %74) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
+        %74 = "affine.for"(%73) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
+        ^bb0(%arg24: index, %arg25: f32):
+          %75 = "affine.vector_load"(%8, %arg22, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+          %76 = "llvm.bitcast"(%75) {polymer.stmt.name = "S21_llvm_bitcast"} : (vector<4xi8>) -> f32
+          %77 = "affine.vector_load"(%9, %arg24, %arg21) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
+          %78 = "llvm.bitcast"(%77) {polymer.stmt.name = "S23_llvm_bitcast"} : (vector<4xi8>) -> f32
+          %79 = "llvm.fmul"(%76, %78) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S24_llvm_fmul"} : (f32, f32) -> f32
+          %80 = "llvm.fadd"(%arg25, %79) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S25_llvm_fadd"} : (f32, f32) -> f32
+          "affine.yield"(%80) {polymer.stmt.name = "S26_affine_yield"} : (f32) -> ()
+        }) : (f32) -> f32
+        "affine.store"(%74, %10, %arg21, %arg22, %arg23) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S27_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
+        "affine.yield"() {polymer.stmt.name = "S28_affine_yield"} : () -> ()
+      }) {gpu.par.block, polymer.stmt.name = "RS2_affine_parallel"} : () -> ()
+      %64 = "arith.constant"() <{value = 16 : i64}> : () -> i64
+      %65 = "arith.muli"(%64, %arg17) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %66 = "arith.constant"() <{value = 1 : i64}> : () -> i64
+      %67 = "arith.addi"(%65, %66) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
+      %68 = "arith.index_cast"(%5) : (index) -> i64
+      %69 = "arith.cmpi"(%68, %67) <{predicate = 5 : i64}> : (i64, i64) -> i1
+      "scf.if"(%69) ({
+        %70 = "arith.constant"() <{value = 0 : i64}> : () -> i64
         "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-        ^bb0(%arg27: index, %arg28: index, %arg29: index):
-          %84 = "affine.vector_load"(%2, %arg28, %arg27, %83, %82, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-          "affine.vector_store"(%84, %8, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
-          %85 = "affine.vector_load"(%1, %arg28, %arg27, %82, %81, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-          "affine.vector_store"(%85, %9, %arg28, %arg27) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+        ^bb0(%arg18: index, %arg19: index, %arg20: index):
+          %71 = "affine.vector_load"(%2, %arg19, %arg18, %arg13, %arg12, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+          "affine.vector_store"(%71, %8, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
+          %72 = "affine.vector_load"(%1, %arg19, %arg18, %arg12, %arg13, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+          "affine.vector_store"(%72, %9, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
           "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
         }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
         "scf.yield"() : () -> ()
-      }) : (i64, i64, i64) -> ()
-      %35 = "arith.constant"() <{value = 22 : i64}> : () -> i64
-      %36 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %37 = "arith.index_cast"(%5) : (index) -> i64
-      %38 = "arith.subi"(%37, %36) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %39 = "arith.constant"() <{value = 16 : i64}> : () -> i64
-      %40 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %41 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %42 = "arith.subi"(%38, %39) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %43 = "arith.addi"(%42, %40) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %44 = "arith.cmpi"(%38, %41) <{predicate = 2 : i64}> : (i64, i64) -> i1
-      %45 = "arith.select"(%44, %43, %38) : (i1, i64, i64) -> i64
-      %46 = "arith.divsi"(%45, %39) : (i64, i64) -> i64
-      %47 = "arith.constant"() <{value = 22 : i64}> : () -> i64
-      %48 = "arith.addi"(%46, %47) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      %49 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %50 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-      %51 = "arith.addi"(%48, %50) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-      "scf.for"(%35, %51, %49) ({
-      ^bb0(%arg17: i64):
-        %57 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-        %58 = "arith.constant"() <{value = 22 : i64}> : () -> i64
-        %59 = "arith.subi"(%arg17, %58) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-        "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-        ^bb0(%arg21: index, %arg22: index, %arg23: index):
-          %72 = "affine.load"(%10, %arg21, %arg22, %arg23) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
-          "affine.store_var"(%72, %73) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
-          %73 = "affine.for"(%72) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
-          ^bb0(%arg24: index, %arg25: f32):
-            %74 = "affine.vector_load"(%8, %arg22, %arg24) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S20_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
-            %75 = "llvm.bitcast"(%74) {polymer.stmt.name = "S21_llvm_bitcast"} : (vector<4xi8>) -> f32
-            %76 = "affine.vector_load"(%9, %arg24, %arg21) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S22_affine_vector_load"} : (memref<1024xi8, 3>, index, index) -> vector<4xi8>
-            %77 = "llvm.bitcast"(%76) {polymer.stmt.name = "S23_llvm_bitcast"} : (vector<4xi8>) -> f32
-            %78 = "llvm.fmul"(%75, %77) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S24_llvm_fmul"} : (f32, f32) -> f32
-            %79 = "llvm.fadd"(%arg25, %78) <{fastmathFlags = #llvm.fastmath<contract>}> {polymer.stmt.name = "S25_llvm_fadd"} : (f32, f32) -> f32
-            "affine.yield"(%79) {polymer.stmt.name = "S26_affine_yield"} : (f32) -> ()
-          }) : (f32) -> f32
-          "affine.store"(%73, %10, %arg21, %arg22, %arg23) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S27_affine_store"} : (f32, memref<16x16x1xf32, 16>, index, index, index) -> ()
-          "affine.yield"() {polymer.stmt.name = "S28_affine_yield"} : () -> ()
-        }) {gpu.par.block, polymer.stmt.name = "RS2_affine_parallel"} : () -> ()
-        %60 = "arith.constant"() <{value = 16 : i64}> : () -> i64
-        %61 = "arith.muli"(%60, %arg17) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-        %62 = "arith.constant"() <{value = 1 : i64}> : () -> i64
-        %63 = "arith.addi"(%61, %62) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
-        %64 = "arith.index_cast"(%5) : (index) -> i64
-        %65 = "arith.cmpi"(%64, %63) <{predicate = 5 : i64}> : (i64, i64) -> i1
-        "scf.if"(%65) ({
-          %66 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-          %67 = "arith.index_cast"(%arg13) : (i64) -> index
-          %68 = "arith.index_cast"(%arg12) : (i64) -> index
-          %69 = "arith.index_cast"(%arg13) : (i64) -> index
-          "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-          ^bb0(%arg18: index, %arg19: index, %arg20: index):
-            %70 = "affine.vector_load"(%2, %arg19, %arg18, %69, %68, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-            "affine.vector_store"(%70, %8, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S14_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
-            %71 = "affine.vector_load"(%1, %arg19, %arg18, %68, %67, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S15_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
-            "affine.vector_store"(%71, %9, %arg19, %arg18) <{map = affine_map<(d0, d1) -> (d0 * 64 + d1 * 4)>}> {polymer.stmt.name = "S16_affine_vector_store"} : (vector<4xi8>, memref<1024xi8, 3>, index, index) -> ()
-            "affine.yield"() {polymer.stmt.name = "S17_affine_yield"} : () -> ()
-          }) {gpu.par.block, polymer.stmt.async.copy, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
-          "scf.yield"() : () -> ()
-        }, {
-        }) : (i1) -> ()
-        "scf.yield"() : () -> ()
-      }) : (i64, i64, i64) -> ()
-      %52 = "arith.constant"() <{value = 0 : i64}> : () -> i64
-      %53 = "arith.index_cast"(%arg13) : (i64) -> index
-      %54 = "arith.index_cast"(%arg13) : (i64) -> index
-      "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
-      ^bb0(%arg14: index, %arg15: index, %arg16: index):
-        %55 = "affine.load"(%10, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S30_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
-        %56 = "llvm.bitcast"(%55) {polymer.stmt.name = "S31_llvm_bitcast"} : (f32) -> vector<4xi8>
-        "affine.vector_store"(%56, %3, %53, %arg14, %arg15, %54, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> (d0 * 64 + d1 * 4 + (d2 * s0) * 4 + (d3 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S32_affine_vector_store"} : (vector<4xi8>, memref<?xi8>, index, index, index, index, index) -> ()
-        "affine.yield"() {polymer.stmt.name = "S33_affine_yield"} : () -> ()
-      }) {gpu.par.block, polymer.stmt.name = "RS3_affine_parallel"} : () -> ()
+      }, {
+      }) : (i1) -> ()
       "scf.yield"() : () -> ()
     }) : (i64, i64, i64) -> ()
-    "scf.yield"() : () -> ()
-  }) : (i64, i64, i64) -> ()
+    %58 = "arith.constant"() <{value = 0 : i64}> : () -> i64
+    "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
+    ^bb0(%arg14: index, %arg15: index, %arg16: index):
+      %59 = "affine.load"(%10, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S30_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
+      %60 = "llvm.bitcast"(%59) {polymer.stmt.name = "S31_llvm_bitcast"} : (f32) -> vector<4xi8>
+      "affine.vector_store"(%60, %3, %arg13, %arg14, %arg15, %arg13, %4) <{map = affine_map<(d0, d1, d2, d3)[s0] -> (d0 * 64 + d1 * 4 + (d2 * s0) * 4 + (d3 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S32_affine_vector_store"} : (vector<4xi8>, memref<?xi8>, index, index, index, index, index) -> ()
+      "affine.yield"() {polymer.stmt.name = "S33_affine_yield"} : () -> ()
+    }) {gpu.par.block, polymer.stmt.name = "RS3_affine_parallel"} : () -> ()
+    "scf.reduce"() : () -> ()
+  }) : (index, index, index, index, index, index) -> ()
   "llvm.return"() {polymer.stmt.name = "S35_llvm_return"} : () -> ()
 }) {gpu.par.kernel} : () -> ()
 /scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_ctx.c:295: isl_ctx not freed as some objects still reference it
@@ -1139,6 +1156,6 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
 /scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/llvm-to-affine-access3.mlir:122:19: error: 'affine.vector_load' op index must be a valid dimension or symbol identifier
             %34 = llvm.load %33 {alignment = 4 : i64, tbaa = [#tbaa_tag1]} : !llvm.ptr -> f32
                   ^
-/scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/llvm-to-affine-access3.mlir:122:19: note: see current operation: %84 = "affine.vector_load"(%2, %arg28, %arg27, %83, %82, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
+/scr/ivan/src/transformer-llvm-project/mlir/test/Conversion/GPULaunchToCall/llvm-to-affine-access3.mlir:122:19: note: see current operation: %82 = "affine.vector_load"(%2, %arg28, %arg27, %arg13, %arg12, %5) <{map = affine_map<(d0, d1, d2, d3)[s0] -> ((d0 * s0) * 4 + d1 * 4 + d3 * 64 + (d2 * (s0 * 16)) * 4)>}> {polymer.stmt.name = "S13_affine_vector_load"} : (memref<?xi8>, index, index, index, index, index) -> vector<4xi8>
 Eliminated dead instances: [P0, P1, P2, P3] -> { S4_arith_index_cast[]; S1_memref_ataddr[]; S9_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S8_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S5_arith_index_cast[]; S3_memref_ataddr[]; S6_arith_index_cast[]; S2_memref_ataddr[]; S29_affine_yield[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; S7_arith_index_cast[]; S34_affine_yield[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S0_llvm_mlir_constant[]; S10_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }
 Eliminated dead instances: [P0, P1, P2, P3] -> { S4_arith_index_cast[]; S1_memref_ataddr[]; S9_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S8_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S5_arith_index_cast[]; S3_memref_ataddr[]; S6_arith_index_cast[]; S2_memref_ataddr[]; S29_affine_yield[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; S7_arith_index_cast[]; S34_affine_yield[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; S0_llvm_mlir_constant[]; S10_memref_alloca[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }

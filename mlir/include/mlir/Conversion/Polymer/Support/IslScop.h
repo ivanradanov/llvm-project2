@@ -69,6 +69,8 @@ class IslScopBuilder;
 class IslScop;
 class ScopArrayInfo;
 
+static constexpr char gridParallelMark[] = "grid_parallel";
+
 class MemoryAccess {
 public:
   enum MemoryKind { MT_Array, MT_Value };
