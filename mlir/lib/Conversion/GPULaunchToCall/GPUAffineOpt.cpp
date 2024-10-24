@@ -816,6 +816,15 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return;
       }
     };
+    auto canonicalize = [&](Operation *op) {
+      PassManager pm(&getContext());
+      pm.addPass(createCSEPass());
+      pm.addPass(createCanonicalizerPass());
+      if (failed(pm.run(op))) {
+        signalPassFailure();
+        return;
+      }
+    };
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
@@ -828,13 +837,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           (void)distributeParallelLoops(func, "distribute.mincut",
                                         &getContext());
           LLVM_DEBUG(DBGS << "Distributed:\n" << func << "\n");
-          PassManager pm(&getContext());
-          pm.addPass(createCSEPass());
-          pm.addPass(createCanonicalizerPass());
-          if (failed(pm.run(func))) {
-            signalPassFailure();
-            return;
-          }
+          canonicalize(func);
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           mlir::gpu::affine_opt::transform(func);
@@ -844,6 +847,8 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           lowerAffine(func);
           lowerAccesses(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
+          canonicalize(func);
+          LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
           gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
         }
