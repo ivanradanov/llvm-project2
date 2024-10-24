@@ -1484,6 +1484,16 @@ struct SimplifyAffineOp : public OpRewritePattern<AffineOpTy> {
   }
 };
 
+// TODO FIXME we want a custom op so we can preserve these...
+SmallVector<NamedAttribute> getAttributesToPreserve(Operation *op) {
+  SmallVector<NamedAttribute> attrs;
+  for (auto attr : op->getAttrs())
+    if (attr.getName().getValue().starts_with("polymer.") ||
+        attr.getName().getValue().starts_with("gpu."))
+      attrs.push_back(attr);
+  return attrs;
+}
+
 // Specialize the template to account for the different build signatures for
 // affine load, store, and apply ops.
 template <>
@@ -1512,17 +1522,21 @@ template <>
 void SimplifyAffineOp<AffineVectorLoadOp>::replaceAffineOp(
     PatternRewriter &rewriter, AffineVectorLoadOp vectorload, AffineMap map,
     ArrayRef<Value> mapOperands) const {
-  rewriter.replaceOpWithNewOp<AffineVectorLoadOp>(
+  auto attrs = getAttributesToPreserve(vectorload);
+  auto newOp = rewriter.replaceOpWithNewOp<AffineVectorLoadOp>(
       vectorload, vectorload.getVectorType(), vectorload.getMemRef(), map,
       mapOperands);
+  newOp->setAttrs(attrs);
 }
 template <>
 void SimplifyAffineOp<AffineVectorStoreOp>::replaceAffineOp(
     PatternRewriter &rewriter, AffineVectorStoreOp vectorstore, AffineMap map,
     ArrayRef<Value> mapOperands) const {
-  rewriter.replaceOpWithNewOp<AffineVectorStoreOp>(
+  auto attrs = getAttributesToPreserve(vectorstore);
+  auto newOp = rewriter.replaceOpWithNewOp<AffineVectorStoreOp>(
       vectorstore, vectorstore.getValueToStore(), vectorstore.getMemRef(), map,
       mapOperands);
+  newOp->setAttrs(attrs);
 }
 
 // Generic version for ops that don't have extra operands.

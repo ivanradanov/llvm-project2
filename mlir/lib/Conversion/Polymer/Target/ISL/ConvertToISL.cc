@@ -60,7 +60,7 @@ using llvm::outs;
 namespace mlir {
 namespace gpu {
 namespace affine_opt {
-affine::AffineParallelOp isBlockPar(Operation *op);
+affine::AffineParallelOp isAffineBlockPar(Operation *op);
 }
 } // namespace gpu
 } // namespace mlir

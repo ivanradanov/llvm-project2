@@ -1,7 +1,7 @@
-#include "DependenceInfo.h"
 #include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
 #include "mlir/Conversion/Polymer/Target/ISL.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
@@ -15,6 +15,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -49,8 +50,11 @@
 #include "isl/union_map.h"
 #include "isl/union_set.h"
 
+#include "DependenceInfo.h"
+#include "GPULowering.h"
 #include "ISLUtils.h"
 #include "LoopDistribute.h"
+#include "Utils.h"
 
 using namespace mlir;
 
@@ -91,7 +95,8 @@ struct VectorLoad {
   Value val;
 };
 
-affine::AffineParallelOp isGridPar(Operation *op) {
+bool isGridPar(Operation *op) { return !!op->getAttr("gpu.par.grid"); }
+affine::AffineParallelOp isAffineGridPar(Operation *op) {
   auto gridPar = dyn_cast_or_null<affine::AffineParallelOp>(op);
   if (!gridPar)
     return nullptr;
@@ -99,7 +104,7 @@ affine::AffineParallelOp isGridPar(Operation *op) {
     return gridPar;
   return nullptr;
 }
-affine::AffineParallelOp isBlockPar(Operation *op) {
+affine::AffineParallelOp isAffineBlockPar(Operation *op) {
   auto blockPar = dyn_cast_or_null<affine::AffineParallelOp>(op);
   if (!blockPar)
     return nullptr;
@@ -434,7 +439,7 @@ void transform(LLVM::LLVMFuncOp f) {
     scop->dumpAccesses(llvm::dbgs());
   });
 
-  scop->rescopeStatements(isBlockPar);
+  scop->rescopeStatements(isAffineBlockPar);
 
   scop->buildSchedule();
   LLVM_DEBUG({
@@ -510,10 +515,10 @@ struct Interchange : public OpRewritePattern<affine::AffineParallelOp> {
   using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(affine::AffineParallelOp parOp,
                                 PatternRewriter &rewriter) const override {
-    if (!gpu::affine_opt::isBlockPar(parOp))
+    if (!gpu::affine_opt::isAffineBlockPar(parOp))
       return rewriter.notifyMatchFailure(parOp, "op is not block par");
     Operation *parent = parOp->getParentOp();
-    if (gpu::affine_opt::isGridPar(parent))
+    if (gpu::affine_opt::isAffineGridPar(parent))
       return rewriter.notifyMatchFailure(parent, "Parent op is grid par");
     if (parOp->getBlock()->getOperations().size() != 2)
       return rewriter.notifyMatchFailure(parOp, "imperfectly nested");
@@ -566,9 +571,9 @@ struct FuseBlockPars : public OpRewritePattern<affine::AffineParallelOp> {
   using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(affine::AffineParallelOp par,
                                 PatternRewriter &rewriter) const override {
-    if (!gpu::affine_opt::isBlockPar(par))
+    if (!gpu::affine_opt::isAffineBlockPar(par))
       return rewriter.notifyMatchFailure(par, "op is not block par");
-    auto nextPar = gpu::affine_opt::isBlockPar(par->getNextNode());
+    auto nextPar = gpu::affine_opt::isAffineBlockPar(par->getNextNode());
     if (!nextPar)
       return rewriter.notifyMatchFailure(par->getNextNode(),
                                          "Next op is not block par");
@@ -594,7 +599,7 @@ struct ParallelizeSequential
   using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(affine::AffineParallelOp par,
                                 PatternRewriter &rewriter) const override {
-    if (gpu::affine_opt::isBlockPar(par))
+    if (gpu::affine_opt::isAffineBlockPar(par))
       return rewriter.notifyMatchFailure(par, "op is not block par");
     Block *block = par->getBlock();
     if (block->getOperations().size() == 2)
@@ -603,15 +608,88 @@ struct ParallelizeSequential
   }
 };
 
-struct AffineVectorStoreLower
-    : public OpRewritePattern<affine::AffineVectorStoreOp> {
-  using OpRewritePattern<affine::AffineVectorStoreOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(affine::AffineVectorStoreOp op,
+struct MoveAllocas : public OpRewritePattern<memref::AllocaOp> {
+  using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::AllocaOp ao,
                                 PatternRewriter &rewriter) const override {
-    auto ty = cast_or_null<TypeAttr>(op->getAttr("polymer.access.type")).getValue();
-    if (!ty)
-      return rewriter.notifyMatchFailure(op, "Access type attribute missing.");
-    return failure();
+    auto mt = ao.getType();
+    if (mt.getMemorySpaceAsInt() !=
+            loop_distribute::crossingRegisterMemorySpace &&
+        !nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(mt))
+      return rewriter.notifyMatchFailure(
+          ao, "Not register or shared memory address space");
+
+    if (gpu::affine_opt::isGridPar(ao->getParentOp()))
+      return rewriter.notifyMatchFailure(ao->getParentOp(),
+                                         "Parent is already grid par");
+
+    Operation *gridPar = nullptr;
+    ao->getParentOp()->walk([&](Operation *op) {
+      if (gpu::affine_opt::isGridPar(op)) {
+        assert(!gridPar);
+        gridPar = op;
+      }
+    });
+    assert(gridPar);
+    rewriter.moveOpBefore(ao, &gridPar->getRegion(0).front().front());
+    return success();
+  }
+};
+
+struct RegisterAllocaReduce : public OpRewritePattern<memref::AllocaOp> {
+  using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::AllocaOp ao,
+                                PatternRewriter &rewriter) const override {
+    auto mt = ao.getType();
+    if (mt.getMemorySpaceAsInt() == loop_distribute::registerMemorySpace)
+      return rewriter.notifyMatchFailure(ao,
+                                         "Not register memory address space");
+
+    SmallVector<affine::AffineLoadOp> loads;
+    SmallVector<affine::AffineStoreOp> stores;
+
+    for (auto &use : ao.getResult().getUses()) {
+      Operation *op = use.getOwner();
+      if (auto loadOp = dyn_cast<affine::AffineLoadOp>(op)) {
+        if (loadOp.getMemRef() == ao.getMemref()) {
+          loads.push_back(loadOp);
+        } else {
+          return rewriter.notifyMatchFailure(loadOp,
+                                             "alloca not used as the memref?");
+        }
+      } else if (auto storeOp = dyn_cast<affine::AffineStoreOp>(op)) {
+        if (storeOp.getMemRef() == ao.getMemref()) {
+          stores.push_back(storeOp);
+        } else {
+          return rewriter.notifyMatchFailure(storeOp,
+                                             "alloca not used as the memref?");
+        }
+      } else {
+        return rewriter.notifyMatchFailure(op, "non access use");
+      }
+    }
+
+    rewriter.setInsertionPoint(ao);
+    auto newAo = rewriter.create<memref::AllocaOp>(
+        ao.getLoc(), MemRefType::get({}, mt.getElementType()));
+    auto newMemref = newAo.getMemref();
+
+    for (auto loadOp : loads) {
+      rewriter.setInsertionPoint(loadOp);
+      rewriter.replaceOpWithNewOp<memref::LoadOp>(loadOp, newMemref,
+                                                  ValueRange{});
+    }
+    for (auto storeOp : stores) {
+      rewriter.setInsertionPoint(storeOp);
+      rewriter.replaceOpWithNewOp<memref::StoreOp>(
+          storeOp, storeOp.getValueToStore(), newMemref, ValueRange{});
+    }
+
+    rewriter.replaceOp(ao, newAo->getResults());
+
+    return success();
   }
 };
 
@@ -646,10 +724,22 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
     auto context = &getContext();
+    const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
 
     auto removeIVs = [&](Operation *op) {
       RewritePatternSet patterns(context);
       populateRemoveIVPatterns(patterns);
+      GreedyRewriteConfig config;
+      if (failed(
+              applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+        signalPassFailure();
+        return;
+      }
+    };
+    auto registerAllocaReduce = [&](Operation *op) {
+      // TODO need to forward register stores to loads
+      RewritePatternSet patterns(context);
+      patterns.insert<MoveAllocas, RegisterAllocaReduce>(context);
       GreedyRewriteConfig config;
       if (failed(
               applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
@@ -678,8 +768,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
                              scf::SCFDialect, vector::VectorDialect>();
       target.addDynamicallyLegalDialect<affine::AffineDialect>(
           [&](Operation *op) { return isa<affine::AffineScopeOp>(op); });
-      if (failed(applyPartialConversion(op, target,
-                                        std::move(patterns)))) {
+      if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
         signalPassFailure();
         return;
       }
@@ -693,6 +782,39 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         rewriter.replaceOp(op, terminator->getOperands());
         rewriter.eraseOp(terminator);
       });
+    };
+    auto lowerAccesses = [&](Operation *op) {
+      auto dl = dataLayoutAnalysis.getAtOrAbove(op);
+      // TODO need to forward register stores to loads
+      LowerToLLVMOptions options(&getContext(),
+                                 dataLayoutAnalysis.getAtOrAbove(op));
+      // TODO need to tweak options.indexBitwidth in some cases? consult
+      // LowerGpuOpsToNVVMOpsPass
+      options.useBarePtrCallConv = true;
+      unsigned indexBitwidth = 64;
+      if (indexBitwidth != kDeriveIndexBitwidthFromDataLayout)
+        options.overrideIndexBitwidth(indexBitwidth);
+
+      // TODO do we need this?
+      // options.dataLayout = llvm::DataLayout(this->dataLayout);
+
+      LLVMTypeConverter converter(&getContext(), options, &dataLayoutAnalysis);
+
+      RewritePatternSet patterns(context);
+      converter.addConversion([&](MemRefType type) -> std::optional<Type> {
+        return LLVM::LLVMPointerType::get(type.getContext(),
+                                          type.getMemorySpaceAsInt());
+      });
+      populateGPULoweringPatterns(patterns, converter);
+      ConversionTarget target(getContext());
+      target.addIllegalDialect<affine::AffineDialect>();
+      target.addIllegalDialect<memref::MemRefDialect>();
+      target.addIllegalDialect<vector::VectorDialect>();
+      target.addLegalDialect<LLVM::LLVMDialect>();
+      if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
+        signalPassFailure();
+        return;
+      }
     };
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
       const mlir::DataLayoutAnalysis dl(gpuModule);
@@ -717,11 +839,13 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
+          registerAllocaReduce(func);
+          LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           lowerAffine(func);
+          lowerAccesses(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
           gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
-
         }
       });
     });

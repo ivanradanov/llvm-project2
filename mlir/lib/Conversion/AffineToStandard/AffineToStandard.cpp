@@ -168,7 +168,8 @@ public:
   }
 };
 
-static SmallVector<NamedAttribute> getAttributesToPreserve(Operation *op) {
+// TODO FIXME we want a custom op so we can preserve these...
+SmallVector<NamedAttribute> getAttributesToPreserve(Operation *op) {
   SmallVector<NamedAttribute> attrs;
   for (auto attr : op->getAttrs())
     if (attr.getName().getValue().starts_with("polymer.") ||
