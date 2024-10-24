@@ -29,6 +29,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "polly/Support/GICHelper.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -468,12 +469,21 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_ast_node_dump(node);
   });
 
-  Operation *g = scop->applySchedule(newSchedule, f);
+  auto g = cast<LLVM::LLVMFuncOp>(scop->applySchedule(newSchedule, f));
 
-  LLVM_DEBUG({
-    llvm::dbgs() << "New func:\n";
-    llvm::dbgs() << *g << "\n";
-  });
+  if (g) {
+    for (auto &b : llvm::make_early_inc_range(f.getRegion().getBlocks()))
+      b.erase();
+
+    f.getRegion().getBlocks().splice(f.getRegion().getBlocks().begin(),
+                                     g.getRegion().getBlocks());
+    g->erase();
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "New func:\n";
+      llvm::dbgs() << *f << "\n";
+    });
+  }
 
   isl_ast_build_free(build);
   isl_schedule_free(newSchedule);
