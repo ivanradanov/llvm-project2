@@ -19,6 +19,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
@@ -167,6 +168,15 @@ public:
   }
 };
 
+static SmallVector<NamedAttribute> getAttributesToPreserve(Operation *op) {
+  SmallVector<NamedAttribute> attrs;
+  for (auto attr : op->getAttrs())
+    if (attr.getName().getValue().starts_with("polymer.") ||
+        attr.getName().getValue().starts_with("gpu."))
+      attrs.push_back(attr);
+  return attrs;
+}
+
 /// Convert an `affine.parallel` (loop nest) operation into a `scf.parallel`
 /// operation.
 class AffineParallelLowering : public OpRewritePattern<AffineParallelOp> {
@@ -175,6 +185,7 @@ public:
 
   LogicalResult matchAndRewrite(AffineParallelOp op,
                                 PatternRewriter &rewriter) const override {
+    auto attrs = getAttributesToPreserve(op);
     Location loc = op.getLoc();
     SmallVector<Value, 8> steps;
     SmallVector<Value, 8> upperBoundTuple;
@@ -210,6 +221,7 @@ public:
       parOp = rewriter.create<scf::ParallelOp>(loc, lowerBoundTuple,
                                                upperBoundTuple, steps,
                                                /*bodyBuilderFn=*/nullptr);
+      parOp->setAttrs(attrs);
       rewriter.eraseBlock(parOp.getBody());
       rewriter.inlineRegionBefore(op.getRegion(), parOp.getRegion(),
                                   parOp.getRegion().end());
@@ -238,6 +250,7 @@ public:
     parOp = rewriter.create<scf::ParallelOp>(
         loc, lowerBoundTuple, upperBoundTuple, steps, identityVals,
         /*bodyBuilderFn=*/nullptr);
+    parOp->setAttrs(attrs);
 
     //  Copy the body of the affine.parallel op.
     rewriter.eraseBlock(parOp.getBody());
@@ -361,9 +374,11 @@ public:
     if (!resultOperands)
       return failure();
 
+    auto attrs = getAttributesToPreserve(op);
     // Build vector.load memref[expandedMap.results].
-    rewriter.replaceOpWithNewOp<memref::LoadOp>(op, op.getMemRef(),
-                                                *resultOperands);
+    auto newOp = rewriter.replaceOpWithNewOp<memref::LoadOp>(op, op.getMemRef(),
+                                                             *resultOperands);
+    newOp->setAttrs(attrs);
     return success();
   }
 };
@@ -408,9 +423,11 @@ public:
     if (!maybeExpandedMap)
       return failure();
 
+    auto attrs = getAttributesToPreserve(op);
     // Build memref.store valueToStore, memref[expandedMap.results].
-    rewriter.replaceOpWithNewOp<memref::StoreOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<memref::StoreOp>(
         op, op.getValueToStore(), op.getMemRef(), *maybeExpandedMap);
+    newOp->setAttrs(attrs);
     return success();
   }
 };
@@ -495,12 +512,11 @@ public:
     if (!resultOperands)
       return failure();
 
-    auto attr = op->getAttr("polymer.access.type");
+    auto attrs = getAttributesToPreserve(op);
     // Build vector.load memref[expandedMap.results].
     auto newOp = rewriter.replaceOpWithNewOp<vector::LoadOp>(
         op, op.getVectorType(), op.getMemRef(), *resultOperands);
-    if (attr)
-      newOp->setAttr("polymer.access.type", attr);
+    newOp->setAttrs(attrs);
     return success();
   }
 };
@@ -521,11 +537,11 @@ public:
     if (!maybeExpandedMap)
       return failure();
 
-    auto attr = op->getAttr("polymer.access.type");
+    auto attrs = getAttributesToPreserve(op);
+    // Build vector.load memref[expandedMap.results].
     auto newOp = rewriter.replaceOpWithNewOp<vector::StoreOp>(
         op, op.getValueToStore(), op.getMemRef(), *maybeExpandedMap);
-    if (attr)
-      newOp->setAttr("polymer.access.type", attr);
+    newOp->setAttrs(attrs);
 
     return success();
   }
