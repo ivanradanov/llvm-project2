@@ -1399,7 +1399,13 @@ static void setIslOptions(isl_ctx *ctx) {
 #undef check_res
 }
 
-Operation *IslScop::applySchedule(isl_schedule *newSchedule,
+void IslScop::cleanup(Operation *func) {
+  func->walk([](affine::AffineStoreVar op) {
+    op->erase();
+  });
+}
+
+Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
                                   Operation *originalFunc) {
   IRMapping oldToNewMapping;
   OpBuilder moduleBuilder(originalFunc);
