@@ -6,8 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "BarrierUtils.h"
-#include "Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -36,6 +34,10 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 
+#include "BarrierUtils.h"
+#include "LoopDistribute.h"
+#include "Utils.h"
+
 #include <cmath>
 #include <deque>
 #include <set>
@@ -45,9 +47,8 @@
 
 using namespace mlir;
 using namespace mlir::arith;
+using namespace mlir::loop_distribute;
 
-static constexpr int64_t registerMemorySpace = 15;
-static constexpr int64_t crossingRegisterMemorySpace = 16;
 static constexpr char crossingLoadAttr[] = "loop.distribute.crossing.load";
 
 static bool isUndef(Value v) {
@@ -2897,8 +2898,8 @@ void addPatterns(RewritePatternSet &patterns, StringRef method,
       DistributeAroundBarrier<affine::AffineParallelOp, UseMinCut>>(context);
 }
 
-LogicalResult distributeParallelLoops(Operation *op, StringRef method,
-                                      MLIRContext *context) {
+LogicalResult mlir::distributeParallelLoops(Operation *op, StringRef method,
+                                            MLIRContext *context) {
   if (method.starts_with("distribute")) {
     {
       RewritePatternSet patterns(context);
