@@ -801,7 +801,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P0@0x2aee8150
+    - id: P0@0x1a2980d0
   inc:
     val: 1
   body:
@@ -813,14 +813,14 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P1@0x2aee8240
+      - id: P1@0x1a2981c0
     inc:
       val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x2af2e160
+        - id: RS0_affine_parallel@0x1a2ddee0
         - id: c1
         - id: c0
         - val: 0
@@ -839,7 +839,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P2@0x2af26470
+              - id: P2@0x1a2d7e20
               - val: 1
             - val: 16
       inc:
@@ -848,7 +848,7 @@ node:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x2aee4870
+          - id: RS1_affine_parallel@0x1a294370
           - id: c1
           - id: c0
           - val: 0
@@ -867,7 +867,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P2@0x2af26470
+              - id: P2@0x1a2d7e20
               - val: 1
             - val: 16
           - val: 22
@@ -877,7 +877,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x2aefb470
+          - id: RS2_affine_parallel@0x1a2aa670
           - id: c1
           - id: c0
           - val: 0
@@ -888,7 +888,7 @@ node:
       - guard:
           op: ge
           args:
-          - id: P2@0x2af26470
+          - id: P2@0x1a2d7e20
           - op: add
             args:
             - op: mul
@@ -900,7 +900,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x2aee4870
+            - id: RS1_affine_parallel@0x1a294370
             - id: c1
             - id: c0
             - val: 0
@@ -908,7 +908,7 @@ node:
     - user:
         op: call
         args:
-        - id: RS3_affine_parallel@0x2aefb1d0
+        - id: RS3_affine_parallel@0x1a2aa3d0
         - id: c1
         - id: c0
         - val: 0
@@ -1045,7 +1045,7 @@ New func:
       "affine.yield"() {polymer.stmt.name = "S33_affine_yield"} : () -> ()
     }) {gpu.par.block, polymer.stmt.name = "RS3_affine_parallel"} : () -> ()
     "scf.reduce"() : () -> ()
-  }) : (index, index, index, index, index, index) -> ()
+  }) {gpu.par.grid} : (index, index, index, index, index, index) -> ()
   "llvm.return"() {polymer.stmt.name = "S35_llvm_return"} : () -> ()
 }) {gpu.par.kernel} : () -> ()
 /scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_ctx.c:295: isl_ctx not freed as some objects still reference it
