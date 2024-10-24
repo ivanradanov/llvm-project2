@@ -8,6 +8,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
@@ -1093,7 +1094,8 @@ public:
     } else if (isMark(Id, gridParallelMark)) {
       assert(isl_ast_node_get_type(Child) == isl_ast_node_for);
       auto nMembers = (uintptr_t)isl::manage_copy(Id).get_user();
-      createParallel(Child, nMembers);
+      auto pop = createParallel(Child, nMembers);
+      pop->setAttr("gpu.par.grid", UnitAttr::get(pop->getContext()));
     } else {
       llvm_unreachable("Unknown mark");
     }
@@ -1234,7 +1236,8 @@ public:
     return MaxType;
   }
 
-  void createParallel(__isl_take isl_ast_node *For, unsigned nLoops) {
+  scf::ParallelOp createParallel(__isl_take isl_ast_node *For,
+                                 unsigned nLoops) {
     SmallVector<Value> LBs;
     SmallVector<Value> Incs;
     SmallVector<isl_id *> Iterators;
@@ -1284,18 +1287,20 @@ public:
 
     assert(nLoops == 0 && "Not enough nested loops");
 
-    auto forOp = b.create<scf::ParallelOp>(loc, LBs, UBs, Incs);
+    auto pop = b.create<scf::ParallelOp>(loc, LBs, UBs, Incs);
 
-    for (unsigned i = 0; i < forOp.getNumLoops(); i++) {
-      IDToValue[Iterators[i]] = forOp.getInductionVars()[i];
+    for (unsigned i = 0; i < pop.getNumLoops(); i++) {
+      IDToValue[Iterators[i]] = pop.getInductionVars()[i];
       Iterators[i] = isl_id_free(Iterators[i]);
     }
 
     OpBuilder::InsertionGuard g(b);
-    b.setInsertionPointToStart(forOp.getBody());
+    b.setInsertionPointToStart(pop.getBody());
     create(Body);
 
     isl_ast_node_free(For);
+
+    return pop;
   }
 
   void createFor(__isl_take isl_ast_node *For) {
