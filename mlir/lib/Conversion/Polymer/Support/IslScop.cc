@@ -165,6 +165,10 @@ mapToDimensionMUPA(__isl_take isl_union_set *uset, unsigned N) {
       mapToDimensionUPMA(uset, N));
 }
 
+static bool isMark(isl_id *id, StringRef mark) {
+  return mark.str() == isl_id_get_name(id);
+}
+
 static constexpr char parallelLoopMark[] = "parallel";
 static isl_id *getParallelLoopMark(isl_ctx *ctx) {
   isl_id *loopMark = isl_id_alloc(ctx, parallelLoopMark, nullptr);
@@ -707,6 +711,10 @@ public:
   typedef llvm::MapVector<isl_id *, Value> IDToValueTy;
   IDToValueTy IDToValue{};
 
+  // How many to create
+  unsigned outerParallelBands = 1;
+  unsigned outerParallelBandsCreated = 0;
+
   Value createOp(__isl_take isl_ast_expr *Expr) {
     assert(isl_ast_expr_get_type(Expr) == isl_ast_expr_op &&
            "Expression not of type isl_ast_expr_op");
@@ -1075,13 +1083,17 @@ public:
     ISL_DEBUG("Building Mark:\n", isl_ast_node_dump(Node));
 
     auto *Id = isl_ast_node_mark_get_id(Node);
-    auto Child = isl_ast_node_mark_get_node(Node);
+    auto *Child = isl_ast_node_mark_get_node(Node);
     isl_ast_node_free(Node);
 
     // TODO this needs to check for "permutable" instead
     if (isParallelLoopMark(Id)) {
       assert(isl_ast_node_get_type(Child) == isl_ast_node_for);
-      createFor<scf::ParallelOp>(Child);
+      createFor(Child);
+    } else if (isMark(Id, gridParallelMark)) {
+      assert(isl_ast_node_get_type(Child) == isl_ast_node_for);
+      auto nMembers = (uintptr_t)isl::manage_copy(Id).get_user();
+      createParallel(Child, nMembers);
     } else {
       llvm_unreachable("Unknown mark");
     }
@@ -1222,8 +1234,72 @@ public:
     return MaxType;
   }
 
-  template <typename ForOpTy = scf::ForOp>
+  void createParallel(__isl_take isl_ast_node *For, unsigned nLoops) {
+    SmallVector<Value> LBs;
+    SmallVector<Value> Incs;
+    SmallVector<isl_id *> Iterators;
+    SmallVector<Value> UBs;
+    isl_ast_node *Body;
+    while (For && nLoops > 0) {
+      ISL_DEBUG("Building Parallel:\n", isl_ast_node_dump(For));
+      Body = isl_ast_node_for_get_body(For);
+      isl_ast_expr *Init = isl_ast_node_for_get_init(For);
+      isl_ast_expr *Inc = isl_ast_node_for_get_inc(For);
+      isl_ast_expr *Iterator = isl_ast_node_for_get_iterator(For);
+      isl_id *IteratorId = isl_ast_expr_get_id(Iterator);
+      Iterators.push_back(IteratorId);
+      Iterator = isl_ast_expr_free(Iterator);
+      arith::CmpIPredicate Predicate;
+      isl_ast_expr *UB =
+          getUpperBound(isl::manage_copy(For).as<isl::ast_node_for>(),
+                        Predicate)
+              .release();
+
+      Value ValueLB = create(Init);
+      Value ValueUB = create(UB);
+      Value ValueInc = create(Inc);
+      convertToMaxWidth(ValueLB, ValueUB, ValueInc);
+
+      if (Predicate == arith::CmpIPredicate::sle)
+        ValueUB = b.create<arith::AddIOp>(
+            loc, ValueUB,
+            b.create<arith::ConstantIntOp>(loc, 1, ValueUB.getType()));
+
+      convertToIndex(ValueLB, ValueUB, ValueInc);
+
+      LBs.push_back(ValueLB);
+      UBs.push_back(ValueUB);
+      Incs.push_back(ValueInc);
+
+      switch (isl_ast_node_get_type(Body)) {
+      case isl_ast_node_for:
+        For = Body;
+        Body = isl_ast_node_free(Body);
+        break;
+      default:
+        For = nullptr;
+      }
+      nLoops -= 1;
+    }
+
+    assert(nLoops == 0 && "Not enough nested loops");
+
+    auto forOp = b.create<scf::ParallelOp>(loc, LBs, UBs, Incs);
+
+    for (unsigned i = 0; i < forOp.getNumLoops(); i++) {
+      IDToValue[Iterators[i]] = forOp.getInductionVars()[i];
+      Iterators[i] = isl_id_free(Iterators[i]);
+    }
+
+    OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(forOp.getBody());
+    create(Body);
+
+    isl_ast_node_free(For);
+  }
+
   void createFor(__isl_take isl_ast_node *For) {
+    using ForOpTy = scf::ForOp;
     ISL_DEBUG("Building For:\n", isl_ast_node_dump(For));
     isl_ast_node *Body = isl_ast_node_for_get_body(For);
     isl_ast_expr *Init = isl_ast_node_for_get_init(For);
@@ -1252,14 +1328,7 @@ public:
 
     auto forOp = b.create<ForOpTy>(loc, ValueLB, ValueUB, ValueInc);
 
-    if constexpr (std::is_same<ForOpTy, scf::ForOp>::value) {
-      IDToValue[IteratorID] = forOp.getInductionVar();
-    } else if constexpr (std::is_same<ForOpTy, scf::ParallelOp>::value) {
-      IDToValue[IteratorID] = forOp.getInductionVars()[0];
-    } else {
-      // static_assert(0);
-      llvm_unreachable("?");
-    }
+    IDToValue[IteratorID] = forOp.getInductionVar();
 
     OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(forOp.getBody());
@@ -1311,6 +1380,20 @@ public:
 };
 } // namespace polymer
 
+static void setIslOptions(isl_ctx *ctx) {
+  isl_stat stat;
+#define check_res(code)                                                        \
+  do {                                                                         \
+    stat = code;                                                               \
+    assert(stat == isl_stat_ok);                                               \
+  } while (0)
+  check_res(isl_options_set_ast_build_atomic_upper_bound(ctx, 1));
+  check_res(isl_options_set_ast_build_exploit_nested_bounds(ctx, 1));
+  check_res(isl_options_set_ast_build_group_coscheduled(ctx, 1));
+  check_res(isl_options_set_ast_build_allow_else(ctx, 1));
+#undef check_res
+}
+
 Operation *IslScop::applySchedule(isl_schedule *newSchedule,
                                   Operation *originalFunc) {
   IRMapping oldToNewMapping;
@@ -1352,6 +1435,7 @@ Operation *IslScop::applySchedule(isl_schedule *newSchedule,
     isl_schedule_dump(newSchedule);
   });
   isl_union_set *domain = isl_schedule_get_domain(newSchedule);
+  setIslOptions(getIslCtx());
   isl_ast_build *build = isl_ast_build_alloc(getIslCtx());
   IslMLIRBuilder bc = {b, oldToNewMapping, *this};
   isl_ast_node *node =

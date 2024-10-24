@@ -383,6 +383,41 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
   return sc;
 }
 
+isl::schedule prepareScheduleForGPU(isl::schedule schedule) {
+  auto root = schedule.get_root();
+
+  auto nChildren = root.n_children();
+  if (nChildren.is_error())
+    return {};
+  if ((unsigned)nChildren != 1)
+    return {};
+
+  auto child = root.child(0);
+
+  if (!child.isa<isl::schedule_node_band>())
+    return {};
+  auto band = child.as<isl::schedule_node_band>();
+
+  // TODO need to split
+  auto nMember = band.n_member();
+  assert(!nMember.is_error());
+  if ((unsigned)nMember > 3)
+    return {};
+
+  bool allCoincident = true;
+  for (unsigned i = 0; i < (unsigned)nMember; i++)
+    allCoincident = allCoincident && band.member_get_coincident(i);
+
+  if (!allCoincident)
+    return {};
+
+  // TODO make this extensible
+  isl::id gridMark = isl::id::alloc(schedule.ctx(), polymer::gridParallelMark,
+                                    (void *)(unsigned)nMember);
+  isl::schedule_node node = band.insert_mark(gridMark);
+  return node.get_schedule();
+}
+
 void transform(LLVM::LLVMFuncOp f) {
   using namespace polymer;
   std::unique_ptr<polymer::IslScop> scop = polymer::createIslFromFuncOp(f);
@@ -415,6 +450,13 @@ void transform(LLVM::LLVMFuncOp f) {
   isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(sc);
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule:\n";
+    isl_schedule_dump(newSchedule);
+  });
+
+  newSchedule = prepareScheduleForGPU(isl::manage(newSchedule)).release();
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "New Schedule Prepared for GPU:\n";
     isl_schedule_dump(newSchedule);
   });
 
