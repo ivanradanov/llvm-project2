@@ -672,7 +672,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           }
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
-          (void)mlir::gpu::affine_opt::transform(func);
+          mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
