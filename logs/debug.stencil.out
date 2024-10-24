@@ -427,21 +427,21 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P0@0x390d18a0
+    - id: P0@0x2107ad10
   inc:
     val: 1
   body:
   - user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x390f6940
+      - id: RS0_affine_parallel@0x210a00f0
       - id: c0
       - val: 0
       - val: 0
   - user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x390f6ac0
+      - id: RS1_affine_parallel@0x210a0270
       - id: c0
       - val: 0
       - val: 0
@@ -501,7 +501,7 @@ New func:
       "affine.yield"() {polymer.stmt.name = "S24_affine_yield"} : () -> ()
     }) {gpu.par.block, polymer.stmt.name = "RS1_affine_parallel"} : () -> ()
     "scf.reduce"() : () -> ()
-  }) : (index, index, index) -> ()
+  }) {gpu.par.grid} : (index, index, index) -> ()
   "llvm.return"() {polymer.stmt.name = "S26_llvm_return"} : () -> ()
 }) {gpu.par.kernel} : () -> ()
 /scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_ctx.c:295: isl_ctx not freed as some objects still reference it
