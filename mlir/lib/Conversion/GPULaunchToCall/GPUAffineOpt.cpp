@@ -1,5 +1,6 @@
 #include "DependenceInfo.h"
 #include "mlir/Analysis/DataLayoutAnalysis.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
 #include "mlir/Conversion/Polymer/Target/ISL.h"
@@ -8,6 +9,7 @@
 #include "mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/Affine/Transforms/Transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -19,6 +21,7 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
@@ -27,6 +30,7 @@
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "polly/Support/GICHelper.h"
 #include "llvm/ADT/STLExtras.h"
@@ -471,6 +475,8 @@ void transform(LLVM::LLVMFuncOp f) {
 
   auto g = cast<LLVM::LLVMFuncOp>(scop->applySchedule(newSchedule, f));
 
+  scop->cleanup(g);
+
   if (g) {
     for (auto &b : llvm::make_early_inc_range(f.getRegion().getBlocks()))
       b.erase();
@@ -650,6 +656,32 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return;
       }
     };
+    auto lowerAffine = [&](Operation *op) {
+      RewritePatternSet patterns(&getContext());
+      populateAffineToStdConversionPatterns(patterns);
+      populateAffineToVectorConversionPatterns(patterns);
+      affine::populateAffineExpandIndexOpsPatterns(patterns);
+      ConversionTarget target(getContext());
+      target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
+                             scf::SCFDialect, vector::VectorDialect>();
+      target.addDynamicallyLegalDialect<affine::AffineDialect>(
+          [&](Operation *op) { return isa<affine::AffineScopeOp>(op); });
+      if (failed(applyPartialConversion(op, target,
+                                        std::move(patterns)))) {
+        signalPassFailure();
+        return;
+      }
+      // ScopeOp's needs to be preserved untill all other affine operations are
+      // lowered as their lowerings depend on the existence of the scope
+      op->walk([&](affine::AffineScopeOp op) {
+        IRRewriter rewriter(op);
+        Block *body = op.getBody();
+        Operation *terminator = body->getTerminator();
+        rewriter.inlineBlockBefore(body, op, op->getOperands());
+        rewriter.replaceOp(op, terminator->getOperands());
+        rewriter.eraseOp(terminator);
+      });
+    };
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
@@ -673,8 +705,11 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
+          lowerAffine(func);
+          LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
           gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
+
         }
       });
     });
