@@ -146,7 +146,8 @@ static inline bool hasElse(mlir::affine::AffineIfOp op) {
 }
 
 static inline mlir::Value bitcastToVec(mlir::RewriterBase &rewriter,
-                                       mlir::DataLayout &dl, mlir::Value v) {
+                                       const mlir::DataLayout &dl,
+                                       mlir::Value v) {
   using namespace mlir;
   Type ty = v.getType();
   auto vty =
@@ -160,8 +161,8 @@ static inline mlir::Value bitcastToVec(mlir::RewriterBase &rewriter,
   }
 }
 static inline mlir::Value bitcastFromVec(mlir::RewriterBase &rewriter,
-                                         mlir::DataLayout &dl, mlir::Type ty,
-                                         mlir::Value v) {
+                                         const mlir::DataLayout &dl,
+                                         mlir::Type ty, mlir::Value v) {
   using namespace mlir;
   if (isa<LLVM::LLVMPointerType>(ty)) {
     Type intTy = rewriter.getIntegerType((int64_t)dl.getTypeSize(ty) * 8);
@@ -189,8 +190,6 @@ static inline void
 createAffineVectorStore(mlir::RewriterBase &rewriter, mlir::DataLayout &dl,
                         mlir::Location loc, mlir::Value v, Args &&...args) {
   using namespace mlir;
-  auto vty = VectorType::get({(int64_t)dl.getTypeSize(v.getType())},
-                             rewriter.getI8Type());
   auto toStore = bitcastToVec(rewriter, dl, v);
   rewriter.create<affine::AffineVectorStoreOp>(loc, toStore, std::forward<Args>(args)...);
 }
