@@ -216,7 +216,8 @@ protected:
     if (!adaptor.getDynamicSizes().empty())
       return adaptor.getDynamicSizes().front();
 
-    Type indexType = rewriter.getIndexType();
+    // TODO index size
+    Type indexType = rewriter.getI64Type();
     return this->createIndexAttrConstant(
         rewriter, original->getLoc(), indexType,
         original.getType().getRank() == 0 ? 1
@@ -268,6 +269,32 @@ struct AtAddrLower : public ConvertOpToLLVMPattern<memref::AtAddrOp> {
   }
 };
 
+struct VectorLoadLower : public ConvertOpToLLVMPattern<vector::LoadOp> {
+  using ConvertOpToLLVMPattern<vector::LoadOp>::ConvertOpToLLVMPattern;
+  LogicalResult
+  matchAndRewrite(vector::LoadOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto tyAttr = cast_or_null<TypeAttr>(op->getAttr("polymer.access.type"));
+    if (!tyAttr)
+      return rewriter.notifyMatchFailure(op, "Access type attribute missing");
+    auto memref = op.getBase();
+    if (!memref.getType().getLayout().isIdentity())
+      return rewriter.notifyMatchFailure(op, "Memref layout is not identity");
+
+    Type ty = tyAttr.getValue();
+    Value ptr = adaptor.getBase();
+
+    Value newVal = bitcastToVec(
+        rewriter, getTypeConverter()->getDataLayoutAnalysis()->getAbove(op),
+
+        rewriter.create<LLVM::LoadOp>(op.getLoc(), ty, ptr));
+
+    rewriter.replaceOp(op, newVal);
+
+    return success();
+  }
+};
+
 struct VectorStoreLower : public ConvertOpToLLVMPattern<vector::StoreOp> {
   using ConvertOpToLLVMPattern<vector::StoreOp>::ConvertOpToLLVMPattern;
   LogicalResult
@@ -290,7 +317,77 @@ struct VectorStoreLower : public ConvertOpToLLVMPattern<vector::StoreOp> {
             ty, adaptor.getValueToStore()),
         ptr);
 
-    return failure();
+    return success();
+  }
+};
+
+template <typename OpTy>
+struct CLoadStoreOpLowering : public ConvertOpToLLVMPattern<OpTy> {
+protected:
+  using ConvertOpToLLVMPattern<OpTy>::ConvertOpToLLVMPattern;
+
+  /// Emits the IR that computes the address of the memory being accessed.
+  Value getAddress(OpTy op,
+                   typename ConvertOpToLLVMPattern<OpTy>::OpAdaptor adaptor,
+                   ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    MemRefType originalType = op.getMemRefType();
+    auto convertedType = dyn_cast_or_null<LLVM::LLVMPointerType>(
+        this->getTypeConverter()->convertType(originalType));
+    if (!convertedType) {
+      (void)rewriter.notifyMatchFailure(loc, "unsupported memref type");
+      return nullptr;
+    }
+
+    SmallVector<LLVM::GEPArg> args = llvm::to_vector(llvm::map_range(
+        adaptor.getIndices(), [](Value v) { return LLVM::GEPArg(v); }));
+    auto elTy = convertMemrefElementTypeForLLVMPointer(
+        originalType, *this->getTypeConverter());
+    if (!elTy) {
+      (void)rewriter.notifyMatchFailure(loc, "unsupported memref type");
+      return nullptr;
+    }
+    return rewriter.create<LLVM::GEPOp>(
+        loc,
+        LLVM::LLVMPointerType::get(op.getContext(),
+                                   originalType.getMemorySpaceAsInt()),
+        elTy, adaptor.getMemref(), args);
+  }
+};
+
+struct CLoadOpLowering : public CLoadStoreOpLowering<memref::LoadOp> {
+public:
+  using CLoadStoreOpLowering<memref::LoadOp>::CLoadStoreOpLowering;
+
+  LogicalResult
+  matchAndRewrite(memref::LoadOp loadOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Value address = getAddress(loadOp, adaptor, rewriter);
+    if (!address)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(
+        loadOp,
+        typeConverter->convertType(loadOp.getMemRefType().getElementType()),
+        address);
+    return success();
+  }
+};
+
+struct CStoreOpLowering : public CLoadStoreOpLowering<memref::StoreOp> {
+public:
+  using CLoadStoreOpLowering<memref::StoreOp>::CLoadStoreOpLowering;
+
+  LogicalResult
+  matchAndRewrite(memref::StoreOp storeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Value address = getAddress(storeOp, adaptor, rewriter);
+    if (!address)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<LLVM::StoreOp>(storeOp, adaptor.getValue(),
+                                               address);
+    return success();
   }
 };
 
@@ -299,6 +396,7 @@ struct VectorStoreLower : public ConvertOpToLLVMPattern<vector::StoreOp> {
 void mlir::populateGPULoweringPatterns(RewritePatternSet &patterns,
                                        LLVMTypeConverter &typeConverter) {
   patterns.add<SharedMemrefAllocaToGlobal>(patterns.getContext());
-  patterns.add<AtAddrLower, VectorStoreLower, CAllocaOpLowering,
-               GlobalOpLowering, GetGlobalOpLowering>(typeConverter);
+  patterns.add<AtAddrLower, CLoadOpLowering, CStoreOpLowering, VectorStoreLower,
+               VectorLoadLower, CAllocaOpLowering, GlobalOpLowering,
+               GetGlobalOpLowering>(typeConverter);
 }
