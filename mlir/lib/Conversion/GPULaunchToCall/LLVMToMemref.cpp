@@ -887,7 +887,7 @@ static Operation *createVectorStore(OpBuilder &b, Location loc, Type ty,
   if (useVectorLoadStore) {
     auto vs =
         b.create<affine::AffineVectorStoreOp>(loc, v, m, map, mapOperands);
-    vs->setAttr("polymer.access.type", b.getTypeArrayAttr({ty}));
+    vs->setAttr("polymer.access.type", TypeAttr::get(ty));
     return vs;
   }
 
@@ -933,7 +933,7 @@ static Value createVectorLoad(OpBuilder &b, Location loc, Type ty,
   if (useVectorLoadStore) {
     auto vl =
         b.create<affine::AffineVectorLoadOp>(loc, vty, m, map, mapOperands);
-    vl->setAttr("polymer.access.type", b.getTypeArrayAttr({ty}));
+    vl->setAttr("polymer.access.type", TypeAttr::get(ty));
     return vl;
   }
 
