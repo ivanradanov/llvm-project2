@@ -29,8 +29,10 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "polly/Support/GICHelper.h"
@@ -63,26 +65,31 @@ bool areEquiv(affine::AffineParallelOp a, affine::AffineParallelOp b) {
          a.getSteps() == b.getSteps();
 }
 
-struct ParallelizeSequential
-    : public OpRewritePattern<affine::AffineParallelOp> {
-  using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(affine::AffineParallelOp par,
-                                PatternRewriter &rewriter) const override {
-    if (gpu::affine_opt::isAffineBlockPar(par))
-      return rewriter.notifyMatchFailure(par, "op is not block par");
-    Block *block = par->getBlock();
-    if (block->getOperations().size() == 2)
-      return rewriter.notifyMatchFailure(par, "no ops around par");
+LogicalResult parallelizePreceeding(affine::AffineParallelOp parOp,
+                                    RewriterBase &rewriter) {
+  assert(gpu::affine_opt::isAffineBlockPar(parOp) && "op is not block par");
+  Block *block = parOp->getBlock();
 
-    Operation *cur = par->getPrevNode();
-    while (cur) {
-      Operation *prev = cur->getPrevNode();
-      rewriter.moveOpAfter(cur, &par.getBody()->front());
-      cur = prev;
+  bool changed = false;
+  IRMapping mapping;
+  rewriter.setInsertionPointToStart(parOp.getBody());
+  for (auto &op : llvm::make_range(block->begin(), parOp->getIterator())) {
+    if (isMemoryEffectFree(&op) && !gpu::affine_opt::isBlockPar(&op)) {
+      Operation *cloned = rewriter.clone(op, mapping);
+      rewriter.replaceOpUsesWithinBlock(&op, cloned->getResults(),
+                                        parOp.getBody());
     }
-    return rewriter.notifyMatchFailure(par, "not implemented yet");
   }
-};
+  for (auto &op : llvm::make_early_inc_range(llvm::reverse(
+           llvm::make_range(block->begin(), parOp->getIterator())))) {
+    if (isOpTriviallyDead(&op)) {
+      op.erase();
+      changed |= true;
+    }
+  }
+
+  return success(changed);
+}
 
 LogicalResult interchange(affine::AffineParallelOp parOp,
                           RewriterBase &rewriter) {
@@ -205,8 +212,6 @@ LogicalResult mlir::undistributeLoops(Operation *func) {
   assert(gridPar && gridPar->getNumRegions() == 1 &&
          gridPar->getRegion(0).getBlocks().size() == 1);
 
-  Block *block = &gridPar->getRegion(0).front();
-
   while (true) {
     auto blockPars = findBlockPars(gridPar);
     assert(blockPars.size() > 0);
@@ -225,6 +230,16 @@ LogicalResult mlir::undistributeLoops(Operation *func) {
       if (changed)
         break;
     }
+    if (changed)
+      continue;
+
+    for (auto blockPar : blockPars) {
+      changed |= parallelizePreceeding(blockPar, rewriter).succeeded();
+    }
+
+    llvm::SmallSetVector<Block *, 8> blocks;
+    for (auto par : blockPars)
+      blocks.insert(par->getBlock());
     if (changed)
       continue;
 
