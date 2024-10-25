@@ -303,10 +303,12 @@ void optGlobalSharedMemCopies(Operation *root) {
 static inline void islAssert(const isl_size &size) {
   assert(size != isl_size_error);
 }
+[[maybe_unused]]
 static inline unsigned unsignedFromIslSize(const isl::size &size) {
   assert(!size.is_error());
   return static_cast<unsigned>(size);
 }
+[[maybe_unused]]
 static inline unsigned unsignedFromIslSize(const isl_size &size) {
   islAssert(size);
   return static_cast<unsigned>(size);
@@ -437,7 +439,7 @@ isl::schedule prepareScheduleForGPU(isl::schedule schedule) {
 
   // TODO make this extensible
   isl::id gridMark = isl::id::alloc(schedule.ctx(), polymer::gridParallelMark,
-                                    (void *)(unsigned)nMember);
+                                    (void *)(uintptr_t)(unsigned)nMember);
   isl::schedule_node node = band.insert_mark(gridMark);
   return node.get_schedule();
 }
@@ -640,9 +642,8 @@ struct SharedMemrefAllocaToGlobal : public OpRewritePattern<memref::AllocaOp> {
         counter);
 
     auto mod = ao->getParentOfType<gpu::GPUModuleOp>();
-    if (!mod) {
-      return failure();
-    }
+    if (!mod)
+      return rewriter.notifyMatchFailure(ao, "Could not find gpu module");
 
     rewriter.setInsertionPointToStart(mod.getBody());
 
@@ -806,11 +807,13 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           (void)gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
-          registerAllocaReduce(func);
+          // Generates global so run on module
+          registerAllocaReduce(gpuModule);
           LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           lowerAffine(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
-          lowerAccesses(func);
+          // Need to handle globals so run on module
+          lowerAccesses(gpuModule);
           LLVM_DEBUG(DBGS << "After lower accesses:\n" << func << "\n");
           canonicalize(func);
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
