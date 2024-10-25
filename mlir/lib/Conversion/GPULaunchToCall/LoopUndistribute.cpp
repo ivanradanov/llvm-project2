@@ -93,21 +93,50 @@ LogicalResult parallelizePreceeding(affine::AffineParallelOp parOp,
 }
 
 // interchange is only supported for operations with no results for now
-LogicalResult interchange(affine::AffineParallelOp parOp,
-                          RewriterBase &rewriter) {
-  if (!gpu::affine_opt::isAffineBlockPar(parOp))
-    return rewriter.notifyMatchFailure(parOp, "op is not block par");
-  Operation *parent = parOp->getParentOp();
+LogicalResult interchange(Operation *parent, RewriterBase &rewriter) {
   if (gpu::affine_opt::isGridPar(parent))
     return rewriter.notifyMatchFailure(parent, "Parent op is grid par");
-  if (parOp->getBlock()->getOperations().size() != 2)
-    return rewriter.notifyMatchFailure(parOp, "imperfectly nested");
-  if (parent->getNumRegions() != 1 ||
-      parent->getRegion(0).getBlocks().size() != 1)
-    return rewriter.notifyMatchFailure(parOp,
-                                       "nested in non single block operation");
 
-  auto loc = parOp->getLoc();
+  SmallVector<affine::AffineParallelOp> pars;
+  affine::AffineParallelOp par = nullptr;
+  if (!llvm::all_of(parent->getRegions(), [&](Region &region) {
+        if (region.getBlocks().size() == 0) {
+          pars.push_back(nullptr);
+          return true;
+        }
+        if (region.getBlocks().size() == 1) {
+          assert(region.front().getTerminator()->getNumResults() == 0);
+          assert(region.front().getTerminator()->getNumOperands() == 0);
+          if (region.front().getOperations().size() == 1) {
+            pars.push_back(nullptr);
+            return true;
+          } else if (region.front().getOperations().size() == 2) {
+            auto thisPar =
+                gpu::affine_opt::isAffineBlockPar(&region.front().front());
+            if (thisPar) {
+              pars.push_back(par);
+              par = thisPar;
+              return true;
+            } else {
+              return false;
+            }
+          } else {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }))
+    return rewriter.notifyMatchFailure(
+        parent, "Parent op not suitable for interchange");
+
+  assert(par);
+  assert(pars.size() > 0);
+  assert(llvm::all_of(pars, [&](auto thisPar) {
+    return thisPar == nullptr || areEquiv(par, thisPar);
+  }));
+
+  auto loc = parent->getLoc();
 
   // affine.for
   //   affine.parallel
@@ -116,33 +145,39 @@ LogicalResult interchange(affine::AffineParallelOp parOp,
   //
   // affine.parallel
   //   affine.for
+
   rewriter.setInsertionPoint(parent);
   auto newPar =
-      cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*parOp));
+      cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*par));
   rewriter.createBlock(&newPar.getRegion(), newPar.getRegion().begin(),
-                       parOp.getBody()->getArgumentTypes(),
-                       parOp.getBody()->getArgumentLocs());
+                       par.getBody()->getArgumentTypes(),
+                       par.getBody()->getArgumentLocs());
   Operation *child = rewriter.cloneWithoutRegions(*parent);
   rewriter.create<affine::AffineYieldOp>(loc);
 
-  Region *childRegion = &child->getRegion(0);
-  Block *parentBody = &parent->getRegion(0).front();
-  rewriter.createBlock(childRegion, childRegion->begin(),
-                       parentBody->getArgumentTypes(),
-                       parentBody->getArgumentLocs());
-  Block *childBody = &child->getRegion(0).front();
-  rewriter.inlineBlockBefore(parOp.getBody(), childBody, childBody->begin(),
-                             newPar.getBody()->getArguments());
-  assert(childBody->getTerminator()->getNumResults() == 0);
-  rewriter.eraseOp(childBody->getTerminator());
-  rewriter.setInsertionPointToEnd(childBody);
-  assert(parentBody->getTerminator()->getNumResults() == 0);
-  assert(parentBody->getTerminator()->getNumOperands() == 0);
-  rewriter.clone(*parentBody->getTerminator());
+  for (auto [childRegion, parentRegion] :
+       llvm::zip(child->getRegions(), parent->getRegions())) {
+    if (parentRegion.getBlocks().size() == 0)
+      continue;
+    Block *parentBody = &parent->getRegion(0).front();
+    rewriter.createBlock(&childRegion, childRegion.begin(),
+                         parentBody->getArgumentTypes(),
+                         parentBody->getArgumentLocs());
+    Block *childBody = &child->getRegion(0).front();
+    rewriter.inlineBlockBefore(&parentBody->front().getRegion(0).front(),
+                               childBody, childBody->begin(),
+                               newPar.getBody()->getArguments());
+    assert(childBody->getTerminator()->getNumResults() == 0);
+    rewriter.eraseOp(childBody->getTerminator());
+    rewriter.setInsertionPointToEnd(childBody);
+    assert(parentBody->getTerminator()->getNumResults() == 0);
+    assert(parentBody->getTerminator()->getNumOperands() == 0);
+    rewriter.clone(*parentBody->getTerminator());
 
-  for (auto [oldArg, newArg] :
-       llvm::zip(parentBody->getArguments(), childBody->getArguments()))
-    rewriter.replaceAllUsesWith(oldArg, newArg);
+    for (auto [oldArg, newArg] :
+         llvm::zip(parentBody->getArguments(), childBody->getArguments()))
+      rewriter.replaceAllUsesWith(oldArg, newArg);
+  }
 
   rewriter.eraseOp(parent);
 
@@ -211,7 +246,7 @@ LogicalResult mlir::undistributeLoops(Operation *func) {
     bool changed = false;
 
     for (auto blockPar : blockPars) {
-      changed |= interchange(blockPar, rewriter).succeeded();
+      changed |= interchange(blockPar->getParentOp(), rewriter).succeeded();
     }
     if (changed)
       continue;
