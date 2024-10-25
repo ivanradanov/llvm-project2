@@ -664,6 +664,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return failure();
       IRRewriter rewriter(context);
       op->walk([&](affine::AffineBarrierOp barrier) {
+        rewriter.setInsertionPoint(barrier);
         rewriter.replaceOpWithNewOp<NVVM::Barrier0Op>(barrier);
       });
       return success();
