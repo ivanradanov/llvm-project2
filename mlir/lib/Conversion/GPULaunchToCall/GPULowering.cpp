@@ -165,41 +165,6 @@ public:
   }
 };
 
-struct SharedMemrefAllocaToGlobal : public OpRewritePattern<memref::AllocaOp> {
-  using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(memref::AllocaOp ao,
-                                PatternRewriter &rewriter) const override {
-    auto mt = ao.getType();
-    if (nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(mt))
-      return rewriter.notifyMatchFailure(ao, "Not shared memory address space");
-
-    auto type = MemRefType::get(mt.getShape(), mt.getElementType(), {},
-                                /* memspace */ 3);
-    auto loc = ao->getLoc();
-    auto name = "shared_mem_" + std::to_string((long long int)(Operation *)ao);
-
-    auto mod = ao->getParentOfType<gpu::GPUModuleOp>();
-    if (!mod) {
-      return failure();
-    }
-
-    rewriter.setInsertionPointToStart(mod.getBody());
-
-    auto initialValue = rewriter.getUnitAttr();
-    rewriter.create<memref::GlobalOp>(
-        loc, rewriter.getStringAttr(name),
-        /* sym_visibility */ mlir::StringAttr(), mlir::TypeAttr::get(type),
-        initialValue, mlir::UnitAttr(), /* alignment */ nullptr);
-    rewriter.setInsertionPoint(ao);
-    auto getGlobalOp = rewriter.create<memref::GetGlobalOp>(loc, type, name);
-
-    rewriter.replaceOp(ao, getGlobalOp->getResults());
-
-    return success();
-  }
-};
-
 /// Pattern for lowering automatic stack allocations.
 /// Pattern for allocation-like operations.
 template <typename OpTy>
@@ -395,7 +360,6 @@ public:
 
 void mlir::populateGPULoweringPatterns(RewritePatternSet &patterns,
                                        LLVMTypeConverter &typeConverter) {
-  patterns.add<SharedMemrefAllocaToGlobal>(patterns.getContext());
   patterns.add<AtAddrLower, CLoadOpLowering, CStoreOpLowering, VectorStoreLower,
                VectorLoadLower, CAllocaOpLowering, GlobalOpLowering,
                GetGlobalOpLowering>(typeConverter);

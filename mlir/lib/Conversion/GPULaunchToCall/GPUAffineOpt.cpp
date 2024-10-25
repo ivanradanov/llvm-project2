@@ -615,6 +615,51 @@ struct RegisterAllocaReduce : public OpRewritePattern<memref::AllocaOp> {
   }
 };
 
+struct SharedMemrefAllocaToGlobal : public OpRewritePattern<memref::AllocaOp> {
+  using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::AllocaOp ao,
+                                PatternRewriter &rewriter) const override {
+    auto mt = ao.getType();
+    if (!nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(mt))
+      return rewriter.notifyMatchFailure(ao, "Not shared memory address space");
+
+    auto type = MemRefType::get(mt.getShape(), mt.getElementType(), {},
+                                /* memspace */ 3);
+    auto loc = ao->getLoc();
+
+    unsigned counter = 0;
+    SmallString<20> name = SymbolTable::generateSymbolName<20>(
+
+        "shared_mem",
+        [&](llvm::StringRef candidate) {
+          return SymbolTable::lookupNearestSymbolFrom(
+                     ao, StringAttr::get(ao.getContext(), candidate)) !=
+                 nullptr;
+        },
+        counter);
+
+    auto mod = ao->getParentOfType<gpu::GPUModuleOp>();
+    if (!mod) {
+      return failure();
+    }
+
+    rewriter.setInsertionPointToStart(mod.getBody());
+
+    auto initialValue = rewriter.getUnitAttr();
+    rewriter.create<memref::GlobalOp>(
+        loc, rewriter.getStringAttr(name),
+        /* sym_visibility */ mlir::StringAttr(), mlir::TypeAttr::get(type),
+        initialValue, mlir::UnitAttr(), /* alignment */ nullptr);
+    rewriter.setInsertionPoint(ao);
+    auto getGlobalOp = rewriter.create<memref::GetGlobalOp>(loc, type, name);
+
+    rewriter.replaceOp(ao, getGlobalOp->getResults());
+
+    return success();
+  }
+};
+
 } // namespace
 
 namespace mlir {
@@ -662,7 +707,8 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       // TODO need to forward register stores to loads.
       // Check if the llvm mem2reg does that for us
       RewritePatternSet patterns(context);
-      patterns.insert<MoveAllocas, RegisterAllocaReduce>(context);
+      patterns.insert<MoveAllocas, RegisterAllocaReduce,
+                      SharedMemrefAllocaToGlobal>(context);
       GreedyRewriteConfig config;
       if (failed(
               applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
@@ -678,9 +724,13 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         rewriter.setInsertionPoint(barrier);
         rewriter.replaceOpWithNewOp<NVVM::Barrier0Op>(barrier);
       });
+      op->walk([&](memref::AllocaOp alloca) {});
       return success();
     };
     auto lowerAffine = [&](Operation *op) {
+      assert(!op->walk([&](affine::AffineScopeOp op) {
+                  return WalkResult::interrupt();
+                }).wasInterrupted());
       RewritePatternSet patterns(&getContext());
       populateAffineToStdConversionPatterns(patterns);
       populateAffineToVectorConversionPatterns(patterns);
@@ -694,16 +744,6 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         signalPassFailure();
         return;
       }
-      // ScopeOp's needs to be preserved untill all other affine operations are
-      // lowered as their lowerings depend on the existence of the scope
-      op->walk([&](affine::AffineScopeOp op) {
-        IRRewriter rewriter(op);
-        Block *body = op.getBody();
-        Operation *terminator = body->getTerminator();
-        rewriter.inlineBlockBefore(body, op, op->getOperands());
-        rewriter.replaceOp(op, terminator->getOperands());
-        rewriter.eraseOp(terminator);
-      });
     };
     auto lowerAccesses = [&](Operation *op) {
       auto dl = dataLayoutAnalysis.getAtOrAbove(op);
@@ -769,8 +809,9 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           registerAllocaReduce(func);
           LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           lowerAffine(func);
-          lowerAccesses(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
+          lowerAccesses(func);
+          LLVM_DEBUG(DBGS << "After lower accesses:\n" << func << "\n");
           canonicalize(func);
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
         }
