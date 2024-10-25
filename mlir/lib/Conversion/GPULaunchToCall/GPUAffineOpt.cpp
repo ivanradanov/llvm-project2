@@ -582,7 +582,18 @@ struct RegisterAllocaReduce : public OpRewritePattern<memref::AllocaOp> {
       }
     }
 
-    rewriter.setInsertionPoint(ao);
+    affine::AffineParallelOp blockPar = nullptr;
+    ao->getParentOp()->walk([&](Operation *op) {
+      if (auto par = gpu::affine_opt::isAffineBlockPar(op)) {
+        assert(!blockPar);
+        blockPar = par;
+        return WalkResult::skip();
+      }
+      return WalkResult::advance();
+    });
+    assert(blockPar);
+
+    rewriter.setInsertionPoint(&blockPar.getBody()->front());
     auto newAo = rewriter.create<memref::AllocaOp>(
         ao.getLoc(), MemRefType::get({}, mt.getElementType()));
     auto newMemref = newAo.getMemref();
@@ -753,10 +764,10 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
-          registerAllocaReduce(func);
-          LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           (void)gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
+          registerAllocaReduce(func);
+          LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           lowerAffine(func);
           lowerAccesses(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");

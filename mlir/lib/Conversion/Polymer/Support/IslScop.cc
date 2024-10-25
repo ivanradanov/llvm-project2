@@ -1416,6 +1416,9 @@ Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
   assert(originalFunc->getRegion(0).getBlocks().size() == 1);
 
   {
+    // TODO need to place these at their appropriate scope (maybe use isl
+    // marks?) - currently we are working around this in GPUAffineOpt using
+    // MoveAllocas
     OpBuilder b(f->getContext());
     b.createBlock(&f->getRegion(0), f->getRegion(0).begin(),
                   originalFunc->getRegion(0).front().getArgumentTypes(),
