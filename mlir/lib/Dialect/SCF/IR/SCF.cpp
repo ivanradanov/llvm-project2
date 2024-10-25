@@ -3195,9 +3195,13 @@ struct MergeNestedParallelLoops : public OpRewritePattern<ParallelOp> {
 
 void ParallelOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
+// FIXME disable these for now - we should build our own canonicalizer with
+// only the canonicalizations we are interested in.
+#if 0
   results
       .add<ParallelOpSingleOrZeroIterationDimsFolder, MergeNestedParallelLoops>(
           context);
+#endif
 }
 
 /// Given the region at `index`, or the parent operation if `index` is None,
