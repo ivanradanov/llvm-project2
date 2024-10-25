@@ -801,7 +801,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P2@0x42874c50
+    - id: P2@0x4b8f07d0
   inc:
     val: 1
   body:
@@ -813,14 +813,14 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P3@0x42874d40
+      - id: P3@0x4b8f08c0
     inc:
       val: 1
     body:
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x428af7f0
+        - id: RS0_affine_parallel@0x4b903b70
         - id: c1
         - id: c0
         - val: 0
@@ -839,7 +839,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P0@0x4285bbe0
+              - id: P0@0x4b8d7c50
               - val: 1
             - val: 16
       inc:
@@ -848,7 +848,7 @@ node:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x42870a70
+          - id: RS1_affine_parallel@0x4b8eca70
           - id: c1
           - id: c0
           - val: 0
@@ -867,7 +867,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P0@0x4285bbe0
+              - id: P0@0x4b8d7c50
               - val: 1
             - val: 16
           - val: 22
@@ -877,7 +877,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x42888af0
+          - id: RS2_affine_parallel@0x4b903d70
           - id: c1
           - id: c0
           - val: 0
@@ -888,7 +888,7 @@ node:
       - guard:
           op: ge
           args:
-          - id: P0@0x4285bbe0
+          - id: P0@0x4b8d7c50
           - op: add
             args:
             - op: mul
@@ -900,7 +900,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x42870a70
+            - id: RS1_affine_parallel@0x4b8eca70
             - id: c1
             - id: c0
             - val: 0
@@ -908,7 +908,7 @@ node:
     - user:
         op: call
         args:
-        - id: RS3_affine_parallel@0x42888850
+        - id: RS3_affine_parallel@0x4b903ad0
         - id: c1
         - id: c0
         - val: 0
@@ -1946,7 +1946,96 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
   } {gpu.par.grid}
   llvm.return {polymer.stmt.name = "S35_llvm_return"}
 }
-<unknown>:0: error: 'llvm.mlir.addressof' op must reference a global defined by 'llvm.mlir.global' or 'llvm.func'
-<unknown>:0: note: see current operation: %4 = "llvm.mlir.addressof"() <{global_name = @shared_mem_0}> : () -> !llvm.ptr<3>
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> : vector<2xi64>>, #dlti.dl_entry<i128, dense<128> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr<272>, dense<64> : vector<4xi64>>, #dlti.dl_entry<i64, dense<64> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr<270>, dense<32> : vector<4xi64>>, #dlti.dl_entry<f128, dense<128> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr<271>, dense<32> : vector<4xi64>>, #dlti.dl_entry<f16, dense<16> : vector<2xi64>>, #dlti.dl_entry<f64, dense<64> : vector<2xi64>>, #dlti.dl_entry<i16, dense<16> : vector<2xi64>>, #dlti.dl_entry<i32, dense<32> : vector<2xi64>>, #dlti.dl_entry<i1, dense<8> : vector<2xi64>>, #dlti.dl_entry<i8, dense<8> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr, dense<64> : vector<4xi64>>, #dlti.dl_entry<"dlti.stack_alignment", 128 : i64>, #dlti.dl_entry<"dlti.endianness", "little">>, gpu.container_module} {
+  gpu.module @__mlir_gpu_module [#nvvm.target<chip = "sm_80">]  {
+    llvm.mlir.global external @shared_mem_1() {addr_space = 3 : i32} : !llvm.array<1024 x i8> {
+      %0 = llvm.mlir.undef : !llvm.array<1024 x i8>
+      llvm.return %0 : !llvm.array<1024 x i8>
+    }
+    llvm.mlir.global external @shared_mem_0() {addr_space = 3 : i32} : !llvm.array<1024 x i8> {
+      %0 = llvm.mlir.undef : !llvm.array<1024 x i8>
+      llvm.return %0 : !llvm.array<1024 x i8>
+    }
+    llvm.comdat @__llvm_global_comdat {
+      llvm.comdat_selector @_ZZ13MatrixMulCUDAILi16EEvPfS0_S0_iiE2As any
+      llvm.comdat_selector @_ZZ13MatrixMulCUDAILi16EEvPfS0_S0_iiE2Bs any
+      llvm.comdat_selector @_ZZ13MatrixMulCUDAILi32EEvPfS0_S0_iiE2As any
+      llvm.comdat_selector @_ZZ13MatrixMulCUDAILi32EEvPfS0_S0_iiE2Bs any
+      llvm.comdat_selector @_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii any
+      llvm.comdat_selector @_Z13MatrixMulCUDAILi32EEvPfS0_S0_ii any
+    }
+    llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: i32, %arg7: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.writeonly}, %arg8: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg9: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg10: i32 {llvm.noundef}, %arg11: i32 {llvm.noundef}) comdat(@__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii) attributes {gpu.par.kernel, sym_visibility = "private"} {
+      %c23_i64 = arith.constant 23 : i64
+      %c-16_i64 = arith.constant -16 : i64
+      %0 = llvm.mlir.constant(1 : index) : i64
+      %c16 = arith.constant 16 : index
+      %1 = llvm.mlir.addressof @shared_mem_0 : !llvm.ptr<3>
+      %2 = llvm.mlir.addressof @shared_mem_1 : !llvm.ptr<3>
+      %c1 = arith.constant 1 : index
+      %c0 = arith.constant 0 : index
+      %c22_i64 = arith.constant 22 : i64
+      %c16_i64 = arith.constant 16 : i64
+      %c21_i64 = arith.constant 21 : i64
+      %c1_i64 = arith.constant 1 : i64
+      %c0_i64 = arith.constant 0 : i64
+      %3 = llvm.mlir.constant(0.000000e+00 : f32) {polymer.stmt.name = "S0_llvm_mlir_constant"} : f32
+      %4 = arith.index_cast %arg10 {polymer.stmt.name = "S5_arith_index_cast"} : i32 to index
+      %5 = arith.index_cast %arg1 : i64 to index
+      %6 = arith.index_cast %arg0 : i64 to index
+      scf.parallel (%arg12, %arg13) = (%c0, %c0) to (%5, %6) step (%c1, %c1) {
+        scf.parallel (%arg14, %arg15, %arg16) = (%c0, %c0, %c0) to (%c16, %c16, %c1) step (%c1, %c1, %c1) {
+          %7 = llvm.alloca %0 x f32 : (i64) -> !llvm.ptr
+          %8 = llvm.getelementptr %7[] : (!llvm.ptr) -> !llvm.ptr, f32
+          llvm.store %3, %8 : f32, !llvm.ptr
+          nvvm.barrier0
+          %9 = arith.index_cast %4 : index to i64
+          %10 = arith.subi %9, %c1_i64 : i64
+          %11 = arith.addi %9, %c-16_i64 : i64
+          %12 = arith.cmpi slt, %10, %c0_i64 : i64
+          %13 = arith.select %12, %11, %10 : i64
+          %14 = arith.divsi %13, %c16_i64 : i64
+          %15 = arith.minsi %14, %c21_i64 : i64
+          %16 = arith.addi %15, %c1_i64 : i64
+          scf.for %arg17 = %c0_i64 to %16 step %c1_i64  : i64 {
+            %19 = llvm.load %arg8 : !llvm.ptr -> f32
+            llvm.store %19, %2 : f32, !llvm.ptr<3>
+            %20 = llvm.load %arg9 : !llvm.ptr -> f32
+            llvm.store %20, %1 : f32, !llvm.ptr<3>
+          }
+          nvvm.barrier0
+          %17 = arith.addi %14, %c23_i64 : i64
+          scf.for %arg17 = %c22_i64 to %17 step %c1_i64  : i64 {
+            %19 = llvm.load %8 : !llvm.ptr -> f32
+            %20 = scf.for %arg18 = %c0 to %c16 step %c1 iter_args(%arg19 = %19) -> (f32) {
+              %24 = llvm.load %2 : !llvm.ptr<3> -> f32
+              %25 = llvm.load %1 : !llvm.ptr<3> -> f32
+              %26 = llvm.fmul %24, %25  {fastmathFlags = #llvm.fastmath<contract>, polymer.stmt.name = "S24_llvm_fmul"} : f32
+              %27 = llvm.fadd %arg19, %26  {fastmathFlags = #llvm.fastmath<contract>, polymer.stmt.name = "S25_llvm_fadd"} : f32
+              scf.yield %27 : f32
+            }
+            llvm.store %20, %8 : f32, !llvm.ptr
+            nvvm.barrier0
+            %21 = arith.muli %arg17, %c16_i64 : i64
+            %22 = arith.addi %21, %c1_i64 : i64
+            %23 = arith.cmpi sge, %9, %22 : i64
+            scf.if %23 {
+              %24 = llvm.load %arg8 : !llvm.ptr -> f32
+              llvm.store %24, %2 : f32, !llvm.ptr<3>
+              %25 = llvm.load %arg9 : !llvm.ptr -> f32
+              llvm.store %25, %1 : f32, !llvm.ptr<3>
+            }
+          }
+          nvvm.barrier0
+          %18 = llvm.load %8 : !llvm.ptr -> f32
+          llvm.store %18, %arg7 : f32, !llvm.ptr
+          scf.reduce 
+        } {gpu.par.block, polymer.stmt.name = "RS0_affine_parallel"}
+        scf.reduce 
+      } {gpu.par.grid}
+      llvm.return {polymer.stmt.name = "S35_llvm_return"}
+    }
+  }
+}
+
 Eliminated dead instances: [P0, P1, P2, P3] -> { S4_arith_index_cast[]; S1_memref_ataddr[]; S9_memref_alloca[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S8_memref_alloca[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S5_arith_index_cast[]; S3_memref_ataddr[]; S6_arith_index_cast[]; S2_memref_ataddr[]; S29_affine_yield[i0, i1, 0, i3] : 0 <= i0 < P3 and 0 <= i1 < P2 and i3 >= 0 and 16i3 < P0; S7_arith_index_cast[]; S34_affine_yield[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S10_memref_alloca[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S0_llvm_mlir_constant[] }
 Eliminated dead instances: [P0, P1, P2, P3] -> { S4_arith_index_cast[]; S1_memref_ataddr[]; S9_memref_alloca[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S8_memref_alloca[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S5_arith_index_cast[]; S3_memref_ataddr[]; S6_arith_index_cast[]; S2_memref_ataddr[]; S29_affine_yield[i0, i1, 0, i3] : 0 <= i0 < P3 and 0 <= i1 < P2 and i3 >= 0 and 16i3 < P0; S7_arith_index_cast[]; S34_affine_yield[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S10_memref_alloca[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; S0_llvm_mlir_constant[] }
