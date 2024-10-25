@@ -659,7 +659,15 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return;
       }
     };
-    auto gpuify = [&](Operation *op) { return mlir::undistributeLoops(op); };
+    auto gpuify = [&](Operation *op) {
+      if (mlir::undistributeLoops(op).failed())
+        return failure();
+      IRRewriter rewriter(context);
+      op->walk([&](affine::AffineBarrierOp barrier) {
+        rewriter.replaceOpWithNewOp<NVVM::Barrier0Op>(barrier);
+      });
+      return success();
+    };
     auto lowerAffine = [&](Operation *op) {
       RewritePatternSet patterns(&getContext());
       populateAffineToStdConversionPatterns(patterns);
