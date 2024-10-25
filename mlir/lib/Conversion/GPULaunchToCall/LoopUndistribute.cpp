@@ -80,17 +80,19 @@ LogicalResult parallelizePreceeding(affine::AffineParallelOp parOp,
                                         parOp.getBody());
     }
   }
-  for (auto &op : llvm::make_early_inc_range(llvm::reverse(
-           llvm::make_range(block->begin(), parOp->getIterator())))) {
-    if (isOpTriviallyDead(&op)) {
-      op.erase();
+  for (Operation *op = parOp->getPrevNode(); op != nullptr;) {
+    Operation *prev = op->getPrevNode();
+    if (isOpTriviallyDead(op)) {
+      op->erase();
       changed |= true;
     }
+    op = prev;
   }
 
   return success(changed);
 }
 
+// interchange is only supported for operations with no results for now
 LogicalResult interchange(affine::AffineParallelOp parOp,
                           RewriterBase &rewriter) {
   if (!gpu::affine_opt::isAffineBlockPar(parOp))
@@ -100,10 +102,10 @@ LogicalResult interchange(affine::AffineParallelOp parOp,
     return rewriter.notifyMatchFailure(parent, "Parent op is grid par");
   if (parOp->getBlock()->getOperations().size() != 2)
     return rewriter.notifyMatchFailure(parOp, "imperfectly nested");
-  auto forOp = dyn_cast<affine::AffineForOp>(parent);
-  if (!forOp)
-    return rewriter.notifyMatchFailure(parent,
-                                       "Parent op is not affine for op");
+  if (parent->getNumRegions() != 1 ||
+      parent->getRegion(0).getBlocks().size() != 1)
+    return rewriter.notifyMatchFailure(parOp,
+                                       "nested in non single block operation");
 
   auto loc = parOp->getLoc();
 
@@ -114,41 +116,38 @@ LogicalResult interchange(affine::AffineParallelOp parOp,
   //
   // affine.parallel
   //   affine.for
-  rewriter.setInsertionPoint(forOp);
+  rewriter.setInsertionPoint(parent);
   auto newPar =
       cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*parOp));
   rewriter.createBlock(&newPar.getRegion(), newPar.getRegion().begin(),
                        parOp.getBody()->getArgumentTypes(),
                        parOp.getBody()->getArgumentLocs());
-  auto newFor = cast<affine::AffineForOp>(rewriter.cloneWithoutRegions(*forOp));
-  rewriter.createBlock(&newFor.getRegion(), newFor.getRegion().begin(),
-                       forOp.getBody()->getArgumentTypes(),
-                       forOp.getBody()->getArgumentLocs());
-  rewriter.inlineBlockBefore(parOp.getBody(), newFor.getBody(),
-                             newFor.getBody()->begin(),
-                             newPar.getBody()->getArguments());
-  assert(newFor.getBody()->getTerminator()->getNumResults() == 0);
-  rewriter.eraseOp(newFor.getBody()->getTerminator());
-  rewriter.setInsertionPointToEnd(newFor.getBody());
-  rewriter.create<affine::AffineYieldOp>(loc);
-  rewriter.setInsertionPointToEnd(newPar.getBody());
+  Operation *child = rewriter.cloneWithoutRegions(*parent);
   rewriter.create<affine::AffineYieldOp>(loc);
 
-  for (auto [oldArg, newArg] : llvm::zip(forOp.getBody()->getArguments(),
-                                         newFor.getBody()->getArguments()))
+  Region *childRegion = &child->getRegion(0);
+  Block *parentBody = &parent->getRegion(0).front();
+  rewriter.createBlock(childRegion, childRegion->begin(),
+                       parentBody->getArgumentTypes(),
+                       parentBody->getArgumentLocs());
+  Block *childBody = &child->getRegion(0).front();
+  rewriter.inlineBlockBefore(parOp.getBody(), childBody, childBody->begin(),
+                             newPar.getBody()->getArguments());
+  assert(childBody->getTerminator()->getNumResults() == 0);
+  rewriter.eraseOp(childBody->getTerminator());
+  rewriter.setInsertionPointToEnd(childBody);
+  assert(parentBody->getTerminator()->getNumResults() == 0);
+  assert(parentBody->getTerminator()->getNumOperands() == 0);
+  rewriter.clone(*parentBody->getTerminator());
+
+  for (auto [oldArg, newArg] :
+       llvm::zip(parentBody->getArguments(), childBody->getArguments()))
     rewriter.replaceAllUsesWith(oldArg, newArg);
 
-  rewriter.eraseOp(forOp);
+  rewriter.eraseOp(parent);
 
   return success();
 }
-struct Interchange : public OpRewritePattern<affine::AffineParallelOp> {
-  using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(affine::AffineParallelOp parOp,
-                                PatternRewriter &rewriter) const override {
-    return interchange(parOp, rewriter);
-  }
-};
 
 LogicalResult fuse(affine::AffineParallelOp par, RewriterBase &rewriter) {
   if (!gpu::affine_opt::isAffineBlockPar(par))
@@ -172,14 +171,6 @@ LogicalResult fuse(affine::AffineParallelOp par, RewriterBase &rewriter) {
 
   return success();
 }
-
-struct FuseBlockPars : public OpRewritePattern<affine::AffineParallelOp> {
-  using OpRewritePattern<affine::AffineParallelOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(affine::AffineParallelOp par,
-                                PatternRewriter &rewriter) const override {
-    return fuse(par, rewriter);
-  }
-};
 
 SmallVector<affine::AffineParallelOp> findBlockPars(Operation *parent) {
   SmallVector<affine::AffineParallelOp> blockPars;
