@@ -1409,23 +1409,16 @@ sched_graph_extract_live_range_arrays(isl_ctx *ctx,
 		return isl_stat_ok;
 	}
 
-	graph->array_table = isl_hash_table_alloc(ctx, graph->n_array);
+	graph->array_table = isl_id_to_id_alloc(ctx, graph->n_array);
 	if (!graph->array_table)
 		return isl_stat_error;
 	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
 	for (i = 0; i < graph->n_array; ++i) {
 		isl_set *set = isl_set_list_get_set(sl, i);
 		isl_id *id = isl_set_get_tuple_id(set);
-		uint32_t hash = isl_id_get_hash(id);
-		// i is offset by one because null pointer as the data has a special
-		// meaning in the hash map
-		struct isl_hash_table_entry *entry =
-			isl_hash_table_find(isl_id_get_ctx(id), graph->array_table, hash,
-								always, (void *)(i + 1), 1);
-		if (entry == isl_hash_table_entry_none || !entry)
-			return isl_stat_error;
-		entry->data = (void *)i + 1;
-		isl_id_free(id);
+		isl_id *target_id = isl_id_alloc(ctx, "array_id", (void *)(i + 1));
+		graph->array_table =
+			isl_id_to_id_set(graph->array_table, id, target_id);
 		isl_set_free(set);
 	}
 	isl_set_list_free(sl);
@@ -1514,6 +1507,8 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 	graph->n_cache = isl_schedule_constraints_get_n_cache(sc);
 	for (int i = 0; i < graph->n_cache; i++)
 		graph->cache_size[i] = isl_schedule_constraints_get_cache_size(sc, i);
+
+	graph->overlapping_live_ranges = isl_mat_alloc(ctx, 0, graph->n_array);
 
 	return isl_stat_ok;
 }
@@ -2157,13 +2152,11 @@ static isl_stat add_inter_lrs_cst(__isl_take isl_set *set, void *user) {
 	struct isl_sched_edge *edge = data->edge;
 
 	isl_id *id = isl_set_get_tuple_id(set);
-	uint32_t hash = isl_id_get_hash(id);
 
-	struct isl_hash_table_entry *entry = isl_hash_table_find(
-		isl_id_get_ctx(id), graph->array_table, hash, always, NULL, 0);
-	if (entry == isl_hash_table_entry_none || !entry)
+	isl_id *target_id = isl_id_to_id_get(graph->array_table, id);
+	if (!target_id)
 		return isl_stat_error;
-	int array_id = (int)entry->data - 1;
+	int array_id = (int)isl_id_get_user(target_id) - 1;
 
 	isl_size offset;
 	isl_size nparam;
@@ -3062,6 +3055,13 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 		isl_id *id = isl_set_get_tuple_id(set);
 
 		int array_size = get_array_size(graph, id);
+		int expansion = 1;
+		for (int j = 0; j < isl_mat_rows(graph->overlapping_live_ranges); j++) {
+			int dim_expansion = isl_val_get_num_si(
+				isl_mat_get_element_val(graph->overlapping_live_ranges, j, i));
+			expansion *= dim_expansion;
+		}
+		array_size *= expansion;
 
 		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos +
 										  graph->n_array + i],
@@ -3486,8 +3486,8 @@ static __isl_give isl_vec *extract_var_coef(struct isl_sched_node *node,
  * row satisfies the coincidence constraints.
  */
 static int update_schedule(struct isl_sched_graph *graph,
-	__isl_take isl_vec *sol, int coincident)
-{
+						   __isl_take isl_vec *sol, int coincident,
+						   int use_async) {
 	int i, j;
 	isl_vec *csol = NULL;
 
@@ -3527,8 +3527,30 @@ static int update_schedule(struct isl_sched_graph *graph,
 					row, 1 + node->nparam + j, csol->el[j]);
 		node->coincident[graph->n_total_row] = coincident;
 	}
-	isl_vec_free(sol);
 	isl_vec_free(csol);
+
+	graph->overlapping_live_ranges =
+		isl_mat_add_rows(graph->overlapping_live_ranges, 1);
+	int last_row = isl_mat_rows(graph->overlapping_live_ranges) - 1;
+	for (i = 0; i < graph->n_array; i++) {
+		isl_val *val;
+		if (use_async) {
+			val = isl_vec_get_element_val(sol, graph->array_lrs_start_pos + i +
+												   graph->n_array + 1);
+			// val = isl_val_ceil(val);
+			if (!isl_val_is_int(val)) {
+				val = isl_val_free(val);
+				return -1;
+			}
+		} else {
+			val = isl_val_int_from_si(sol->ctx, 1);
+		}
+		graph->overlapping_live_ranges = isl_mat_set_element_val(
+			graph->overlapping_live_ranges, last_row, i, val);
+	}
+	IRI_TEST(fputs("added row to overlapping live ranges\n", stderr));
+	IRI_TEST(isl_mat_dump(graph->overlapping_live_ranges));
+	isl_vec_free(sol);
 
 	graph->n_row++;
 	graph->n_total_row++;
@@ -4098,16 +4120,6 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		dst->edge[dst->n_edge].tagged_validity = tagged_validity;
 		dst->edge[dst->n_edge].types = edge->types;
 		dst->edge[dst->n_edge].live_range_arrays = lrs;
-		if (lrs) {
-			if (!dst->live_range_arrays)
-				dst->live_range_arrays = isl_union_set_copy(
-					dst->edge[dst->n_edge].live_range_arrays);
-			else
-				dst->live_range_arrays = isl_union_set_union(
-					dst->live_range_arrays,
-					isl_union_set_copy(
-						dst->edge[dst->n_edge].live_range_arrays));
-		}
 		dst->n_edge++;
 
 		if (isl_sched_edge_is_live_range_span(edge) && !lrs)
@@ -4189,8 +4201,9 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 	sub->max_row = graph->max_row;
 	sub->n_total_row = graph->n_total_row;
 	sub->band_start = graph->band_start;
-	if (sched_graph_extract_live_range_arrays(ctx, sub) < 0)
-		return isl_stat_error;
+	sub->array_table = isl_id_to_id_copy(graph->array_table);
+	sub->n_array = graph->n_array;
+	sub->live_range_arrays = isl_union_set_copy(graph->live_range_arrays);
 
 	if (graph->array_size) {
 		sub->array_size = isl_union_map_copy(graph->array_size);
@@ -4203,6 +4216,7 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 		sub->cache_size[i] = graph->cache_size[i];
 
 	sub->n_bands_found = graph->n_bands_found;
+	sub->overlapping_live_ranges = isl_mat_copy(graph->overlapping_live_ranges);
 
 	return isl_stat_ok;
 }
@@ -4386,6 +4400,8 @@ static __isl_give isl_schedule_node *insert_current_band(
 		node = isl_schedule_node_band_member_set_coincident(node, i,
 					graph->node[0].coincident[start + i]);
 	node = isl_schedule_node_band_set_permutable(node, permutable);
+
+	// TODO
 
 	return node;
 }
@@ -5753,7 +5769,7 @@ static __isl_give isl_schedule_node *carry(__isl_take isl_schedule_node *node,
 		return compute_component_schedule(node, graph, 1);
 	}
 
-	if (update_schedule(graph, sol, 0) < 0)
+	if (update_schedule(graph, sol, 0, 0) < 0)
 		return isl_schedule_node_free(node);
 	if (trivial)
 		graph->n_row--;
@@ -6265,7 +6281,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 			return isl_stat_ok;
 		}
 		coincident = !has_coincidence || use_coincidence;
-		if (update_schedule(graph, sol, coincident) < 0)
+		if (update_schedule(graph, sol, coincident, use_async) < 0)
 			return isl_stat_error;
 
 		if (!check_conditional)
