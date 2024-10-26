@@ -12,6 +12,7 @@
 #include <isl/val_type.h>
 #include <isl/vec.h>
 #include <isl/union_map_type.h>
+#include <isl/id_to_id.h>
 
 #include "isl_schedule_constraints.h"
 #include "isl_tab.h"
@@ -271,10 +272,11 @@ struct isl_sched_graph {
 	int array_anti_proximity_min_var_pos;
 	int array_anti_proximity_max_var_pos;
 
-	struct isl_hash_table *array_table;
+	isl_id_to_id *array_table;
 	int n_cache;
 	int cache_size[ISL_MAX_CACHES];
 	isl_union_map *array_size;
+	isl_mat *overlapping_live_ranges;
 
 	int n_bands_found;
 };
