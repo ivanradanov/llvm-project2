@@ -52,9 +52,9 @@
  * see Verdoolaege and Janssens, "Scheduling for PPCG" (2017).
  */
 
-#define IRI_TEST(code)                                                         \
+#define ISL_DEBBUG(code)                                                       \
 	do {                                                                       \
-		if (getenv("IRI_TEST"))                                                \
+		if (getenv("ISL_DEBBUG"))                                              \
 			code;                                                              \
 	} while (0)
 
@@ -3537,8 +3537,8 @@ static int update_schedule(struct isl_sched_graph *graph,
 		graph->overlapping_live_ranges = isl_mat_set_element_val(
 			graph->overlapping_live_ranges, last_row, i, val);
 	}
-	IRI_TEST(fputs("added row to overlapping live ranges\n", stderr));
-	IRI_TEST(isl_mat_dump(graph->overlapping_live_ranges));
+	ISL_DEBBUG(fputs("added row to overlapping live ranges\n", stderr));
+	ISL_DEBBUG(isl_mat_dump(graph->overlapping_live_ranges));
 	isl_vec_free(sol);
 
 	graph->n_row++;
@@ -6244,7 +6244,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 
 		if (setup_lp(ctx, graph, use_coincidence, use_async) < 0)
 			return isl_stat_error;
-		IRI_TEST({
+		ISL_DEBBUG({
 			fputs("setup lp:\n", stderr);
 			isl_basic_set_dump(graph->lp);
 			fprintf(stderr, "is_empty: %d\n",
@@ -6253,7 +6253,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 				isl_basic_set_sample(isl_basic_set_copy(graph->lp)));
 		});
 		sol = solve_lp(ctx, graph);
-		IRI_TEST({
+		ISL_DEBBUG({
 			fputs("sol:\n", stderr);
 			isl_vec_dump(sol);
 		});
