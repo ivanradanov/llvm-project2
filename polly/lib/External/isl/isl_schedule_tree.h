@@ -1,10 +1,11 @@
 #ifndef ISL_SCHEDLUE_TREE_H
 #define ISL_SCHEDLUE_TREE_H
 
-#include <isl_schedule_band.h>
+#include <isl/id_to_id.h>
 #include <isl/schedule.h>
 #include <isl/set.h>
 #include <isl/union_set.h>
+#include <isl_schedule_band.h>
 
 struct isl_schedule_tree;
 typedef struct isl_schedule_tree isl_schedule_tree;
@@ -182,6 +183,9 @@ isl_size isl_schedule_tree_band_n_member(__isl_keep isl_schedule_tree *tree);
 
 isl_bool isl_schedule_tree_band_member_get_coincident(
 	__isl_keep isl_schedule_tree *tree, int pos);
+__isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_array_expansion(
+	__isl_take isl_schedule_tree *tree, int pos,
+	__isl_take isl_id_to_id *array_expansion);
 __isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_coincident(
 	__isl_take isl_schedule_tree *tree, int pos, int coincident);
 isl_bool isl_schedule_tree_band_get_permutable(
