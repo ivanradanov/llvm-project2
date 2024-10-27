@@ -13,10 +13,12 @@
  * CS 42112, 75589 Paris Cedex 12, France
  */
 
+#include "isl/printer.h"
 #include <isl/id.h>
-#include <isl/val.h>
-#include <isl/space.h>
+#include <isl/id_to_id.h>
 #include <isl/map.h>
+#include <isl/space.h>
+#include <isl/val.h>
 #include <isl_schedule_band.h>
 #include <isl_schedule_private.h>
 
@@ -1034,6 +1036,25 @@ isl_bool isl_schedule_tree_band_member_get_coincident(
 			"not a band node", return isl_bool_error);
 
 	return isl_schedule_band_member_get_coincident(tree->band, pos);
+}
+
+__isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_array_expansion(
+	__isl_take isl_schedule_tree *tree, int pos,
+	__isl_take isl_id_to_id *array_expansion) {
+	if (!tree)
+		return NULL;
+	if (tree->type != isl_schedule_node_band)
+		isl_die(isl_schedule_tree_get_ctx(tree), isl_error_invalid,
+				"not a band node", return isl_schedule_tree_free(tree));
+	tree = isl_schedule_tree_cow(tree);
+	if (!tree)
+		return NULL;
+
+	tree->band = isl_schedule_band_member_set_array_expansion(tree->band, pos,
+															  array_expansion);
+	if (!tree->band)
+		return isl_schedule_tree_free(tree);
+	return tree;
 }
 
 /* Mark the given band member as being coincident or not
@@ -2670,6 +2691,25 @@ static isl_bool any_coincident(__isl_keep isl_schedule_band *band)
 	return isl_bool_false;
 }
 
+struct pae_data {
+	isl_schedule_band *band;
+	isl_printer **p;
+};
+isl_stat print_array_expansion(isl_id *id, isl_id *target_id, void *user) {
+	struct pae_data *data = user;
+
+	isl_printer *p = *data->p;
+
+	p = isl_printer_print_str(p, isl_id_get_name(id));
+	p = isl_printer_print_str(p, ": ");
+	p = isl_printer_print_int(p, (int)isl_id_get_user(target_id));
+	p = isl_printer_yaml_next(p);
+
+	(*data->p) = p;
+
+	return isl_stat_ok;
+}
+
 /* Print the band node "band" to "p".
  *
  * The permutable and coincident properties are only printed if they
@@ -2714,6 +2754,36 @@ static __isl_give isl_printer *print_tree_band(__isl_take isl_printer *p,
 		for (i = 0; i < n; ++i) {
 			p = isl_printer_print_int(p,
 			    isl_schedule_band_member_get_coincident(band, i));
+			p = isl_printer_yaml_next(p);
+		}
+		p = isl_printer_yaml_end_sequence(p);
+		p = isl_printer_set_yaml_style(p, style);
+	}
+	{
+		int i;
+		isl_size n;
+		int style;
+
+		p = isl_printer_yaml_next(p);
+		p = isl_printer_print_str(p, "array_expansion");
+		p = isl_printer_yaml_next(p);
+		style = isl_printer_get_yaml_style(p);
+		p = isl_printer_set_yaml_style(p, ISL_YAML_STYLE_FLOW);
+		p = isl_printer_yaml_start_sequence(p);
+		n = isl_schedule_band_n_member(band);
+		if (n < 0)
+			return isl_printer_free(p);
+		for (i = 0; i < n; ++i) {
+			if (!band->array_expansion[i]) {
+				p = isl_printer_print_str(p, "none");
+				continue;
+			}
+			p = isl_printer_yaml_start_sequence(p);
+			struct pae_data data = {band, &p};
+			if (isl_id_to_id_foreach(band->array_expansion[i],
+									 print_array_expansion, &data) < 0)
+				return NULL;
+			p = isl_printer_yaml_end_sequence(p);
 			p = isl_printer_yaml_next(p);
 		}
 		p = isl_printer_yaml_end_sequence(p);

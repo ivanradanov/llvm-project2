@@ -473,6 +473,15 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_constraints_dump(sc);
   });
 
+  // FIXME TODO this is a temporary work around to avoid using the scc
+  // clustering part of the isl_scheduler. The incremental scheduling (described
+  // in Scheduling for PPCG) creates clusters from the isl_sched_graph and we do
+  // not properly convey the arrays and live ranges etc information when
+  // creating new clusters and when we merge them together. Once we implemnet
+  // that this can be turned off.
+  auto r = isl_options_set_schedule_whole_component(scop->getIslCtx(), 1);
+  assert(r == isl_stat_ok);
+
   isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(sc);
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule:\n";

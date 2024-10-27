@@ -1598,6 +1598,23 @@ isl_bool isl_schedule_node_band_member_get_coincident(
 	return isl_schedule_tree_band_member_get_coincident(node->tree, pos);
 }
 
+__isl_give isl_schedule_node *isl_schedule_node_band_member_set_array_expansion(
+	__isl_take isl_schedule_node *node, int pos,
+	__isl_take isl_id_to_id *array_expansion) {
+	int c;
+	isl_schedule_tree *tree;
+
+	if (!node)
+		return NULL;
+
+	tree = isl_schedule_tree_copy(node->tree);
+	tree = isl_schedule_tree_band_member_set_array_expansion(tree, pos,
+															 array_expansion);
+	node = isl_schedule_node_graft_tree(node, tree);
+
+	return node;
+}
+
 /* Mark the band member at position "pos" the band node "node"
  * as being coincident or not according to "coincident".
  */

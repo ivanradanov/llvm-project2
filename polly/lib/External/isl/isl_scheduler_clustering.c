@@ -8,11 +8,13 @@
 
 #include "isl_map_private.h"
 
+#include "isl/schedule.h"
 #include <isl/id.h>
 #include <isl/schedule_node.h>
 #include <isl/union_set.h>
 
 #include "isl_mat_private.h"
+#include "isl_schedule_constraints.h"
 #include "isl_scheduler_clustering.h"
 #include "isl_scheduler_scc.h"
 #include "isl_seq.h"
@@ -487,6 +489,11 @@ static __isl_give isl_schedule_constraints *collect_constraints(
 			continue;
 		sc = collect_edge_constraints(edge, cluster_map, sc);
 	}
+
+	int cache_size = isl_schedule_constraints_get_cache_size(sc, 0);
+	sc = isl_schedule_constraints_set_caches(sc, 1, &cache_size);
+	sc = isl_schedule_constraints_set_array_sizes(
+		sc, isl_union_map_copy(graph->array_size));
 
 	return sc;
 }
