@@ -52,9 +52,9 @@
  * see Verdoolaege and Janssens, "Scheduling for PPCG" (2017).
  */
 
-#define ISL_DEBBUG(code)                                                       \
+#define ISL_DEBUG(code)                                                        \
 	do {                                                                       \
-		if (getenv("ISL_DEBBUG"))                                              \
+		if (getenv("ISL_DEBUG"))                                               \
 			code;                                                              \
 	} while (0)
 
@@ -1446,6 +1446,10 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 
 	if (!sc)
 		return isl_stat_error;
+
+	ISL_DEBUG(
+		fprintf(stderr, "Building sched graph from scheudle constraints:\n"));
+	ISL_DEBUG(isl_schedule_constraints_dump(sc));
 
 	ctx = isl_schedule_constraints_get_ctx(sc);
 
@@ -3548,8 +3552,8 @@ static int update_schedule(struct isl_sched_graph *graph,
 		graph->overlapping_live_ranges = isl_mat_set_element_val(
 			graph->overlapping_live_ranges, last_row, i, val);
 	}
-	ISL_DEBBUG(fputs("added row to overlapping live ranges\n", stderr));
-	ISL_DEBBUG(isl_mat_dump(graph->overlapping_live_ranges));
+	ISL_DEBUG(fputs("added row to overlapping live ranges\n", stderr));
+	ISL_DEBUG(isl_mat_dump(graph->overlapping_live_ranges));
 	isl_vec_free(sol);
 
 	graph->n_row++;
@@ -4401,7 +4405,42 @@ static __isl_give isl_schedule_node *insert_current_band(
 					graph->node[0].coincident[start + i]);
 	node = isl_schedule_node_band_set_permutable(node, permutable);
 
-	// TODO
+	for (i = 0; i < n; i++) {
+		int row = isl_mat_rows(graph->overlapping_live_ranges) - n + i;
+		int cols = isl_mat_cols(graph->overlapping_live_ranges);
+		// isl_assert(graph->n_array == cols);
+
+		isl_id_to_id *array_expansion =
+			isl_id_to_id_alloc(isl_schedule_node_get_ctx(node), graph->n_array);
+
+		ISL_DEBUG(
+			fprintf(stderr, "handling array expansion for row %d of\n", row));
+		ISL_DEBUG(isl_mat_dump(graph->overlapping_live_ranges));
+		isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+		for (int j = 0; j < graph->n_array; ++j) {
+			if (!graph->array_size)
+				return NULL;
+
+			isl_set *set = isl_set_list_get_set(sl, j);
+			isl_id *id = isl_set_get_tuple_id(set);
+			isl_id *target_id = isl_id_to_id_get(graph->array_table, id);
+			if (!target_id)
+				return NULL;
+			int array_id = (int)isl_id_get_user(target_id) - 1;
+			int val = isl_val_get_num_si(isl_mat_get_element_val(
+				graph->overlapping_live_ranges, row, array_id));
+			isl_id *expansion_id = isl_id_alloc(isl_schedule_node_get_ctx(node),
+												"array_expansion", (void *)val);
+			array_expansion =
+				isl_id_to_id_set(array_expansion, id, expansion_id);
+			isl_set_free(set);
+		}
+		isl_set_list_free(sl);
+
+		ISL_DEBUG(fprintf(stderr, "setting for member %d\n", i));
+		node = isl_schedule_node_band_member_set_array_expansion(
+			node, i, array_expansion);
+	}
 
 	return node;
 }
@@ -6254,7 +6293,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 
 		if (setup_lp(ctx, graph, use_coincidence, use_async) < 0)
 			return isl_stat_error;
-		ISL_DEBBUG({
+		ISL_DEBUG({
 			fputs("setup lp:\n", stderr);
 			isl_basic_set_dump(graph->lp);
 			fprintf(stderr, "is_empty: %d\n",
@@ -6263,7 +6302,7 @@ isl_stat isl_schedule_node_compute_wcc_band(isl_ctx *ctx,
 				isl_basic_set_sample(isl_basic_set_copy(graph->lp)));
 		});
 		sol = solve_lp(ctx, graph);
-		ISL_DEBBUG({
+		ISL_DEBUG({
 			fputs("sol:\n", stderr);
 			isl_vec_dump(sol);
 		});

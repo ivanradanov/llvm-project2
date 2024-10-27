@@ -1,14 +1,15 @@
 #ifndef ISL_SCHEDULE_NODE_H
 #define ISL_SCHEDULE_NODE_H
 
-#include <isl/schedule_type.h>
-#include <isl/union_set_type.h>
 #include <isl/aff_type.h>
 #include <isl/ast_type.h>
-#include <isl/val_type.h>
-#include <isl/space_type.h>
+#include <isl/id_to_id.h>
 #include <isl/id_type.h>
+#include <isl/schedule_type.h>
 #include <isl/set_type.h>
+#include <isl/space_type.h>
+#include <isl/union_set_type.h>
+#include <isl/val_type.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -157,6 +158,10 @@ isl_size isl_schedule_node_band_n_member(__isl_keep isl_schedule_node *node);
 __isl_export
 isl_bool isl_schedule_node_band_member_get_coincident(
 	__isl_keep isl_schedule_node *node, int pos);
+__isl_export __isl_give isl_schedule_node *
+isl_schedule_node_band_member_set_array_expansion(
+	__isl_take isl_schedule_node *band, int pos,
+	__isl_take isl_id_to_id *array_expansion);
 __isl_export
 __isl_give isl_schedule_node *isl_schedule_node_band_member_set_coincident(
 	__isl_take isl_schedule_node *node, int pos, int coincident);
