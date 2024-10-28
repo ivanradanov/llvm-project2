@@ -130,7 +130,7 @@ int isl_sched_edge_is_proximity(struct isl_sched_edge *edge)
  */
 int isl_sched_edge_is_live_range_span(struct isl_sched_edge *edge)
 {
-	return isl_sched_edge_has_type(edge, isl_edge_live_range_span);
+	return isl_sched_edge_has_type(edge, isl_edge_live_range_maximal_span);
 }
 
 /* Is "edge" marked as a anti proximity edge?
@@ -1304,7 +1304,7 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 		}
 	}
 
-	if (data->type == isl_edge_live_range_span) {
+	if (data->type == isl_edge_live_range_maximal_span) {
 		if (isl_map_can_zip(map)) {
 			tagged = isl_map_copy(map);
 			map = isl_set_unwrap(isl_map_domain(isl_map_zip(map)));
@@ -1344,7 +1344,7 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 	graph->edge[graph->n_edge].tagged_validity = NULL;
 	graph->edge[graph->n_edge].live_range_arrays = NULL;
 	set_type(&graph->edge[graph->n_edge], data->type);
-	if (data->type == isl_edge_live_range_span) {
+	if (data->type == isl_edge_live_range_maximal_span) {
 		graph->edge[graph->n_edge].live_range_arrays =
 			isl_union_set_from_set(isl_map_range(
 				isl_set_unwrap(isl_map_domain(isl_map_copy(tagged)))));
