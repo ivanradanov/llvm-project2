@@ -158,6 +158,8 @@ isl_size isl_schedule_node_band_n_member(__isl_keep isl_schedule_node *node);
 __isl_export
 isl_bool isl_schedule_node_band_member_get_coincident(
 	__isl_keep isl_schedule_node *node, int pos);
+__isl_give isl_id_to_id *isl_schedule_node_band_member_get_array_expansion(
+	__isl_keep isl_schedule_node *node, int pos);
 __isl_export __isl_give isl_schedule_node *
 isl_schedule_node_band_member_set_array_expansion(
 	__isl_take isl_schedule_node *band, int pos,
