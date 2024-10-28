@@ -133,7 +133,7 @@ isl_sched_edge_is_live_range_maximal_span(struct isl_sched_edge *edge) {
 	return isl_sched_edge_has_type(edge, isl_edge_live_range_maximal_span);
 }
 
-static int sl_sched_edge_is_live_range_span(struct isl_sched_edge *edge) {
+static int isl_sched_edge_is_live_range_span(struct isl_sched_edge *edge) {
 	return isl_sched_edge_has_type(edge, isl_edge_live_range_span);
 }
 
@@ -1124,6 +1124,14 @@ static int merge_edge(struct isl_sched_edge *edge1,
 									edge2->live_range_maximal_span_arrays);
 	}
 
+	if (isl_sched_edge_is_live_range_span(edge2)) {
+		if (!edge1->live_range_span_arrays)
+			edge1->live_range_span_arrays = edge2->live_range_span_arrays;
+		else
+			edge1->live_range_span_arrays = isl_union_map_union(
+				edge1->live_range_span_arrays, edge2->live_range_span_arrays);
+	}
+
 	if (isl_sched_edge_is_condition(edge2)) {
 		if (!edge1->tagged_condition)
 			edge1->tagged_condition = edge2->tagged_condition;
@@ -1360,19 +1368,25 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 	graph->edge[graph->n_edge].tagged_condition = NULL;
 	graph->edge[graph->n_edge].tagged_validity = NULL;
 	graph->edge[graph->n_edge].live_range_maximal_span_arrays = NULL;
+	graph->edge[graph->n_edge].live_range_span_arrays = NULL;
 	set_type(&graph->edge[graph->n_edge], data->type);
 	if (data->type == isl_edge_live_range_maximal_span) {
 		graph->edge[graph->n_edge].live_range_maximal_span_arrays =
 			isl_union_set_from_set(isl_map_range(
 				isl_set_unwrap(isl_map_domain(isl_map_copy(tagged)))));
-		if (!graph->live_range_arrays)
-			graph->live_range_arrays = isl_union_set_copy(
+		if (!graph->live_range_maximal_arrays)
+			graph->live_range_maximal_arrays = isl_union_set_copy(
 				graph->edge[graph->n_edge].live_range_maximal_span_arrays);
 		else
-			graph->live_range_arrays = isl_union_set_union(
-				graph->live_range_arrays,
+			graph->live_range_maximal_arrays = isl_union_set_union(
+				graph->live_range_maximal_arrays,
 				isl_union_set_copy(
 					graph->edge[graph->n_edge].live_range_maximal_span_arrays));
+	}
+	if (data->type == isl_edge_live_range_span) {
+		graph->edge[graph->n_edge].live_range_span_arrays =
+			isl_union_set_from_set(isl_map_range(
+				isl_set_unwrap(isl_map_domain(isl_map_copy(tagged)))));
 	}
 	if (data->type == isl_edge_condition)
 		graph->edge[graph->n_edge].tagged_condition =
@@ -1405,8 +1419,8 @@ sched_graph_extract_live_range_arrays(isl_ctx *ctx,
 									  struct isl_sched_graph *graph) {
 	int i;
 
-	if (graph->live_range_arrays) {
-		graph->n_array = isl_union_set_n_set(graph->live_range_arrays);
+	if (graph->live_range_maximal_arrays) {
+		graph->n_array = isl_union_set_n_set(graph->live_range_maximal_arrays);
 		if (graph->n_array == isl_size_error)
 			return isl_stat_error;
 	} else {
@@ -1418,7 +1432,8 @@ sched_graph_extract_live_range_arrays(isl_ctx *ctx,
 	graph->array_table = isl_id_to_id_alloc(ctx, graph->n_array);
 	if (!graph->array_table)
 		return isl_stat_error;
-	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+	isl_set_list *sl =
+		isl_union_set_get_set_list(graph->live_range_maximal_arrays);
 	for (i = 0; i < graph->n_array; ++i) {
 		isl_set *set = isl_set_list_get_set(sl, i);
 		isl_id *id = isl_set_get_tuple_id(set);
@@ -1495,7 +1510,7 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 	}
 	if (graph_init_edge_tables(ctx, graph) < 0)
 		return isl_stat_error;
-	graph->live_range_arrays = NULL;
+	graph->live_range_maximal_arrays = NULL;
 	graph->n_edge = 0;
 	data.graph = graph;
 	for (i = isl_edge_first; i <= isl_edge_last; ++i) {
@@ -1518,7 +1533,8 @@ isl_stat isl_sched_graph_init(struct isl_sched_graph *graph,
 	for (int i = 0; i < graph->n_cache; i++)
 		graph->cache_size[i] = isl_schedule_constraints_get_cache_size(sc, i);
 
-	graph->overlapping_live_ranges = isl_mat_alloc(ctx, 0, graph->n_array);
+	graph->overlapping_maximal_live_ranges =
+		isl_mat_alloc(ctx, 0, graph->n_array);
 
 	return isl_stat_ok;
 }
@@ -2187,7 +2203,7 @@ static isl_stat add_inter_lrs_cst(__isl_take isl_set *set, void *user) {
 		return isl_stat_error;
 
 	dim_map = inter_dim_map(ctx, graph, src, dst, offset, -1);
-	isl_dim_map_range(dim_map, graph->array_lrs_start_pos + array_id, 0, 0, 0,
+	isl_dim_map_range(dim_map, graph->array_lrms_start_pos + array_id, 0, 0, 0,
 					  1, 1);
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
@@ -2227,7 +2243,7 @@ static isl_stat add_intra_lrs_cst(__isl_take isl_set *set, void *user) {
 		return isl_stat_error;
 
 	dim_map = intra_dim_map(ctx, graph, node, offset, -1);
-	isl_dim_map_range(dim_map, graph->array_lrs_start_pos + array_id, 0, 0, 0,
+	isl_dim_map_range(dim_map, graph->array_lrms_start_pos + array_id, 0, 0, 0,
 					  1, 1);
 
 	graph->lp = add_constraints_dim_map(graph->lp, coef, dim_map);
@@ -3056,7 +3072,8 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 	int max_avaliable_size = graph->cache_size[0];
 	isl_int_set_si(graph->lp->ineq[k][0], max_avaliable_size);
 
-	isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+	isl_set_list *sl =
+		isl_union_set_get_set_list(graph->live_range_maximal_arrays);
 	for (i = 0; i < graph->n_array; ++i) {
 		if (!graph->array_size)
 			return isl_stat_error;
@@ -3066,14 +3083,15 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 
 		int array_size = get_array_size(graph, id);
 		int expansion = 1;
-		for (int j = 0; j < isl_mat_rows(graph->overlapping_live_ranges); j++) {
-			int dim_expansion = isl_val_get_num_si(
-				isl_mat_get_element_val(graph->overlapping_live_ranges, j, i));
+		for (int j = 0;
+			 j < isl_mat_rows(graph->overlapping_maximal_live_ranges); j++) {
+			int dim_expansion = isl_val_get_num_si(isl_mat_get_element_val(
+				graph->overlapping_maximal_live_ranges, j, i));
 			expansion *= dim_expansion;
 		}
 		array_size *= expansion;
 
-		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos +
+		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrms_start_pos +
 										  graph->n_array + i],
 					   -array_size);
 		isl_id_free(id);
@@ -3091,7 +3109,7 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 			return isl_stat_error;
 		isl_seq_clr(graph->lp->ineq[k], total + 1);
 		isl_int_set_si(graph->lp->ineq[k][0], -1);
-		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrs_start_pos +
+		isl_int_set_si(graph->lp->ineq[k][1 + graph->array_lrms_start_pos +
 										  graph->n_array + i],
 					   1);
 	}
@@ -3106,10 +3124,10 @@ static isl_stat add_span_constraint(struct isl_sched_graph *graph) {
 			return isl_stat_error;
 		isl_seq_clr(graph->lp->eq[k], total + 1);
 		isl_int_set_si(graph->lp->eq[k][0], -1);
-		isl_int_set_si(graph->lp->eq[k][1 + graph->array_lrs_start_pos +
+		isl_int_set_si(graph->lp->eq[k][1 + graph->array_lrms_start_pos +
 										graph->n_array + i],
 					   1);
-		isl_int_set_si(graph->lp->eq[k][1 + graph->array_lrs_start_pos + i],
+		isl_int_set_si(graph->lp->eq[k][1 + graph->array_lrms_start_pos + i],
 					   -1);
 	}
 
@@ -3260,7 +3278,7 @@ static isl_stat setup_lp(isl_ctx *ctx, struct isl_sched_graph *graph,
 	if (use_async) {
 		// These are fine in this position because we do not try to minimize
 		// them or anything
-		graph->array_lrs_start_pos = total;
+		graph->array_lrms_start_pos = total;
 		total += graph->n_array * 2;
 	}
 	for (i = 0; i < graph->n; ++i) {
@@ -3539,13 +3557,13 @@ static int update_schedule(struct isl_sched_graph *graph,
 	}
 	isl_vec_free(csol);
 
-	graph->overlapping_live_ranges =
-		isl_mat_add_rows(graph->overlapping_live_ranges, 1);
-	int last_row = isl_mat_rows(graph->overlapping_live_ranges) - 1;
+	graph->overlapping_maximal_live_ranges =
+		isl_mat_add_rows(graph->overlapping_maximal_live_ranges, 1);
+	int last_row = isl_mat_rows(graph->overlapping_maximal_live_ranges) - 1;
 	for (i = 0; i < graph->n_array; i++) {
 		isl_val *val;
 		if (use_async) {
-			val = isl_vec_get_element_val(sol, graph->array_lrs_start_pos + i +
+			val = isl_vec_get_element_val(sol, graph->array_lrms_start_pos + i +
 												   graph->n_array + 1);
 			// val = isl_val_ceil(val);
 			if (!isl_val_is_int(val)) {
@@ -3555,11 +3573,11 @@ static int update_schedule(struct isl_sched_graph *graph,
 		} else {
 			val = isl_val_int_from_si(sol->ctx, 1);
 		}
-		graph->overlapping_live_ranges = isl_mat_set_element_val(
-			graph->overlapping_live_ranges, last_row, i, val);
+		graph->overlapping_maximal_live_ranges = isl_mat_set_element_val(
+			graph->overlapping_maximal_live_ranges, last_row, i, val);
 	}
 	ISL_DEBUG(fputs("added row to overlapping live ranges\n", stderr));
-	ISL_DEBUG(isl_mat_dump(graph->overlapping_live_ranges));
+	ISL_DEBUG(isl_mat_dump(graph->overlapping_maximal_live_ranges));
 	isl_vec_free(sol);
 
 	graph->n_row++;
@@ -4121,8 +4139,9 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		map = isl_map_copy(edge->map);
 		tagged_condition = isl_union_map_copy(edge->tagged_condition);
 		tagged_validity = isl_union_map_copy(edge->tagged_validity);
-		isl_union_set *lrs =
+		isl_union_set *lrms =
 			isl_union_set_copy(edge->live_range_maximal_span_arrays);
+		isl_union_set *lrs = isl_union_set_copy(edge->live_range_span_arrays);
 
 		dst->edge[dst->n_edge].src = dst_src;
 		dst->edge[dst->n_edge].dst = dst_dst;
@@ -4130,12 +4149,17 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		dst->edge[dst->n_edge].tagged_condition = tagged_condition;
 		dst->edge[dst->n_edge].tagged_validity = tagged_validity;
 		dst->edge[dst->n_edge].types = edge->types;
-		dst->edge[dst->n_edge].live_range_maximal_span_arrays = lrs;
+		dst->edge[dst->n_edge].live_range_maximal_span_arrays = lrms;
+		dst->edge[dst->n_edge].live_range_span_arrays = lrs;
 		dst->n_edge++;
 
-		if (isl_sched_edge_is_live_range_maximal_span(edge) && !lrs)
+		if (isl_sched_edge_is_live_range_maximal_span(edge) && !lrms)
 			return isl_stat_error;
-		if (edge->live_range_maximal_span_arrays && !lrs)
+		if (isl_sched_edge_is_live_range_span(edge) && !lrs)
+			return isl_stat_error;
+		if (edge->live_range_maximal_span_arrays && !lrms)
+			return isl_stat_error;
+		if (edge->live_range_span_arrays && !lrs)
 			return isl_stat_error;
 		if (edge->tagged_condition && !tagged_condition)
 			return isl_stat_error;
@@ -4214,7 +4238,8 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 	sub->band_start = graph->band_start;
 	sub->array_table = isl_id_to_id_copy(graph->array_table);
 	sub->n_array = graph->n_array;
-	sub->live_range_arrays = isl_union_set_copy(graph->live_range_arrays);
+	sub->live_range_maximal_arrays =
+		isl_union_set_copy(graph->live_range_maximal_arrays);
 
 	if (graph->array_size) {
 		sub->array_size = isl_union_map_copy(graph->array_size);
@@ -4227,7 +4252,8 @@ isl_stat isl_sched_graph_extract_sub_graph(isl_ctx *ctx,
 		sub->cache_size[i] = graph->cache_size[i];
 
 	sub->n_bands_found = graph->n_bands_found;
-	sub->overlapping_live_ranges = isl_mat_copy(graph->overlapping_live_ranges);
+	sub->overlapping_maximal_live_ranges =
+		isl_mat_copy(graph->overlapping_maximal_live_ranges);
 
 	return isl_stat_ok;
 }
@@ -4416,8 +4442,8 @@ static __isl_give isl_schedule_node *insert_current_band(
 	node = isl_schedule_node_band_set_permutable(node, permutable);
 
 	for (i = 0; i < n; i++) {
-		int row = isl_mat_rows(graph->overlapping_live_ranges) - n + i;
-		int cols = isl_mat_cols(graph->overlapping_live_ranges);
+		int row = isl_mat_rows(graph->overlapping_maximal_live_ranges) - n + i;
+		int cols = isl_mat_cols(graph->overlapping_maximal_live_ranges);
 		// isl_assert(graph->n_array == cols);
 
 		isl_id_to_id *array_expansion =
@@ -4425,8 +4451,9 @@ static __isl_give isl_schedule_node *insert_current_band(
 
 		ISL_DEBUG(
 			fprintf(stderr, "handling array expansion for row %d of\n", row));
-		ISL_DEBUG(isl_mat_dump(graph->overlapping_live_ranges));
-		isl_set_list *sl = isl_union_set_get_set_list(graph->live_range_arrays);
+		ISL_DEBUG(isl_mat_dump(graph->overlapping_maximal_live_ranges));
+		isl_set_list *sl =
+			isl_union_set_get_set_list(graph->live_range_maximal_arrays);
 		for (int j = 0; j < graph->n_array; ++j) {
 			if (!graph->array_size)
 				return NULL;
@@ -4438,7 +4465,7 @@ static __isl_give isl_schedule_node *insert_current_band(
 				return NULL;
 			int array_id = (int)isl_id_get_user(target_id) - 1;
 			int val = isl_val_get_num_si(isl_mat_get_element_val(
-				graph->overlapping_live_ranges, row, array_id));
+				graph->overlapping_maximal_live_ranges, row, array_id));
 			isl_id *expansion_id = isl_id_alloc(isl_schedule_node_get_ctx(node),
 												"array_expansion", (void *)val);
 			array_expansion =
