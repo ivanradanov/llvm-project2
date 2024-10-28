@@ -738,6 +738,8 @@ is_empty: 0
 { [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i50, i51] : i0 = 0 and i1 = 0 and i2 = 0 and i3 = 0 and i4 = 0 and i5 = 0 and i6 = 0 and i7 = 0 and i8 = 0 and i9 = 0 and i10 = 0 and i11 = 0 and i12 = 0 and i13 = 0 and i14 = 0 and i15 = 0 and i16 = 0 and i17 = 0 and i18 = 0 and i19 = 0 and i20 = 0 and i21 = 0 and i22 = 0 and i23 = 0 and i24 = 0 and i25 = 0 and i26 = 0 and i27 = 0 and i28 = 0 and i29 = 0 and i30 = 0 and i31 = 0 and i32 = 0 and i33 = 0 and i34 = 0 and i35 = 0 and i36 = 0 and i37 = 0 and i38 = 0 and i39 = 0 and i40 = 0 and i41 = 0 and i42 = 0 and i43 = 0 and i44 = 0 and i45 = 0 and i46 = 0 and i47 = 0 and i48 = 0 and i49 = 0 and i50 = 0 and i51 = 0 }
 sol:
 []
+computed band mupa:
+[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]
 handling array expansion for row 0 of
 [[1,1,1]
  [1,1,1]]
@@ -768,6 +770,8 @@ added row to overlapping live ranges
 [[1,1,1]
  [1,1,1]
  [1,22,22]]
+computed band mupa:
+[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]
 handling array expansion for row 2 of
 [[1,1,1]
  [1,1,1]
@@ -834,7 +838,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P2@0x458d2a70
+    - id: P2@0x429b7600
   inc:
     val: 1
   body:
@@ -846,7 +850,7 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P3@0x458d2b60
+      - id: P3@0x429b76f0
     inc:
       val: 1
     body:
@@ -854,7 +858,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS0_affine_parallel@0x4591d480
+          - id: RS0_affine_parallel@0x42949d00
           - id: c1
           - id: c0
           - val: 0
@@ -873,7 +877,7 @@ node:
               args:
               - op: sub
                 args:
-                - id: P0@0x458ba300
+                - id: P0@0x4299f310
                 - val: 1
               - val: 16
         inc:
@@ -882,7 +886,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x458cf190
+            - id: RS1_affine_parallel@0x429b38a0
             - id: c1
             - id: c0
             - val: 0
@@ -901,7 +905,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P0@0x458ba300
+              - id: P0@0x4299f310
               - val: 1
             - val: 16
           - val: 21
@@ -911,7 +915,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x458de4e0
+          - id: RS2_affine_parallel@0x429c3070
           - id: c1
           - id: c0
           - val: 0
@@ -922,7 +926,7 @@ node:
       - guard:
           op: ge
           args:
-          - id: P0@0x458ba300
+          - id: P0@0x4299f310
           - op: add
             args:
             - op: mul
@@ -934,7 +938,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x458cf190
+            - id: RS1_affine_parallel@0x429b38a0
             - id: c1
             - id: c0
             - val: 0
@@ -942,7 +946,7 @@ node:
     - user:
         op: call
         args:
-        - id: RS3_affine_parallel@0x458e5670
+        - id: RS3_affine_parallel@0x429ca680
         - id: c1
         - id: c0
         - val: 0

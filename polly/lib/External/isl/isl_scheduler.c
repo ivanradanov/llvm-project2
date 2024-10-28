@@ -128,14 +128,18 @@ int isl_sched_edge_is_proximity(struct isl_sched_edge *edge)
 
 /* Is "edge" marked as a live range span edge?
  */
-int isl_sched_edge_is_live_range_span(struct isl_sched_edge *edge)
-{
+static int
+isl_sched_edge_is_live_range_maximal_span(struct isl_sched_edge *edge) {
 	return isl_sched_edge_has_type(edge, isl_edge_live_range_maximal_span);
+}
+
+static int sl_sched_edge_is_live_range_span(struct isl_sched_edge *edge) {
+	return isl_sched_edge_has_type(edge, isl_edge_live_range_span);
 }
 
 /* Is "edge" marked as a anti proximity edge?
  */
-int isl_sched_edge_is_anti_proximity(struct isl_sched_edge *edge) {
+static int isl_sched_edge_is_anti_proximity(struct isl_sched_edge *edge) {
 	return isl_sched_edge_has_type(edge, isl_edge_anti_proximity);
 }
 
@@ -1109,7 +1113,7 @@ static int merge_edge(struct isl_sched_edge *edge1,
 	edge1->types |= edge2->types;
 	isl_map_free(edge2->map);
 
-	if (isl_sched_edge_is_live_range_span(edge2)) {
+	if (isl_sched_edge_is_live_range_maximal_span(edge2)) {
 		if (!edge1->live_range_arrays)
 			edge1->live_range_arrays = edge2->live_range_arrays;
 		else
@@ -2434,7 +2438,7 @@ static int add_all_live_range_span_constraints(struct isl_sched_graph *graph)
 
 	for (i = 0; i < graph->n_edge; ++i) {
 		struct isl_sched_edge *edge = &graph->edge[i];
-		if (!isl_sched_edge_is_live_range_span(edge))
+		if (!isl_sched_edge_is_live_range_maximal_span(edge))
 			continue;
 		if (edge->src == edge->dst &&
 			add_intra_live_range_span_constraints(graph, edge) < 0)
@@ -2633,7 +2637,7 @@ static int edge_multiplicity(struct isl_sched_edge *edge, int use_coincidence)
 	else if (is_validity(edge))
 		mult += 1;
 	// Always bound from above by the #live array instances
-	if (isl_sched_edge_is_live_range_span(edge))
+	if (isl_sched_edge_is_live_range_maximal_span(edge))
 		mult += 1;
 	// Always bound from below by var we maximise
 	if (isl_sched_edge_is_anti_proximity(edge))
@@ -2667,7 +2671,7 @@ static int parametric_intra_edge_multiplicity(struct isl_sched_edge *edge,
 	}
 	if (isl_sched_edge_is_anti_proximity(edge))
 		mult += 1;
-	if (isl_sched_edge_is_live_range_span(edge))
+	if (isl_sched_edge_is_live_range_maximal_span(edge))
 		mult += 1;
 
 	return mult;
@@ -4115,7 +4119,7 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		dst->edge[dst->n_edge].live_range_arrays = lrs;
 		dst->n_edge++;
 
-		if (isl_sched_edge_is_live_range_span(edge) && !lrs)
+		if (isl_sched_edge_is_live_range_maximal_span(edge) && !lrs)
 			return isl_stat_error;
 		if (edge->live_range_arrays && !lrs)
 			return isl_stat_error;
@@ -4387,7 +4391,10 @@ static __isl_give isl_schedule_node *insert_current_band(
 		mupa_i = isl_multi_union_pw_aff_from_multi_pw_aff(mpa);
 		mupa = isl_multi_union_pw_aff_union_add(mupa, mupa_i);
 	}
-	node = isl_schedule_node_insert_partial_schedule(node, mupa);
+	node = isl_schedule_node_insert_partial_schedule(
+		node, isl_multi_union_pw_aff_copy(mupa));
+	ISL_DEBUG(fprintf(stderr, "computed band mupa:\n"));
+	ISL_DEBUG(isl_multi_union_pw_aff_dump(mupa));
 
 	for (i = 0; i < n; ++i)
 		node = isl_schedule_node_band_member_set_coincident(node, i,
@@ -4430,6 +4437,12 @@ static __isl_give isl_schedule_node *insert_current_band(
 		node = isl_schedule_node_band_member_set_array_expansion(
 			node, i, array_expansion);
 	}
+
+	// TODO
+	// isl_union_map_deltas(isl_union_map *umap);
+	// isl_multi_union_pw_aff_delta();
+
+	isl_multi_union_pw_aff_free(mupa);
 
 	return node;
 }
