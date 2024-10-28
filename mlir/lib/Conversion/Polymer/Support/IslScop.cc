@@ -212,11 +212,12 @@ isl_schedule *IslScop::buildLoopSchedule(T loopOp, unsigned depth,
     ISL_DEBUG("MUPA dom: ", isl_union_set_dump(domain));
     isl_multi_union_pw_aff *mupa =
         mapToDimensionMUPA(domain, depth + numDims - dim - 1);
+    std::string name = ("L" + std::to_string(loopId++) + "." +
+                        loopOp->getName().getStringRef().str());
+    makeIslCompatible(name);
     mupa = isl_multi_union_pw_aff_set_tuple_name(
         mupa, isl_dim_set,
-        ("L" + std::to_string(loopId++) + "." +
-         loopOp->getName().getStringRef().str())
-            .c_str());
+            name.c_str());
     ISL_DEBUG("MUPA: ", isl_multi_union_pw_aff_dump(mupa));
     schedule = isl_schedule_insert_partial_schedule(schedule, mupa);
     if (permutable)
@@ -1510,7 +1511,7 @@ static bool isValidAsyncCopy(Operation *op) {
 void IslScop::rescopeStatements(
     std::function<bool(Operation *op)> shouldRescope) {
 
-  unsigned blockParNum = 0;
+  unsigned rescopedNum = 0;
 
   root->walk([&](Operation *rescopeOp) {
     if (!shouldRescope(rescopeOp))
@@ -1518,8 +1519,7 @@ void IslScop::rescopeStatements(
 
     LLVM_DEBUG(llvm::dbgs() << "Handling rescope\n" << *rescopeOp << "\n");
 
-    std::string newStmtName = "RS" + std::to_string(blockParNum++) + "." +
-                              rescopeOp->getName().getStringRef().str();
+    std::string newStmtName = "RS" + std::to_string(rescopedNum++);
     makeIslCompatible(newStmtName);
     // FIXME this only works because we do not assign statement names to the
     // affine.parallel we rescope to.
