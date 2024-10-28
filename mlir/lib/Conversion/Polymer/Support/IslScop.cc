@@ -1519,7 +1519,8 @@ void IslScop::rescopeStatements(
 
     LLVM_DEBUG(llvm::dbgs() << "Handling rescope\n" << *rescopeOp << "\n");
 
-    std::string newStmtName = "RS" + std::to_string(rescopedNum++);
+    std::string newStmtName = "RS" + std::to_string(rescopedNum++) + "." +
+                              rescopeOp->getName().getStringRef().str();
     makeIslCompatible(newStmtName);
     // FIXME this only works because we do not assign statement names to the
     // affine.parallel we rescope to.
