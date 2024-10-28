@@ -1114,11 +1114,13 @@ static int merge_edge(struct isl_sched_edge *edge1,
 	isl_map_free(edge2->map);
 
 	if (isl_sched_edge_is_live_range_maximal_span(edge2)) {
-		if (!edge1->live_range_arrays)
-			edge1->live_range_arrays = edge2->live_range_arrays;
+		if (!edge1->live_range_maximal_span_arrays)
+			edge1->live_range_maximal_span_arrays =
+				edge2->live_range_maximal_span_arrays;
 		else
-			edge1->live_range_arrays = isl_union_map_union(
-				edge1->live_range_arrays, edge2->live_range_arrays);
+			edge1->live_range_maximal_span_arrays =
+				isl_union_map_union(edge1->live_range_maximal_span_arrays,
+									edge2->live_range_maximal_span_arrays);
 	}
 
 	if (isl_sched_edge_is_condition(edge2)) {
@@ -1346,20 +1348,20 @@ static isl_stat extract_edge(__isl_take isl_map *map, void *user)
 	graph->edge[graph->n_edge].types = 0;
 	graph->edge[graph->n_edge].tagged_condition = NULL;
 	graph->edge[graph->n_edge].tagged_validity = NULL;
-	graph->edge[graph->n_edge].live_range_arrays = NULL;
+	graph->edge[graph->n_edge].live_range_maximal_span_arrays = NULL;
 	set_type(&graph->edge[graph->n_edge], data->type);
 	if (data->type == isl_edge_live_range_maximal_span) {
-		graph->edge[graph->n_edge].live_range_arrays =
+		graph->edge[graph->n_edge].live_range_maximal_span_arrays =
 			isl_union_set_from_set(isl_map_range(
 				isl_set_unwrap(isl_map_domain(isl_map_copy(tagged)))));
 		if (!graph->live_range_arrays)
 			graph->live_range_arrays = isl_union_set_copy(
-				graph->edge[graph->n_edge].live_range_arrays);
+				graph->edge[graph->n_edge].live_range_maximal_span_arrays);
 		else
 			graph->live_range_arrays = isl_union_set_union(
 				graph->live_range_arrays,
 				isl_union_set_copy(
-					graph->edge[graph->n_edge].live_range_arrays));
+					graph->edge[graph->n_edge].live_range_maximal_span_arrays));
 	}
 	if (data->type == isl_edge_condition)
 		graph->edge[graph->n_edge].tagged_condition =
@@ -2225,14 +2227,14 @@ static isl_stat add_intra_lrs_cst(__isl_take isl_set *set, void *user) {
 static isl_stat
 add_intra_live_range_span_constraints(struct isl_sched_graph *graph,
 									  struct isl_sched_edge *edge) {
-	if (!edge->live_range_arrays)
+	if (!edge->live_range_maximal_span_arrays)
 		return isl_stat_ok;
 
 	struct lrs_data data;
 	data.graph = graph;
 	data.edge = edge;
-	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_intra_lrs_cst,
-								  &data) < 0)
+	if (isl_union_set_foreach_set(edge->live_range_maximal_span_arrays,
+								  &add_intra_lrs_cst, &data) < 0)
 		return isl_stat_error;
 	return isl_stat_ok;
 }
@@ -2240,15 +2242,15 @@ add_intra_live_range_span_constraints(struct isl_sched_graph *graph,
 static isl_stat
 add_inter_live_range_span_constraints(struct isl_sched_graph *graph,
 									  struct isl_sched_edge *edge) {
-	if (!edge->live_range_arrays)
+	if (!edge->live_range_maximal_span_arrays)
 		return isl_stat_ok;
 
 	struct lrs_data data;
 	data.graph = graph;
 	data.edge = edge;
 
-	if (isl_union_set_foreach_set(edge->live_range_arrays, &add_inter_lrs_cst,
-								  &data) < 0)
+	if (isl_union_set_foreach_set(edge->live_range_maximal_span_arrays,
+								  &add_inter_lrs_cst, &data) < 0)
 		return isl_stat_error;
 	return isl_stat_ok;
 }
@@ -4108,7 +4110,8 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		map = isl_map_copy(edge->map);
 		tagged_condition = isl_union_map_copy(edge->tagged_condition);
 		tagged_validity = isl_union_map_copy(edge->tagged_validity);
-		isl_union_set *lrs = isl_union_set_copy(edge->live_range_arrays);
+		isl_union_set *lrs =
+			isl_union_set_copy(edge->live_range_maximal_span_arrays);
 
 		dst->edge[dst->n_edge].src = dst_src;
 		dst->edge[dst->n_edge].dst = dst_dst;
@@ -4116,12 +4119,12 @@ static isl_stat copy_edges(isl_ctx *ctx, struct isl_sched_graph *dst,
 		dst->edge[dst->n_edge].tagged_condition = tagged_condition;
 		dst->edge[dst->n_edge].tagged_validity = tagged_validity;
 		dst->edge[dst->n_edge].types = edge->types;
-		dst->edge[dst->n_edge].live_range_arrays = lrs;
+		dst->edge[dst->n_edge].live_range_maximal_span_arrays = lrs;
 		dst->n_edge++;
 
 		if (isl_sched_edge_is_live_range_maximal_span(edge) && !lrs)
 			return isl_stat_error;
-		if (edge->live_range_arrays && !lrs)
+		if (edge->live_range_maximal_span_arrays && !lrs)
 			return isl_stat_error;
 		if (edge->tagged_condition && !tagged_condition)
 			return isl_stat_error;
