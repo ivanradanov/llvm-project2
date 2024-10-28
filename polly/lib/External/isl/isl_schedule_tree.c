@@ -1038,6 +1038,18 @@ isl_bool isl_schedule_tree_band_member_get_coincident(
 	return isl_schedule_band_member_get_coincident(tree->band, pos);
 }
 
+isl_id_to_id *isl_schedule_tree_band_member_get_array_expansion(
+	__isl_keep isl_schedule_tree *tree, int pos) {
+	if (!tree)
+		return NULL;
+
+	if (tree->type != isl_schedule_node_band)
+		isl_die(isl_schedule_tree_get_ctx(tree), isl_error_invalid,
+				"not a band node", return NULL);
+
+	return isl_schedule_band_member_get_array_expansion(tree->band, pos);
+}
+
 __isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_array_expansion(
 	__isl_take isl_schedule_tree *tree, int pos,
 	__isl_take isl_id_to_id *array_expansion) {

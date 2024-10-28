@@ -10,24 +10,25 @@
  * B.P. 105 - 78153 Le Chesnay, France
  */
 
-#include <limits.h>
-#include <isl/id.h>
-#include <isl/val.h>
-#include <isl/space.h>
 #include <isl/aff.h>
 #include <isl/constraint.h>
-#include <isl/set.h>
+#include <isl/id.h>
+#include <isl/id_to_id.h>
 #include <isl/ilp.h>
-#include <isl/union_set.h>
-#include <isl/union_map.h>
-#include <isl/schedule_node.h>
 #include <isl/options.h>
-#include <isl_sort.h>
-#include <isl_tarjan.h>
-#include <isl_ast_private.h>
+#include <isl/schedule_node.h>
+#include <isl/set.h>
+#include <isl/space.h>
+#include <isl/union_map.h>
+#include <isl/union_set.h>
+#include <isl/val.h>
 #include <isl_ast_build_expr.h>
 #include <isl_ast_build_private.h>
 #include <isl_ast_graft_private.h>
+#include <isl_ast_private.h>
+#include <isl_sort.h>
+#include <isl_tarjan.h>
+#include <limits.h>
 
 /* Try and reduce the number of disjuncts in the representation of "set",
  * without dropping explicit representations of local variables.
@@ -173,6 +174,12 @@ static isl_stat add_domain(__isl_take isl_map *executed,
 	isl_ast_build_free(build);
 	isl_map_free(executed);
 	graft = isl_ast_graft_add_guard(graft, guard, data->build);
+
+	ISL_DEBUG(fprintf(stderr, "Generated graft for user:\n"));
+	ISL_DEBUG(isl_ast_node_dump(graft->node));
+	ISL_DEBUG(isl_basic_set_dump(graft->enforced));
+	ISL_DEBUG(isl_set_dump(graft->guard));
+	ISL_DEBUG(fprintf(stderr, "\n"));
 
 	list = isl_ast_graft_list_from_ast_graft(graft);
 	data->list = isl_ast_graft_list_concat(data->list, list);
@@ -1558,6 +1565,11 @@ static __isl_give isl_ast_graft *create_node_scaled(
 	isl_basic_set_free(bounds);
 	isl_set_free(domain);
 
+	ISL_DEBUG(fprintf(stderr, "Generated graft for band:\n"));
+	ISL_DEBUG(isl_ast_node_dump(graft->node));
+	ISL_DEBUG(isl_basic_set_dump(graft->enforced));
+	ISL_DEBUG(isl_set_dump(graft->guard));
+	ISL_DEBUG(fprintf(stderr, "\n"));
 	return graft;
 }
 
@@ -5275,8 +5287,19 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 	extra_umap = isl_union_map_from_multi_union_pw_aff(extra);
 	extra_umap = isl_union_map_reverse(extra_umap);
 
+	ISL_DEBUG(fprintf(stderr, "extra_umap: "));
+	ISL_DEBUG(isl_union_map_dump(extra_umap));
+
 	executed = isl_union_map_domain_product(executed, extra_umap);
 	executed = isl_union_map_detect_equalities(executed);
+
+	ISL_DEBUG(fprintf(stderr, "executed . extra_umap: "));
+	ISL_DEBUG(isl_union_map_dump(executed));
+
+	for (int i = 0; i < n; i++) {
+		isl_id_to_id *array_expansion =
+			isl_schedule_node_band_member_get_array_expansion(node, i);
+	}
 
 	n1 = isl_ast_build_dim(build, isl_dim_param);
 	build = isl_ast_build_product(build, space);
@@ -5781,6 +5804,11 @@ static __isl_give isl_ast_graft_list *build_ast_from_schedule_node(
 	__isl_take isl_union_map *executed)
 {
 	enum isl_schedule_node_type type;
+
+	ISL_DEBUG(fprintf(stderr, "Building ast for schedule node:\n"));
+	ISL_DEBUG(fprintf(stderr, "Executed: "));
+	ISL_DEBUG(isl_union_map_dump(executed));
+	ISL_DEBUG(isl_schedule_node_dump(node));
 
 	type = isl_schedule_node_get_type(node);
 

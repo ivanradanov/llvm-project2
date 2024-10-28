@@ -264,4 +264,10 @@ void isl_ctx_set_error(isl_ctx *ctx, enum isl_error error);
 }
 #endif
 
+#define ISL_DEBUG(code)                                                        \
+	do {                                                                       \
+		if (getenv("ISL_DEBUG"))                                               \
+			code;                                                              \
+	} while (0)
+
 #endif

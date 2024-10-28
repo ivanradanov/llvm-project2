@@ -1598,6 +1598,13 @@ isl_bool isl_schedule_node_band_member_get_coincident(
 	return isl_schedule_tree_band_member_get_coincident(node->tree, pos);
 }
 
+__isl_give isl_id_to_id *isl_schedule_node_band_member_get_array_expansion(
+	__isl_keep isl_schedule_node *node, int pos) {
+	if (!node)
+		return NULL;
+	return isl_schedule_tree_band_member_get_array_expansion(node->tree, pos);
+}
+
 __isl_give isl_schedule_node *isl_schedule_node_band_member_set_array_expansion(
 	__isl_take isl_schedule_node *node, int pos,
 	__isl_take isl_id_to_id *array_expansion) {
