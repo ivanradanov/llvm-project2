@@ -148,8 +148,10 @@ struct isl_sched_edge {
 
 	unsigned types;
 
-	// The set of arrays which have their live ranges spanning this edge
+	// The set of arrays whose maximal live range is characterized by this edge
 	isl_union_set *live_range_maximal_span_arrays;
+	// The set of arrays which have their live ranges spanning this edge
+	isl_union_set *live_range_span_arrays;
 
 	int start;
 	int end;
@@ -265,9 +267,9 @@ struct isl_sched_graph {
 	// more easily.
 	int pos_remap[original_magic_const_vars];
 
-	int array_lrs_start_pos;
+	int array_lrms_start_pos;
 	int n_array;
-	isl_union_set *live_range_arrays;
+	isl_union_set *live_range_maximal_arrays;
 
 	int array_anti_proximity_min_var_pos;
 	int array_anti_proximity_max_var_pos;
@@ -276,7 +278,7 @@ struct isl_sched_graph {
 	int n_cache;
 	int cache_size[ISL_MAX_CACHES];
 	isl_union_map *array_size;
-	isl_mat *overlapping_live_ranges;
+	isl_mat *overlapping_maximal_live_ranges;
 
 	int n_bands_found;
 };

@@ -780,7 +780,7 @@ setting for member 0
 New Schedule:
 domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P3 and 0 <= i1 < P2 and i3 >= 0 and 16i3 < P0; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P3 and 0 <= i1 < P2 and i3 >= 0 and 16i3 < P0; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P3 and 0 <= i1 < P2 }"
 child:
-  schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+  schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
   permutable: 1
   coincident: [ 1, 1 ]
   array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
@@ -788,7 +788,7 @@ child:
     sequence:
     - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
       child:
-        schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+        schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
         permutable: 1
         coincident: [ 1 ]
         array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
@@ -806,7 +806,7 @@ domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P3 and
 child:
   mark: "grid_parallel"
   child:
-    schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS0_affine_parallel[i0, i1, i2] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
     permutable: 1
     coincident: [ 1, 1 ]
     array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
@@ -814,7 +814,7 @@ child:
       sequence:
       - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
         child:
-          schedule: "[P0, P1, P2, P3] -> [{ RS0_affine_parallel[i0, i1, i2] -> [(0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)] }]"
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
           permutable: 1
           coincident: [ 1 ]
           array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
@@ -838,7 +838,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P2@0x429b7600
+    - id: P2@0x4d070540
   inc:
     val: 1
   body:
@@ -850,7 +850,7 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P3@0x429b76f0
+      - id: P3@0x4d070630
     inc:
       val: 1
     body:
@@ -858,7 +858,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS0_affine_parallel@0x42949d00
+          - id: RS0_affine_parallel@0x4d069210
           - id: c1
           - id: c0
           - val: 0
@@ -877,7 +877,7 @@ node:
               args:
               - op: sub
                 args:
-                - id: P0@0x4299f310
+                - id: P0@0x4d057950
                 - val: 1
               - val: 16
         inc:
@@ -886,7 +886,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x429b38a0
+            - id: RS1_affine_parallel@0x4d06c7e0
             - id: c1
             - id: c0
             - val: 0
@@ -905,7 +905,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P0@0x4299f310
+              - id: P0@0x4d057950
               - val: 1
             - val: 16
           - val: 21
@@ -915,7 +915,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x429c3070
+          - id: RS2_affine_parallel@0x4d082660
           - id: c1
           - id: c0
           - val: 0
@@ -926,7 +926,7 @@ node:
       - guard:
           op: ge
           args:
-          - id: P0@0x4299f310
+          - id: P0@0x4d057950
           - op: add
             args:
             - op: mul
@@ -938,7 +938,7 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x429b38a0
+            - id: RS1_affine_parallel@0x4d06c7e0
             - id: c1
             - id: c0
             - val: 0
@@ -946,7 +946,7 @@ node:
     - user:
         op: call
         args:
-        - id: RS3_affine_parallel@0x429ca680
+        - id: RS3_affine_parallel@0x4d0823c0
         - id: c1
         - id: c0
         - val: 0
