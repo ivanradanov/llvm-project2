@@ -254,6 +254,19 @@ isl_bool isl_schedule_band_member_get_coincident(
 	return isl_bool_ok(band->coincident[pos]);
 }
 
+isl_id_to_id *
+isl_schedule_band_member_get_array_expansion(__isl_keep isl_schedule_band *band,
+											 int pos) {
+	if (!band)
+		return NULL;
+
+	if (pos < 0 || pos >= band->n)
+		isl_die(isl_schedule_band_get_ctx(band), isl_error_invalid,
+				"invalid member position", return NULL);
+
+	return isl_id_to_id_copy(band->array_expansion[pos]);
+}
+
 /* Mark the given scheduling dimension as being coincident or not
  * according to "coincident".
  */

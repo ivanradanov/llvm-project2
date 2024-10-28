@@ -52,12 +52,6 @@
  * see Verdoolaege and Janssens, "Scheduling for PPCG" (2017).
  */
 
-#define ISL_DEBUG(code)                                                        \
-	do {                                                                       \
-		if (getenv("ISL_DEBUG"))                                               \
-			code;                                                              \
-	} while (0)
-
 static isl_bool always(const void *entry, const void *val) { return 1; }
 
 static isl_bool node_has_tuples(const void *entry, const void *val)
@@ -4471,6 +4465,10 @@ static __isl_give isl_schedule_node *insert_current_band(
 			array_expansion =
 				isl_id_to_id_set(array_expansion, id, expansion_id);
 			isl_set_free(set);
+
+			// if (val != 1) {
+			// 	isl_union_map *umap = collect_offsets_for_array(graph);
+			// }
 		}
 		isl_set_list_free(sl);
 
@@ -4478,10 +4476,6 @@ static __isl_give isl_schedule_node *insert_current_band(
 		node = isl_schedule_node_band_member_set_array_expansion(
 			node, i, array_expansion);
 	}
-
-	// TODO
-	// isl_union_map_deltas(isl_union_map *umap);
-	// isl_multi_union_pw_aff_delta();
 
 	isl_multi_union_pw_aff_free(mupa);
 
