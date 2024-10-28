@@ -241,6 +241,14 @@ isl_schedule_constraints_set_anti_proximity(
 /* Replace the live_range_span constraints of "sc" by "live_range_span".
  */
 __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_live_range_maximal_span(
+	__isl_take isl_schedule_constraints *sc,
+	__isl_take isl_union_map *live_range_span) {
+	return isl_schedule_constraints_set(sc, isl_edge_live_range_maximal_span,
+										live_range_span);
+}
+
+__isl_give isl_schedule_constraints *
 isl_schedule_constraints_set_live_range_span(
     __isl_take isl_schedule_constraints *sc,
     __isl_take isl_union_map *live_range_span) {
@@ -532,6 +540,7 @@ enum isl_sc_key {
 	isl_sc_key_proximity = isl_edge_proximity,
 	isl_sc_key_anti_proximity = isl_edge_anti_proximity,
 	isl_sc_key_live_range_span = isl_edge_live_range_span,
+	isl_sc_key_live_range_maximal_span = isl_edge_live_range_maximal_span,
 	isl_sc_key_array_size,
 	isl_sc_key_domain,
 	isl_sc_key_context,
@@ -549,6 +558,7 @@ static char *key_str[] = {
 	[isl_sc_key_proximity] = "proximity",
 	[isl_sc_key_anti_proximity] = "anti_proximity",
 	[isl_sc_key_live_range_span] = "live_range_span",
+	[isl_sc_key_live_range_maximal_span] = "live_range_maximal_span",
 	[isl_sc_key_array_size] = "array_sizes",
 	[isl_sc_key_domain] = "domain",
 	[isl_sc_key_context] = "context",

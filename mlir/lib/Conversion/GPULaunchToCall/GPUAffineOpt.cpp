@@ -367,8 +367,12 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
   sc = isl_schedule_constraints_set_proximity(sc, proximity);
   sc = isl_schedule_constraints_set_anti_proximity(sc, anti_proximity);
   isl_union_map *lrs = isl_union_map_copy(scop->atagged_dep_flow);
+  sc =
+      isl_schedule_constraints_set_live_range_span(sc, isl_union_map_copy(lrs));
+  // FIXME we would like to put this maximal path computation in isl and not
+  // here, but the function is currently written in c++ so that doesn't work.
   lrs = get_maximal_paths(isl::manage(lrs)).release();
-  sc = isl_schedule_constraints_set_live_range_span(sc, lrs);
+  sc = isl_schedule_constraints_set_live_range_maximal_span(sc, lrs);
 
   isl_union_set *arrays = isl_union_map_range(isl_union_set_unwrap(
       isl_union_map_domain(isl_union_map_copy(scop->atagged_dep_flow))));
