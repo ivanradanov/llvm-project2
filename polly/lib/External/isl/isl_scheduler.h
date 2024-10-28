@@ -149,7 +149,7 @@ struct isl_sched_edge {
 	unsigned types;
 
 	// The set of arrays which have their live ranges spanning this edge
-	isl_union_set *live_range_arrays;
+	isl_union_set *live_range_maximal_span_arrays;
 
 	int start;
 	int end;
