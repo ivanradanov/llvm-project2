@@ -1,5 +1,8 @@
 #include "isl/ctx.h"
 #include "isl/isl-noexceptions.h"
+#include "isl/map.h"
+#include "isl/schedule_node.h"
+#include "isl/schedule_type.h"
 #include <iostream>
 #include <vector>
 
@@ -22,6 +25,13 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 	// TODO
 	int n_expanded_dims = 10;
 
+	isl::union_map full_array_umap;
+
+	r = node.get_schedule_depth();
+	if (r.is_error())
+		return nullptr;
+	int depth = (unsigned)r;
+
 	for (int member = 0; member < n_members; member++) {
 
 		isl_id_to_id *array_expansion =
@@ -33,8 +43,6 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 		auto lambda1 = [&](isl_id *id, isl_id *target_id) -> isl_stat {
 			isl::id array_id = isl::manage(id);
 			int factor = (int)(uintptr_t)isl::manage_copy(target_id).get_user();
-			ISL_DEBUG(fprintf(stderr, "factor %d\n", factor));
-
 			// TODO offset
 			int offset = factor - 1;
 
@@ -61,7 +69,11 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 					aff = aff.mod(factor);
 
 				auto as_map = aff.as_map();
-				as_map = as_map.add_dims(isl::dim::out, n_expanded_dims - 1);
+				as_map = as_map.add_dims(isl::dim::out,
+										 n_expanded_dims - 1 - depth - member);
+				as_map = isl::manage(isl_map_insert_dims(
+					as_map.release(), isl_dim_out, 0, depth + member));
+
 				as_map = as_map.set_range_tuple(array_id);
 
 				isl::space space = as_map.get_space();
@@ -100,6 +112,19 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 
 		ISL_DEBUG(std::cerr << "member array umap\n");
 		ISL_DEBUG(isl_union_map_dump(member_array_umap.get()));
+		ISL_DEBUG(std::cerr << "full array umap before\n");
+		ISL_DEBUG(isl_union_map_dump(full_array_umap.get()));
+
+		if (full_array_umap.is_null())
+			full_array_umap = member_array_umap;
+		else
+			// full_array_umap = full_array_umap.intersect(member_array_umap);
+			full_array_umap = full_array_umap.intersect(member_array_umap);
+		ISL_DEBUG(std::cerr << "full array umap after\n");
+		ISL_DEBUG(isl_union_map_dump(full_array_umap.get()));
 	}
+
+	extra_umap = extra_umap.unite(full_array_umap);
+
 	return extra_umap.release();
 }
