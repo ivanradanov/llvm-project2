@@ -30,6 +30,8 @@
 #include <isl_tarjan.h>
 #include <limits.h>
 
+#include "cpp_functions.h"
+
 /* Try and reduce the number of disjuncts in the representation of "set",
  * without dropping explicit representations of local variables.
  */
@@ -5284,22 +5286,25 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 	if (check_band_schedule_total_on_instances(extra, executed) < 0)
 		executed = isl_union_map_free(executed);
 
+	ISL_DEBUG(fprintf(stderr, "extra: "));
+	ISL_DEBUG(isl_multi_union_pw_aff_dump(extra));
+
 	extra_umap = isl_union_map_from_multi_union_pw_aff(extra);
 	extra_umap = isl_union_map_reverse(extra_umap);
 
 	ISL_DEBUG(fprintf(stderr, "extra_umap: "));
 	ISL_DEBUG(isl_union_map_dump(extra_umap));
 
-	executed = isl_union_map_domain_product(executed, extra_umap);
+	extra_umap = isl_ast_generate_array_expansion_indexing(node, extra_umap);
+
+	ISL_DEBUG(fprintf(stderr, "extra_umap with array expansion: "));
+	ISL_DEBUG(isl_union_map_dump(extra_umap));
+
+	executed = isl_union_map_domain_product(executed, isl_union_map_copy(extra_umap));
 	executed = isl_union_map_detect_equalities(executed);
 
 	ISL_DEBUG(fprintf(stderr, "executed . extra_umap: "));
 	ISL_DEBUG(isl_union_map_dump(executed));
-
-	for (int i = 0; i < n; i++) {
-		isl_id_to_id *array_expansion =
-			isl_schedule_node_band_member_get_array_expansion(node, i);
-	}
 
 	n1 = isl_ast_build_dim(build, isl_dim_param);
 	build = isl_ast_build_product(build, space);
