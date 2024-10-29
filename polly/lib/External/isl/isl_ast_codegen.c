@@ -5256,6 +5256,9 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 	if (check_band_schedule_total_on_instances(extra, executed) < 0)
 		executed = isl_union_map_free(executed);
 
+	ISL_DEBUG(fprintf(stderr, "executed: "));
+	ISL_DEBUG(isl_union_map_dump(executed));
+
 	ISL_DEBUG(fprintf(stderr, "extra: "));
 	ISL_DEBUG(isl_multi_union_pw_aff_dump(extra));
 
