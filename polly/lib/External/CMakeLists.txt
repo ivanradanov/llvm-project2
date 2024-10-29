@@ -281,6 +281,7 @@ if (POLLY_BUNDLED_ISL)
     isl/imath/gmp_compat.c
     isl/imath/imath.c
     isl/imath/imrat.c
+    isl/cpp_functions.cpp
     )
 
   add_polly_library(PollyISL
