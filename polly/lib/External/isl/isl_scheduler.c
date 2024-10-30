@@ -6530,17 +6530,22 @@ static isl_stat gea_func(isl_set *set, void *user) {
 	isl_union_set **data = user;
 	isl_union_set *uset = *data;
 
-	// ISL_DEBUG(fprintf(stderr, "projected out all set\n"));
-	// ISL_DEBUG(isl_set_dump(set));
-	// isl_set_unwrap(isl_map *set)
-	// set = isl_set_drop(set, isl_dim_set, 0, isl_set_dim(set, isl_dim_set));
-	// ISL_DEBUG(isl_set_dump(set));
-	// if (uset == NULL)
-	//   uset = isl_union_set_from_set(set);
-	// else
-	//   uset = isl_union_set_union(isl_union_set_from_set(set), uset);
+	isl_space *space = isl_set_get_space(set);
+	isl_space *unwrapped = isl_space_unwrap(space);
+	isl_space *rspace = isl_space_range(isl_space_copy(unwrapped));
+	isl_space *dspace = isl_space_domain(isl_space_copy(unwrapped));
+	rspace = isl_space_set_tuple_id(
+		isl_space_params(isl_space_copy(unwrapped)), isl_dim_set,
+		isl_space_get_tuple_id(rspace, isl_dim_set));
+	isl_space_free(unwrapped);
+	space = isl_space_wrap(isl_space_map_from_domain_and_range(dspace, rspace));
+	set = isl_set_universe(space);
+	if (uset == NULL)
+		uset = isl_union_set_from_set(set);
+	else
+		uset = isl_union_set_union(isl_union_set_from_set(set), uset);
 
-	// *data = uset;
+	*data = uset;
 
 	return isl_stat_ok;
 }
@@ -6548,6 +6553,12 @@ static isl_stat gea_func(isl_set *set, void *user) {
 isl_union_set *
 isl_get_expanded_arrays(__isl_keep isl_schedule_constraints *sc) {
 	isl_union_map *lrs = isl_schedule_constraints_get_live_range_span(sc);
+	lrs = isl_union_map_domain_reverse(lrs);
+	ISL_DEBUG(fprintf(stderr, "dom reverse"));
+	ISL_DEBUG(isl_union_map_dump(lrs));
+	lrs = isl_union_map_range_reverse(lrs);
+	ISL_DEBUG(fprintf(stderr, "range reverse"));
+	ISL_DEBUG(isl_union_map_dump(lrs));
 	isl_union_set *domain = isl_union_map_domain(isl_union_map_copy(lrs));
 	isl_union_set *range = isl_union_map_range(isl_union_map_copy(lrs));
 
@@ -6555,19 +6566,17 @@ isl_get_expanded_arrays(__isl_keep isl_schedule_constraints *sc) {
 	range = isl_union_set_universe(range);
 
 	isl_union_set *united = isl_union_set_union(domain, range);
-	ISL_DEBUG(fprintf(stderr, "handling uset united?\n"));
+
+	ISL_DEBUG(fprintf(stderr, "handling uset\n"));
 	ISL_DEBUG(isl_union_set_dump(united));
+	isl_union_set *uset = NULL;
+	if (isl_union_set_foreach_set(united, gea_func, &uset) < 0)
+		return NULL;
 
-	// ISL_DEBUG(fprintf(stderr, "handling uset\n"));
-	// ISL_DEBUG(isl_union_set_dump(domain));
-	// isl_union_set *uset = NULL;
-	// if (isl_union_set_foreach_set(domain, gea_func, &uset) < 0)
-	//   return NULL;
+	ISL_DEBUG(fprintf(stderr, "projected out all uset\n"));
+	ISL_DEBUG(isl_union_set_dump(uset));
 
-	// ISL_DEBUG(fprintf(stderr, "projected out all uset\n"));
-	// ISL_DEBUG(isl_union_set_dump(uset));
-
-	return NULL;
+	return uset;
 }
 
 /* Compute a schedule on sc->domain that respects the given schedule
@@ -6608,8 +6617,8 @@ __isl_give isl_schedule *isl_schedule_constraints_compute_schedule(
 		domain = isl_union_set_free(domain);
 
 	node = isl_schedule_node_from_domain(domain);
-	// node = isl_schedule_node_domain_set_expanded_arrays(node,
-	// isl_get_expanded_arrays(sc));
+	node = isl_schedule_node_domain_set_expanded_arrays(
+		node, isl_get_expanded_arrays(sc));
 	node = isl_schedule_node_child(node, 0);
 	if (graph.n > 0)
 		node = compute_schedule(node, &graph);

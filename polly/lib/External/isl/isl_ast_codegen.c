@@ -5900,7 +5900,18 @@ static __isl_give isl_ast_node *build_ast_from_domain(
 	set = isl_set_from_basic_set(isl_set_simple_hull(set));
 	schedule_domain = isl_union_set_from_set(set);
 
+	isl_union_set *expanded_arrays =
+		isl_schedule_node_domain_get_expanded_arrays(node);
+	if (expanded_arrays) {
+		ISL_DEBUG(fprintf(stderr, "Combined domain with expanded arrays:\n"));
+		ISL_DEBUG(isl_union_set_dump(domain));
+		ISL_DEBUG(isl_union_set_dump(expanded_arrays));
+		domain = isl_union_set_union(domain, expanded_arrays);
+		ISL_DEBUG(isl_union_set_dump(domain));
+	}
 	executed = isl_union_map_from_domain_and_range(schedule_domain, domain);
+	ISL_DEBUG(fprintf(stderr, "Constructed domain executed:\n"));
+	ISL_DEBUG(isl_union_map_dump(executed));
 	list = build_ast_from_child(isl_ast_build_copy(build), node, executed);
 	ast = isl_ast_node_from_graft_list(list, build);
 	isl_ast_build_free(build);

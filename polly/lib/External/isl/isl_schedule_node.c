@@ -3744,6 +3744,11 @@ __isl_give isl_schedule_node *isl_schedule_node_gist(
 	return node;
 }
 
+__isl_give isl_union_set *isl_schedule_node_domain_get_expanded_arrays(
+	__isl_keep isl_schedule_node *node) {
+	return node->tree->expanded_arrays;
+}
+
 __isl_give isl_schedule_node *isl_schedule_node_domain_set_expanded_arrays(
 	__isl_take isl_schedule_node *node,
 	__isl_take isl_union_set *expanded_arrays) {

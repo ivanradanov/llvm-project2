@@ -100,7 +100,8 @@ __isl_give isl_schedule_tree *isl_schedule_tree_dup(
 		break;
 	case isl_schedule_node_domain:
 		dup->domain = isl_union_set_copy(tree->domain);
-		if (!dup->domain)
+		dup->expanded_arrays = isl_union_set_copy(tree->expanded_arrays);
+		if (!dup->domain || (tree->expanded_arrays && !dup->expanded_arrays))
 			return isl_schedule_tree_free(dup);
 		break;
 	case isl_schedule_node_expansion:
