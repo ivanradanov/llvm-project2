@@ -1558,6 +1558,33 @@ __isl_give isl_union_map *isl_union_map_intersect_domain_factor_domain(
 	return gen_bin_op(umap, factor, &control);
 }
 
+static isl_space *
+isl_space_range_get_nested_range(__isl_take isl_space *space) {
+	return isl_space_range(isl_space_unwrap(isl_space_range(space)));
+}
+
+static isl_map *isl_map_take_first(__isl_take isl_map *map1,
+								   __isl_take isl_map *map2) {
+	return map1;
+}
+
+/* Intersect each map in "umap" in a space A -> (B -> C)
+ * with the set in space C and
+ */
+__isl_give isl_union_map *isl_union_map_intersect_range_wrapped_and_unwrapped(
+	__isl_take isl_union_map *umap, __isl_take isl_union_set *uset) {
+	struct isl_bin_op_control control = {
+		.filter = &isl_map_range_is_wrapping,
+		.match_space = &isl_space_range_get_nested_range,
+		.fn_map = &isl_map_take_first,
+	};
+
+	isl_union_map *wrapped = gen_bin_op(isl_union_map_copy(umap),
+										isl_union_set_copy(uset), &control);
+	isl_union_map *non_wrapped = isl_union_map_intersect_range(umap, uset);
+	return isl_union_map_union(wrapped, non_wrapped);
+}
+
 /* Intersect each map in "umap" in a space [A -> B] -> C
  * with the corresponding map in "factor" in the space B -> C and
  * collect the results.

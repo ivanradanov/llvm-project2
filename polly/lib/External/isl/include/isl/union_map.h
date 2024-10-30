@@ -167,6 +167,9 @@ __isl_give isl_union_map *isl_union_map_intersect_range_space(
 	__isl_take isl_union_map *umap, __isl_take isl_space *space);
 __isl_give isl_union_map *isl_union_map_intersect_range(
 	__isl_take isl_union_map *umap, __isl_take isl_union_set *uset);
+__isl_export __isl_give isl_union_map *
+isl_union_map_intersect_range_wrapped_and_unwrapped(
+	__isl_take isl_union_map *umap, __isl_take isl_union_set *uset);
 __isl_export
 __isl_give isl_union_map *isl_union_map_intersect_domain_factor_domain(
 	__isl_take isl_union_map *umap, __isl_take isl_union_map *factor);
