@@ -79,6 +79,7 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 				isl::space space = as_map.get_space();
 				space = space.drop_dims(isl::dim::in, 0, n_members);
 				space = space.range().map_from_domain_and_range(space.domain());
+				space = space.add_dims(isl::dim::out, n_stmt_dims);
 				space = space.set_tuple_id(isl::dim::out, stmt_id);
 				auto tag = isl::multi_aff::domain_map(space);
 				as_map = as_map.preimage_range(tag);
