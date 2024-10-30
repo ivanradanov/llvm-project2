@@ -271,6 +271,4 @@ void isl_ctx_set_error(isl_ctx *ctx, enum isl_error error);
 			code;                                                              \
 	} while (0)
 
-#define ISL_TEMP_EXPANDED_DIMS 10
-
 #endif

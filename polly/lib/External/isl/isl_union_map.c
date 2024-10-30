@@ -2325,6 +2325,57 @@ static __isl_give isl_map *universe(__isl_take isl_map *map)
 	return isl_map_universe(space);
 }
 
+/// { [[] -> [i0, i1]] -> [A[o0] -> S[o2, o3]] : ... }
+/// to
+/// { [[] -> [i0, i1]] -> [A[o0, o1] -> S[o2, o3]] : ... }
+static isl_map *map_add_array_dims(isl_map *map, void *user) {
+	int n_to_add = (int)user;
+
+	isl_space *rspace = isl_space_range(isl_map_get_space(map));
+	if (!isl_space_is_wrapping(rspace)) {
+		isl_space_free(rspace);
+		return map;
+	}
+
+	rspace = isl_space_unwrap(rspace);
+
+	isl_space *array_space = isl_space_domain(isl_space_copy(rspace));
+	isl_id *array_id = isl_space_get_tuple_id(array_space, isl_dim_set);
+	isl_size n_eq = isl_space_dim(array_space, isl_dim_set);
+	isl_space *array_range = isl_space_set_tuple_id(
+		isl_space_add_dims(isl_space_copy(array_space), isl_dim_set, n_to_add),
+		isl_dim_set, array_id);
+	isl_space *array_domain = array_space;
+	isl_space *array_map_space =
+		isl_space_map_from_domain_and_range(array_domain, array_range);
+	isl_map *array_map =
+		isl_map_from_basic_map(isl_basic_map_equal(array_map_space, n_eq));
+
+	isl_space *stmt_space = isl_space_range(isl_space_copy(rspace));
+	isl_space *stmt_range = isl_space_copy(stmt_space);
+	isl_space *stmt_domain = stmt_space;
+	isl_space *stmt_map_space =
+		isl_space_map_from_domain_and_range(stmt_domain, stmt_range);
+	isl_map *stmt_map = isl_map_identity(stmt_map_space);
+
+	ISL_DEBUG(fprintf(stderr, "ADD_ARRAY_DIMS\n"));
+	ISL_DEBUG(isl_map_dump(array_map));
+	ISL_DEBUG(isl_map_dump(stmt_map));
+	isl_map *combined = isl_map_product(array_map, stmt_map);
+	ISL_DEBUG(isl_map_dump(combined));
+	isl_map *added = isl_map_apply_range(map, combined);
+	ISL_DEBUG(isl_map_dump(added));
+	return added;
+}
+__isl_give isl_union_map *
+isl_union_map_add_array_dims(__isl_take isl_union_map *umap, int n) {
+	struct isl_un_op_control control = {
+		.fn_map2 = &map_add_array_dims,
+		.fn_map2_user = (void *)n,
+	};
+	return un_op(umap, &control);
+}
+
 __isl_give isl_union_map *isl_union_map_universe(__isl_take isl_union_map *umap)
 {
 	struct isl_un_op_control control = {
