@@ -3744,6 +3744,20 @@ __isl_give isl_schedule_node *isl_schedule_node_gist(
 	return node;
 }
 
+__isl_give isl_schedule_node *isl_schedule_node_domain_set_expanded_arrays(
+	__isl_take isl_schedule_node *node,
+	__isl_take isl_union_set *expanded_arrays) {
+	if (!expanded_arrays) {
+		isl_schedule_node_free(node);
+		return NULL;
+	}
+	if (node->tree->expanded_arrays)
+		isl_union_set_free(node->tree->expanded_arrays);
+	else
+		node->tree->expanded_arrays = expanded_arrays;
+	return node;
+}
+
 /* Intersect the domain of domain node "node" with "domain".
  *
  * If the domain of "node" is already a subset of "domain",

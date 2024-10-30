@@ -23,7 +23,7 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 	int n_members = (unsigned)r;
 
 	// TODO
-	int n_expanded_dims = 10;
+	int n_expanded_dims = ISL_TEMP_EXPANDED_DIMS;
 
 	isl::union_map full_array_umap;
 

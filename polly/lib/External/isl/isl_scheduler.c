@@ -6526,6 +6526,50 @@ static __isl_give isl_schedule_node *compute_schedule(isl_schedule_node *node,
 	return compute_schedule_wcc(node, graph);
 }
 
+static isl_stat gea_func(isl_set *set, void *user) {
+	isl_union_set **data = user;
+	isl_union_set *uset = *data;
+
+	// ISL_DEBUG(fprintf(stderr, "projected out all set\n"));
+	// ISL_DEBUG(isl_set_dump(set));
+	// isl_set_unwrap(isl_map *set)
+	// set = isl_set_drop(set, isl_dim_set, 0, isl_set_dim(set, isl_dim_set));
+	// ISL_DEBUG(isl_set_dump(set));
+	// if (uset == NULL)
+	//   uset = isl_union_set_from_set(set);
+	// else
+	//   uset = isl_union_set_union(isl_union_set_from_set(set), uset);
+
+	// *data = uset;
+
+	return isl_stat_ok;
+}
+
+isl_union_set *
+isl_get_expanded_arrays(__isl_keep isl_schedule_constraints *sc) {
+	isl_union_map *lrs = isl_schedule_constraints_get_live_range_span(sc);
+	isl_union_set *domain = isl_union_map_domain(isl_union_map_copy(lrs));
+	isl_union_set *range = isl_union_map_range(isl_union_map_copy(lrs));
+
+	domain = isl_union_set_universe(domain);
+	range = isl_union_set_universe(range);
+
+	isl_union_set *united = isl_union_set_union(domain, range);
+	ISL_DEBUG(fprintf(stderr, "handling uset united?\n"));
+	ISL_DEBUG(isl_union_set_dump(united));
+
+	// ISL_DEBUG(fprintf(stderr, "handling uset\n"));
+	// ISL_DEBUG(isl_union_set_dump(domain));
+	// isl_union_set *uset = NULL;
+	// if (isl_union_set_foreach_set(domain, gea_func, &uset) < 0)
+	//   return NULL;
+
+	// ISL_DEBUG(fprintf(stderr, "projected out all uset\n"));
+	// ISL_DEBUG(isl_union_set_dump(uset));
+
+	return NULL;
+}
+
 /* Compute a schedule on sc->domain that respects the given schedule
  * constraints.
  *
@@ -6564,6 +6608,8 @@ __isl_give isl_schedule *isl_schedule_constraints_compute_schedule(
 		domain = isl_union_set_free(domain);
 
 	node = isl_schedule_node_from_domain(domain);
+	// node = isl_schedule_node_domain_set_expanded_arrays(node,
+	// isl_get_expanded_arrays(sc));
 	node = isl_schedule_node_child(node, 0);
 	if (graph.n > 0)
 		node = compute_schedule(node, &graph);

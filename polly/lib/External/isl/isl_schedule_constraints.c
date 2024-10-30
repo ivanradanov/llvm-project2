@@ -363,6 +363,11 @@ __isl_give isl_union_map *isl_schedule_constraints_get_validity(
 	return isl_schedule_constraints_get(sc, isl_edge_validity);
 }
 
+__isl_give isl_union_map *isl_schedule_constraints_get_live_range_span(
+	__isl_keep isl_schedule_constraints *sc) {
+	return isl_schedule_constraints_get(sc, isl_edge_live_range_span);
+}
+
 /* Return the coincidence constraints of "sc".
  */
 __isl_give isl_union_map *isl_schedule_constraints_get_coincidence(
