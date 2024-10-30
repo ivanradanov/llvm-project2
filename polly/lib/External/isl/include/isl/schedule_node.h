@@ -15,6 +15,10 @@
 extern "C" {
 #endif
 
+__isl_export __isl_give isl_schedule_node *
+isl_schedule_node_domain_set_expanded_arrays(
+	__isl_take isl_schedule_node *node,
+	__isl_take isl_union_set *expanded_arrays);
 __isl_export
 __isl_give isl_schedule_node *isl_schedule_node_from_domain(
 	__isl_take isl_union_set *domain);
