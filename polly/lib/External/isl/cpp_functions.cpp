@@ -22,15 +22,15 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 		return nullptr;
 	int n_members = (unsigned)r;
 
-	// TODO
-	int n_expanded_dims = ISL_TEMP_EXPANDED_DIMS;
-
-	isl::union_map full_array_umap;
-
 	r = node.get_schedule_depth();
 	if (r.is_error())
 		return nullptr;
 	int depth = (unsigned)r;
+
+	// TODO
+	int n_expanded_dims = depth + n_members;
+
+	isl::union_map full_array_umap;
 
 	for (int member = 0; member < n_members; member++) {
 
@@ -117,18 +117,11 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 		if (isl_id_to_id_foreach(array_expansion, lambda2, &data) < 0)
 			return nullptr;
 
-		ISL_DEBUG(std::cerr << "member array umap\n");
-		ISL_DEBUG(isl_union_map_dump(member_array_umap.get()));
-		ISL_DEBUG(std::cerr << "full array umap before\n");
-		ISL_DEBUG(isl_union_map_dump(full_array_umap.get()));
-
 		if (full_array_umap.is_null())
 			full_array_umap = member_array_umap;
 		else
 			// full_array_umap = full_array_umap.intersect(member_array_umap);
 			full_array_umap = full_array_umap.intersect(member_array_umap);
-		ISL_DEBUG(std::cerr << "full array umap after\n");
-		ISL_DEBUG(isl_union_map_dump(full_array_umap.get()));
 	}
 
 	extra_umap = extra_umap.unite(full_array_umap);
