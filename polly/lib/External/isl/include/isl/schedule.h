@@ -108,8 +108,10 @@ __isl_give isl_set *isl_schedule_constraints_get_context(
 __isl_export
 __isl_give isl_union_map *isl_schedule_constraints_get_validity(
 	__isl_keep isl_schedule_constraints *sc);
-__isl_export
-__isl_give isl_union_map *isl_schedule_constraints_get_coincidence(
+__isl_export __isl_give isl_union_map *
+isl_schedule_constraints_get_live_range_span(
+	__isl_keep isl_schedule_constraints *sc);
+__isl_export __isl_give isl_union_map *isl_schedule_constraints_get_coincidence(
 	__isl_keep isl_schedule_constraints *sc);
 __isl_export
 __isl_give isl_union_map *isl_schedule_constraints_get_proximity(

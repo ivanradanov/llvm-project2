@@ -344,6 +344,10 @@ static __isl_give isl_ast_graft_list *generate_inner_level(
 	if (build->create_leaf)
 		return call_create_leaf(executed, build);
 
+	ISL_DEBUG(fprintf(stderr,
+					  "We have reached a complete schedule wtih executed:\n"));
+	ISL_DEBUG(isl_union_map_dump(executed));
+
 	ctx = isl_union_map_get_ctx(executed);
 	data.list = isl_ast_graft_list_alloc(ctx, 0);
 	if (isl_union_map_foreach_map(executed, &generate_domain, &data) < 0)

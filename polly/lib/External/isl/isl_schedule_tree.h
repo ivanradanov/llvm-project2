@@ -60,7 +60,10 @@ struct isl_schedule_tree {
 	union {
 		isl_schedule_band *band;
 		isl_set *context;
-		isl_union_set *domain;
+		struct {
+			isl_union_set *domain;
+			isl_union_set *expanded_arrays;
+		};
 		struct {
 			isl_union_pw_multi_aff *contraction;
 			isl_union_map *expansion;
