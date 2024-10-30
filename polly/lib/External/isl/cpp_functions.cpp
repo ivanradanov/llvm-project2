@@ -45,6 +45,7 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 			int factor = (int)(uintptr_t)isl::manage_copy(target_id).get_user();
 			// TODO offset
 			int offset = factor - 1;
+			// assert(offset
 
 			isl::union_map umap;
 			extra_umap.foreach_map([&](isl::map map) {
@@ -57,11 +58,16 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 					return isl::stat::error();
 				int n_stmt_dims = (unsigned)r;
 				auto stmt_id = map.get_range_tuple_id();
-				// auto mupa = isl::pw_aff::(map.domain().get_space());
-				auto aff = isl::aff::var_on_domain(
-					isl::manage(isl_local_space_from_space(
-						map.domain().space().release())),
-					isl::dim::set, member);
+				isl::aff aff;
+				if (factor == 1) {
+					aff = isl::aff::zero_on_domain(map.domain().space());
+					isl_assert(ctx, offset == 0, abort());
+				} else {
+					aff = isl::aff::var_on_domain(
+						isl::manage(isl_local_space_from_space(
+							map.domain().space().release())),
+						isl::dim::set, member);
+				}
 
 				if (offset != 0)
 					aff = aff.add_constant_si(offset);
