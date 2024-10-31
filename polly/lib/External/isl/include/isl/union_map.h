@@ -46,6 +46,9 @@ int isl_union_map_find_dim_by_name(__isl_keep isl_union_map *umap,
 	enum isl_dim_type type, const char *name);
 
 __isl_export __isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping_with_range_space(
+	__isl_take isl_union_map *umap, isl_space *space);
+__isl_export __isl_give isl_union_map *
 isl_union_map_add_array_dims(__isl_take isl_union_map *umap, int n);
 __isl_export __isl_give isl_union_map *
 isl_union_map_filter_range_is_not_wrapping(__isl_take isl_union_map *umap);
