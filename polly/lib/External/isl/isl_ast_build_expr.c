@@ -3082,6 +3082,9 @@ __isl_give isl_ast_node *isl_ast_build_call_from_executed(
 	isl_pw_multi_aff *iteration;
 	isl_ast_expr *expr;
 
+	ISL_DEBUG(fprintf(stderr, "Building call from executed:\n"));
+	ISL_DEBUG(isl_map_dump(executed));
+
 	iteration = isl_pw_multi_aff_from_map(executed);
 	iteration = isl_ast_build_compute_gist_pw_multi_aff(build, iteration);
 	iteration = isl_pw_multi_aff_intersect_domain(iteration,
