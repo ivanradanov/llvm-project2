@@ -95,6 +95,8 @@ static isl_stat generate_non_single_valued(__isl_take isl_map *executed,
 	isl_ast_build *build;
 	isl_ast_graft_list *list;
 
+	ISL_DEBUG(fprintf(stderr, "domain was not single value, continue generating\n"));
+
 	build = isl_ast_build_copy(data->build);
 
 	identity = isl_set_identity(isl_map_range(isl_map_copy(executed)));
@@ -211,6 +213,18 @@ static isl_stat generate_domain(__isl_take isl_map *executed, void *user)
 	struct isl_generate_domain_data *data = user;
 	isl_set *domain;
 	int empty, sv;
+
+	ISL_DEBUG(fprintf(stderr, "Generating domain for:\n"));
+	ISL_DEBUG(isl_map_dump(executed));
+	ISL_DEBUG(fprintf(stderr, "\n"));
+
+	// This is an array expansion indexer, ignore it
+	if (isl_map_range_is_wrapping(executed)) {
+		ISL_DEBUG(fprintf(stderr, "Not generating array indexing.\n"));
+		isl_map_free(executed);
+		return isl_stat_ok;
+	}
+
 
 	domain = isl_ast_build_get_domain(data->build);
 	domain = isl_set_from_basic_set(isl_set_simple_hull(domain));
