@@ -2376,6 +2376,32 @@ isl_union_map_add_array_dims(__isl_take isl_union_map *umap, int n) {
 	return un_op(umap, &control);
 }
 
+static isl_bool isl_map_range_is_not_wrapping_user(__isl_keep isl_map *map,
+												   void *user) {
+	return !isl_map_range_is_wrapping(map);
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_not_wrapping(__isl_take isl_union_map *umap) {
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_not_wrapping_user,
+	};
+	return un_op(umap, &control);
+}
+
+static isl_bool isl_map_range_is_wrapping_user(__isl_keep isl_map *map,
+											   void *user) {
+	return isl_map_range_is_wrapping(map);
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping(__isl_take isl_union_map *umap) {
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_wrapping_user,
+	};
+	return un_op(umap, &control);
+}
+
 __isl_give isl_union_map *isl_union_map_universe(__isl_take isl_union_map *umap)
 {
 	struct isl_un_op_control control = {
