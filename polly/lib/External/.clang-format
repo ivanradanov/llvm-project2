@@ -2,3 +2,7 @@ BasedOnStyle: LLVM
 IndentWidth: 4
 TabWidth: 4
 UseTab: Always
+AlignAfterOpenBracket: DontAlign
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
