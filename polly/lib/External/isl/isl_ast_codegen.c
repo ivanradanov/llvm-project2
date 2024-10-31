@@ -241,7 +241,7 @@ static isl_stat generate_domain(__isl_take isl_map *executed, void *user)
 	if (sv < 0)
 		goto error;
 	if (sv)
-		return add_domain(executed, data);
+		return add_domain(executed, executed_ea, data);
 
 	executed = isl_map_coalesce(executed);
 	sv = isl_map_is_single_valued(executed);
@@ -250,7 +250,7 @@ static isl_stat generate_domain(__isl_take isl_map *executed, void *user)
 	if (!sv)
 		return generate_non_single_valued(executed, data);
 
-	return add_domain(executed, data);
+	return add_domain(executed, executed_ea, data);
 error:
 	isl_map_free(executed);
 	return isl_stat_error;
@@ -284,7 +284,7 @@ static __isl_give isl_ast_graft_list *call_create_leaf(
 	user_build = isl_ast_build_copy(build);
 	user_build = isl_ast_build_replace_pending_by_guard(user_build,
 							isl_set_copy(guard));
-	user_build = isl_ast_build_set_executed(user_build, executed);
+	user_build = isl_ast_build_set_executed(user_build, executed, executed_ea);
 	user_build = isl_ast_build_clear_local_info(user_build);
 	if (!user_build)
 		node = NULL;
@@ -325,11 +325,11 @@ static __isl_give isl_ast_graft_list *generate_inner_level(
 		isl_schedule_node *node;
 		node = isl_ast_build_get_schedule_node(build);
 		build = isl_ast_build_reset_schedule_node(build);
-		return build_ast_from_child(build, node, executed);
+		return build_ast_from_child(build, node, executed, executed_ea);
 	}
 
 	if (build->create_leaf)
-		return call_create_leaf(executed, build);
+		return call_create_leaf(executed, executed_ea, build);
 
 	ISL_DEBUG(fprintf(stderr, "We have reached a schedule wtih executed:\n"));
 	ISL_DEBUG(isl_union_map_dump(executed));
@@ -1514,7 +1514,7 @@ static __isl_give isl_ast_graft *create_node_scaled(
 	body_build = isl_ast_build_increase_depth(body_build);
 	if (!eliminated)
 		node = before_each_for(node, body_build);
-	children = generate_next_level(executed,
+	children = generate_next_level(executed, executed_ea,
 				    isl_ast_build_copy(body_build));
 
 	enforced = extract_shared_enforced(children, build);
@@ -1704,14 +1704,14 @@ static __isl_give isl_ast_graft *create_node(__isl_take isl_union_map *executed,
 
 	ctx = isl_ast_build_get_ctx(build);
 	if (!isl_options_get_ast_build_scale_strides(ctx))
-		return create_node_scaled(executed, bounds, domain, build);
+		return create_node_scaled(executed, executed_ea, bounds, domain, build);
 
 	depth = isl_ast_build_get_depth(build);
 	if (depth < 0)
 		build = isl_ast_build_free(build);
 	data.depth = depth;
 	if (!isl_ast_build_has_stride(build, data.depth))
-		return create_node_scaled(executed, bounds, domain, build);
+		return create_node_scaled(executed, executed_ea, bounds, domain, build);
 
 	offset = isl_ast_build_get_offset(build, data.depth);
 	data.m = isl_ast_build_get_stride(build, data.depth);
@@ -1764,7 +1764,7 @@ static __isl_give isl_ast_graft *create_node(__isl_take isl_union_map *executed,
 	isl_aff_free(offset);
 	isl_val_free(data.m);
 
-	return create_node_scaled(executed, bounds, domain, build);
+	return create_node_scaled(executed, executed_ea, bounds, domain, build);
 }
 
 /* Add the basic set to the list that "user" points to.
@@ -1848,7 +1848,7 @@ static __isl_give isl_ast_graft_list *add_node(
 
 	build = isl_ast_build_detect_strides(build, isl_set_copy(domain));
 
-	graft = create_node(executed, bounds, domain,
+	graft = create_node(executed, executed_ea, bounds, domain,
 				isl_ast_build_copy(build));
 	list = isl_ast_graft_list_add(list, graft);
 	isl_ast_build_free(build);
@@ -2203,7 +2203,7 @@ static __isl_give isl_ast_graft_list *generate_parallel_domains(
 		return NULL;
 
 	if (data.n <= 1)
-		return generate_sorted_domains(domain_list, executed, build);
+		return generate_sorted_domains(domain_list, executed, executed_ea, build);
 
 	depth = isl_ast_build_get_depth(build);
 	if (depth < 0)
@@ -2946,7 +2946,7 @@ static int compute_separate_domain(struct isl_codegen_domains *domains,
 	}
 
 	space = isl_set_get_space(class_domain);
-	domain = separate_schedule_domains(space, executed, domains->build);
+	domain = separate_schedule_domains(space, executed, executed_ea, domains->build);
 
 	list = isl_basic_set_list_from_set(domain);
 	domains->list = isl_basic_set_list_concat(domains->list, list);
@@ -3187,8 +3187,8 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_flat(
 	isl_basic_set_list *domain_list;
 	isl_ast_graft_list *list = NULL;
 
-	domain_list = compute_domains(executed, build);
-	list = generate_parallel_domains(domain_list, executed, build);
+	domain_list = compute_domains(executed, executed_ea, build);
+	list = generate_parallel_domains(domain_list, executed, executed_ea, build);
 
 	isl_basic_set_list_free(domain_list);
 	isl_union_map_free(executed);
@@ -3217,7 +3217,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree_separate(
 					isl_union_map_copy(executed), build);
 	domain_list = isl_basic_set_list_from_set(domain);
 
-	list = generate_parallel_domains(domain_list, executed, build);
+	list = generate_parallel_domains(domain_list, executed, executed_ea, build);
 
 	isl_basic_set_list_free(domain_list);
 	isl_union_map_free(executed);
@@ -3373,14 +3373,14 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree_base(
 		goto error;
 
 	if (type == isl_ast_loop_separate)
-		return generate_shifted_component_tree_separate(executed,
+		return generate_shifted_component_tree_separate(executed, executed_ea,
 								build);
 
 	schedule_domain = isl_union_map_domain(isl_union_map_copy(executed));
 	domain = isl_set_from_union_set(schedule_domain);
 
 	if (type == isl_ast_loop_unroll)
-		return generate_shifted_component_tree_unroll(executed, domain,
+		return generate_shifted_component_tree_unroll(executed, executed_ea, domain,
 								build);
 
 	domain = isl_ast_build_eliminate(build, domain);
@@ -3399,7 +3399,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree_base(
 		domain_list = isl_basic_set_list_from_set(domain);
 	}
 
-	list = generate_parallel_domains(domain_list, executed, build);
+	list = generate_parallel_domains(domain_list, executed, executed_ea, build);
 
 	isl_basic_set_list_free(domain_list);
 	isl_union_map_free(executed);
@@ -3508,7 +3508,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree_part(
 		sub_build = isl_ast_build_restrict_generated(sub_build,
 							isl_set_copy(domain));
 	}
-	list = generate_shifted_component_tree_base(executed,
+	list = generate_shifted_component_tree_base(executed, executed_ea,
 				isl_ast_build_copy(sub_build), isolated);
 	if (!isolated)
 		list = list_add_guard(list, domain, build, sub_build);
@@ -3534,13 +3534,13 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_parts(
 {
 	isl_ast_graft_list *list, *res;
 
-	res = generate_shifted_component_tree_part(executed, before, build, 0);
-	list = generate_shifted_component_tree_part(executed, isolated,
+	res = generate_shifted_component_tree_part(executed, executed_ea, before, build, 0);
+	list = generate_shifted_component_tree_part(executed, executed_ea, isolated,
 						    build, 1);
 	res = isl_ast_graft_list_concat(res, list);
-	list = generate_shifted_component_tree_part(executed, after, build, 0);
+	list = generate_shifted_component_tree_part(executed, executed_ea, after, build, 0);
 	res = isl_ast_graft_list_concat(res, list);
-	list = generate_shifted_component_tree_part(executed, other, build, 0);
+	list = generate_shifted_component_tree_part(executed, executed_ea, other, build, 0);
 	res = isl_ast_graft_list_concat(res, list);
 
 	isl_union_map_free(executed);
@@ -3584,7 +3584,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_only_after(
 	empty = isl_set_empty(isl_set_get_space(after));
 	isl_set_free(dead1);
 	isl_set_free(dead2);
-	return generate_shifted_component_parts(executed, isl_set_copy(empty),
+	return generate_shifted_component_parts(executed, executed_ea, isl_set_copy(empty),
 						isolated, after, empty, build);
 }
 
@@ -3635,7 +3635,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree(
 	if (has_isolate < 0)
 		executed = isl_union_map_free(executed);
 	else if (!has_isolate)
-		return generate_shifted_component_tree_base(executed, build, 0);
+		return generate_shifted_component_tree_base(executed, executed_ea, build, 0);
 
 	schedule_domain = isl_union_map_domain(isl_union_map_copy(executed));
 	domain = isl_set_from_union_set(schedule_domain);
@@ -3650,7 +3650,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree(
 	if (empty) {
 		isl_set_free(isolated);
 		isl_set_free(domain);
-		return generate_shifted_component_tree_base(executed, build, 0);
+		return generate_shifted_component_tree_base(executed, executed_ea, build, 0);
 	}
 	depth = isl_ast_build_get_depth(build);
 	if (depth < 0)
@@ -3682,7 +3682,7 @@ static __isl_give isl_ast_graft_list *generate_shifted_component_tree(
 	after = isl_set_subtract(after, isl_set_copy(before));
 	before = isl_set_subtract(before, isl_set_copy(isolated));
 
-	return generate_shifted_component_parts(executed, before, isolated,
+	return generate_shifted_component_parts(executed, executed_ea, before, isolated,
 						after, domain, build);
 error:
 	isl_set_free(domain);
@@ -3702,9 +3702,9 @@ static __isl_give isl_ast_graft_list *generate_shifted_component(
 	__isl_take isl_union_map *executed, __isl_take isl_ast_build *build)
 {
 	if (isl_ast_build_has_schedule_node(build))
-		return generate_shifted_component_tree(executed, build);
+		return generate_shifted_component_tree(executed, executed_ea, build);
 	else
-		return generate_shifted_component_flat(executed, build);
+		return generate_shifted_component_flat(executed, executed_ea, build);
 }
 
 struct isl_set_map_pair {
@@ -4077,7 +4077,7 @@ static __isl_give isl_ast_graft_list *generate_shift_component(
 	zero = isl_multi_aff_zero(space);
 	ma = isl_multi_aff_range_splice(ma, depth + 1, zero);
 	build = isl_ast_build_insert_dim(build, depth + 1);
-	list = generate_shifted_component(executed, build);
+	list = generate_shifted_component(executed, executed_ea, build);
 
 	list = isl_ast_graft_list_preimage_multi_aff(list, ma);
 
@@ -4875,15 +4875,15 @@ static __isl_give isl_ast_graft_list *generate_next_level(
 	if (depth < 0 || dim < 0)
 		goto error;
 	if (depth >= dim)
-		return generate_inner_level(executed, build);
+		return generate_inner_level(executed, executed_ea, build);
 
 	n = isl_union_map_n_map(executed);
 	if (n < 0)
 		goto error;
 	if (n == 1)
-		return generate_shifted_component(executed, build);
+		return generate_shifted_component(executed, executed_ea, build);
 
-	return generate_components(executed, build);
+	return generate_components(executed, executed_ea, build);
 error:
 	isl_union_map_free(executed);
 	isl_ast_build_free(build);
@@ -4989,7 +4989,7 @@ static isl_stat generate_code_in_space(struct isl_generate_code_data *data,
 
 	embed = !isl_set_is_params(data->build->domain);
 	if (embed && !data->internal)
-		executed = internal_executed(executed, space, data->build);
+		executed = internal_executed(executed, executed_ea, space, data->build);
 	if (!embed) {
 		isl_set *domain;
 		domain = isl_ast_build_get_domain(data->build);
@@ -5000,7 +5000,7 @@ static isl_stat generate_code_in_space(struct isl_generate_code_data *data,
 	build = isl_ast_build_copy(data->build);
 	build = isl_ast_build_product(build, space);
 
-	list = generate_next_level(executed, build);
+	list = generate_next_level(executed, executed_ea, build);
 
 	list = isl_ast_graft_list_unembed(list, embed);
 
@@ -5160,7 +5160,7 @@ __isl_give isl_ast_node *isl_ast_build_node_from_schedule_map(
 	schedule = isl_union_map_coalesce(schedule);
 	schedule = isl_union_map_remove_redundancies(schedule);
 	executed = isl_union_map_reverse(schedule);
-	list = generate_code(executed, isl_ast_build_copy(build), 0);
+	list = generate_code(executed, executed_ea, isl_ast_build_copy(build), 0);
 	node = isl_ast_node_from_graft_list(list, build);
 
 	return node;
@@ -5200,7 +5200,7 @@ static __isl_give isl_ast_graft_list *build_ast_from_leaf(
 	isl_ast_graft_list *list;
 
 	isl_schedule_node_free(node);
-	list = generate_inner_level(executed, isl_ast_build_copy(build));
+	list = generate_inner_level(executed, executed_ea, isl_ast_build_copy(build));
 	list = isl_ast_graft_list_group_on_guard(list, build);
 	isl_ast_build_free(build);
 
@@ -5268,7 +5268,7 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 		goto error;
 
 	if (n == 0)
-		return build_ast_from_child(build, node, executed);
+		return build_ast_from_child(build, node, executed, executed_ea);
 
 	extra = isl_schedule_node_band_get_partial_schedule(node);
 	extra = isl_multi_union_pw_aff_align_params(extra,
@@ -5316,7 +5316,7 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 			build = isl_ast_build_free(build));
 	build = isl_ast_build_set_schedule_node(build, node);
 
-	list = generate_next_level(executed, build);
+	list = generate_next_level(executed, executed_ea, build);
 
 	list = isl_ast_graft_list_unembed(list, 1);
 
@@ -5432,7 +5432,7 @@ static __isl_give isl_ast_graft_list *build_ast_from_context(
 					isl_union_set_from_set(context));
 
 	list = build_ast_from_child(isl_ast_build_copy(sub_build),
-						node, executed);
+						node, executed, executed_ea);
 	n = isl_ast_graft_list_n_ast_graft(list);
 	if (n < 0)
 		list = isl_ast_graft_list_free(list);
@@ -5644,7 +5644,7 @@ static __isl_give isl_ast_graft_list *build_ast_from_guard(
 							isl_set_copy(guard));
 
 	list = build_ast_from_child(isl_ast_build_copy(sub_build),
-							node, executed);
+							node, executed, executed_ea);
 
 	hoisted = isl_ast_graft_list_extract_hoistable_guard(list, sub_build);
 	n = isl_set_n_basic_set(hoisted);
@@ -5730,7 +5730,7 @@ static __isl_give isl_ast_graft_list *build_ast_from_mark(
 	if (before_each_mark(mark, build) < 0)
 		node = isl_schedule_node_free(node);
 
-	list = build_ast_from_child(isl_ast_build_copy(build), node, executed);
+	list = build_ast_from_child(isl_ast_build_copy(build), node, executed, executed_ea);
 	list = isl_ast_graft_list_fuse(list, build);
 	n = isl_ast_graft_list_n_ast_graft(list);
 	if (n < 0)
@@ -5821,27 +5821,27 @@ static __isl_give isl_ast_graft_list *build_ast_from_schedule_node(
 	case isl_schedule_node_error:
 		goto error;
 	case isl_schedule_node_leaf:
-		return build_ast_from_leaf(build, node, executed);
+		return build_ast_from_leaf(build, node, executed, executed_ea);
 	case isl_schedule_node_band:
-		return build_ast_from_band(build, node, executed);
+		return build_ast_from_band(build, node, executed, executed_ea);
 	case isl_schedule_node_context:
-		return build_ast_from_context(build, node, executed);
+		return build_ast_from_context(build, node, executed, executed_ea);
 	case isl_schedule_node_domain:
 		isl_die(isl_schedule_node_get_ctx(node), isl_error_unsupported,
 			"unexpected internal domain node", goto error);
 	case isl_schedule_node_expansion:
-		return build_ast_from_expansion(build, node, executed);
+		return build_ast_from_expansion(build, node, executed, executed_ea);
 	case isl_schedule_node_extension:
-		return build_ast_from_extension(build, node, executed);
+		return build_ast_from_extension(build, node, executed, executed_ea);
 	case isl_schedule_node_filter:
-		return build_ast_from_filter(build, node, executed);
+		return build_ast_from_filter(build, node, executed, executed_ea);
 	case isl_schedule_node_guard:
-		return build_ast_from_guard(build, node, executed);
+		return build_ast_from_guard(build, node, executed, executed_ea);
 	case isl_schedule_node_mark:
-		return build_ast_from_mark(build, node, executed);
+		return build_ast_from_mark(build, node, executed, executed_ea);
 	case isl_schedule_node_sequence:
 	case isl_schedule_node_set:
-		return build_ast_from_sequence(build, node, executed);
+		return build_ast_from_sequence(build, node, executed, executed_ea);
 	}
 
 	isl_die(isl_ast_build_get_ctx(build), isl_error_internal,
@@ -5866,10 +5866,11 @@ error:
  */
 static __isl_give isl_ast_graft_list *build_ast_from_child(
 	__isl_take isl_ast_build *build, __isl_take isl_schedule_node *node,
-	__isl_take isl_union_map *executed)
+	__isl_take isl_union_map *executed,
+	__isl_take isl_union_map *executed_ea)
 {
 	node = isl_schedule_node_child(node, 0);
-	return build_ast_from_schedule_node(build, node, executed);
+	return build_ast_from_schedule_node(build, node, executed, executed_ea);
 }
 
 /* Generate an AST that visits the elements in the domain of the domain
@@ -5923,19 +5924,19 @@ static __isl_give isl_ast_node *build_ast_from_domain(
 	set = isl_set_from_basic_set(isl_set_simple_hull(set));
 	schedule_domain = isl_union_set_from_set(set);
 
+	isl_union_map *executed_expanded_arrays = NULL;
 	isl_union_set *expanded_arrays =
 		isl_schedule_node_domain_get_expanded_arrays(node);
 	if (expanded_arrays) {
 		ISL_DEBUG(fprintf(stderr, "Combined domain with expanded arrays:\n"));
 		ISL_DEBUG(isl_union_set_dump(domain));
 		ISL_DEBUG(isl_union_set_dump(expanded_arrays));
-		domain = isl_union_set_union(domain, expanded_arrays);
-		ISL_DEBUG(isl_union_set_dump(domain));
+		executed_expanded_arrays = isl_union_map_from_domain_and_range(schedule_domain, expanded_arrays);
 	}
 	executed = isl_union_map_from_domain_and_range(schedule_domain, domain);
 	ISL_DEBUG(fprintf(stderr, "Constructed domain executed:\n"));
 	ISL_DEBUG(isl_union_map_dump(executed));
-	list = build_ast_from_child(isl_ast_build_copy(build), node, executed);
+	list = build_ast_from_child(isl_ast_build_copy(build), node, executed, executed_ea);
 	ast = isl_ast_node_from_graft_list(list, build);
 	isl_ast_build_free(build);
 
