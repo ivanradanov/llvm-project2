@@ -208,6 +208,7 @@ __isl_give isl_ast_build *isl_ast_build_dup(__isl_keep isl_ast_build *build)
 	dup->strides = isl_vec_copy(build->strides);
 	dup->offsets = isl_multi_aff_copy(build->offsets);
 	dup->executed = isl_union_map_copy(build->executed);
+	dup->executed_ea = isl_union_map_copy(build->executed_ea);
 	dup->options = isl_union_map_copy(build->options);
 	dup->at_each_domain = build->at_each_domain;
 	dup->at_each_domain_user = build->at_each_domain_user;
@@ -234,13 +235,12 @@ __isl_give isl_ast_build *isl_ast_build_dup(__isl_keep isl_ast_build *build)
 			dup->loop_type[i] = build->loop_type[i];
 	}
 
-	if (!dup->iterators || !dup->domain || !dup->generated ||
-	    !dup->pending || !dup->values ||
-	    !dup->strides || !dup->offsets || !dup->options ||
-	    (build->internal2input && !dup->internal2input) ||
-	    (build->executed && !dup->executed) ||
-	    (build->value && !dup->value) ||
-	    (build->node && !dup->node))
+	if (!dup->iterators || !dup->domain || !dup->generated || !dup->pending ||
+		!dup->values || !dup->strides || !dup->offsets || !dup->options ||
+		(build->internal2input && !dup->internal2input) ||
+		(build->executed && !dup->executed) ||
+		(build->executed_ea && !dup->executed_ea) ||
+		(build->value && !dup->value) || (build->node && !dup->node))
 		return isl_ast_build_free(dup);
 
 	return dup;
@@ -319,6 +319,7 @@ __isl_null isl_ast_build *isl_ast_build_free(
 	isl_multi_aff_free(build->offsets);
 	isl_multi_aff_free(build->schedule_map);
 	isl_union_map_free(build->executed);
+	isl_union_map_free(build->executed_ea);
 	isl_union_map_free(build->options);
 	isl_schedule_node_free(build->node);
 	free(build->loop_type);
@@ -1041,6 +1042,23 @@ __isl_give isl_ast_build *isl_ast_build_set_executed(
 error:
 	isl_ast_build_free(build);
 	isl_union_map_free(executed);
+	return NULL;
+}
+
+__isl_give isl_ast_build *isl_ast_build_set_executed_ea(
+	__isl_take isl_ast_build *build, __isl_take isl_union_map *executed_ea)
+{
+	build = isl_ast_build_cow(build);
+	if (!build)
+		goto error;
+
+	isl_union_map_free(build->executed_ea);
+	build->executed_ea = executed_ea;
+
+	return build;
+error:
+	isl_ast_build_free(build);
+	isl_union_map_free(executed_ea);
 	return NULL;
 }
 
