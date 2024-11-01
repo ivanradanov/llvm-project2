@@ -10,14 +10,19 @@
  * B.P. 105 - 78153 Le Chesnay, France
  */
 
-#include <isl/id.h>
-#include <isl/space.h>
+#include "isl_map_private.h"
+#include "isl/ast_type.h"
+#include "isl/map.h"
+#include "isl/space_type.h"
 #include <isl/constraint.h>
+#include <isl/id.h>
 #include <isl/ilp.h>
+#include <isl/space.h>
+#include <isl/union_map.h>
 #include <isl/val.h>
 #include <isl_ast_build_expr.h>
-#include <isl_ast_private.h>
 #include <isl_ast_build_private.h>
+#include <isl_ast_private.h>
 #include <isl_sort.h>
 
 /* Compute the "opposite" of the (numerator of the) argument of a div
@@ -3070,14 +3075,7 @@ __isl_give isl_ast_expr *isl_ast_build_access_from_pw_multi_aff(
 						isl_ast_expr_op_access, pma);
 }
 
-/* Construct an isl_ast_expr that calls the domain element
- * specified by "executed".
- *
- * "executed" is assumed to be single-valued, with a domain that lives
- * in the internal schedule space.
- */
-__isl_give isl_ast_node *isl_ast_build_call_from_executed(
-	__isl_keep isl_ast_build *build, __isl_take isl_map *executed)
+isl_pw_multi_aff *get_call_expr(isl_ast_build *build, isl_map *executed)
 {
 	isl_pw_multi_aff *iteration;
 	isl_ast_expr *expr;
@@ -3091,5 +3089,89 @@ __isl_give isl_ast_node *isl_ast_build_call_from_executed(
 					isl_ast_build_get_domain(build));
 	expr = isl_ast_build_from_pw_multi_aff_internal(build,
 					isl_ast_expr_op_call, iteration);
+	return expr;
+}
+
+/* Construct an isl_ast_expr that calls the domain element
+ * specified by "executed".
+ *
+ * "executed" is assumed to be single-valued, with a domain that lives
+ * in the internal schedule space.
+ */
+__isl_give isl_ast_node *isl_ast_build_call_from_executed(
+	__isl_keep isl_ast_build *build, __isl_take isl_map *executed)
+{
+	return isl_ast_node_alloc_user(get_call_expr(build, executed));
+}
+
+struct geai_data {
+	isl_ast_build *build;
+	isl_ast_expr **expr;
+};
+
+/// { [[] -> [i0, i1]] -> [A[o0] -> S[o2, o3]] : ... }
+/// to
+/// { [[] -> [i0, i1]] -> A[o0] : ... }
+static isl_stat get_expanded_array_indexing(__isl_take isl_map *map, void *user)
+{
+	struct geai_data *data = user;
+
+	ISL_DEBUG(fprintf(stderr, "BEFORE\n"));
+	ISL_DEBUG(isl_map_dump(map));
+
+	isl_space *space = isl_map_get_space(map);
+	isl_space *dspace = isl_space_domain(isl_space_copy(space));
+	// A[o1] -> S[o2, o3]
+	isl_space *rspace =
+		isl_space_unwrap(isl_space_range(isl_space_copy(space)));
+	// S[o2, o3]
+	isl_space *rrspace = isl_space_range(isl_space_copy(rspace));
+	// A[o1]
+	isl_space *drspace = isl_space_domain(isl_space_copy(rspace));
+
+	int n_dim_array = isl_space_dim(rspace, isl_dim_in);
+	int n_dim_stmt = isl_space_dim(rspace, isl_dim_out);
+	// map = isl_map_project_out(map, isl_dim_out, n_dim_array, n_dim_stmt);
+	map = isl_map_reset_space(
+		map, isl_space_map_from_domain_and_range(dspace, drspace));
+
+	ISL_DEBUG(fprintf(stderr, "PROJECTED OUT\n"));
+	ISL_DEBUG(isl_map_dump(map));
+
+	(*data->expr) =
+		isl_ast_expr_op_add_arg((*data->expr), get_call_expr(data->build, map));
+	return isl_stat_ok;
+
+	isl_space *id_space = isl_space_map_from_domain_and_range(
+		isl_space_copy(drspace), isl_space_copy(drspace));
+	// A[i1] -> A[o1] : o1 = i1
+	isl_map *identity = isl_map_identity(id_space);
+
+	// A[i1] -> [A[o1] -> S[i2, i3]] : i1 = o0
+	// [A[i1] -> S[i2, i3]] -> A[o1] : o1 = i1
+}
+
+/* Construct an isl_ast_expr that calls the domain element
+ * specified by "executed".
+ *
+ * "executed" is assumed to be single-valued, with a domain that lives
+ * in the internal schedule space.
+ */
+__isl_give isl_ast_node *isl_ast_build_call_from_executed_and_ea(
+	__isl_keep isl_ast_build *build, __isl_take isl_map *executed,
+	__isl_take isl_union_map *executed_ea)
+{
+	isl_pw_multi_aff *iteration;
+	isl_ast_expr *expr;
+
+	executed_ea = isl_union_map_filter_range_is_wrapping_with_range_space(
+		executed_ea, isl_space_range(isl_map_get_space(executed)));
+	expr = get_call_expr(build, executed);
+
+	struct geai_data data = {build, &expr};
+	if (isl_union_map_foreach_map(
+			executed_ea, &get_expanded_array_indexing, &data) < 0)
+		return NULL;
+
 	return isl_ast_node_alloc_user(expr);
 }

@@ -175,7 +175,8 @@ static isl_stat add_domain(__isl_take isl_map *executed,
 	guard = isl_set_gist(guard, isl_ast_build_get_generated(build));
 	guard = isl_ast_build_specialize(build, guard);
 
-	graft = isl_ast_graft_alloc_domain(isl_map_copy(executed), build);
+	graft = isl_ast_graft_alloc_domain(
+		isl_map_copy(executed), isl_union_map_copy(data->executed_ea), build);
 	graft = at_each_domain(graft, executed, data->executed_ea, build);
 	isl_ast_build_free(build);
 	isl_map_free(executed);
@@ -186,8 +187,6 @@ static isl_stat add_domain(__isl_take isl_map *executed,
 
 	ISL_DEBUG(fprintf(stderr, "Generated graft for user:\n"));
 	ISL_DEBUG(isl_ast_node_dump(graft->node));
-	ISL_DEBUG(isl_basic_set_dump(graft->enforced));
-	ISL_DEBUG(isl_set_dump(graft->guard));
 	ISL_DEBUG(fprintf(stderr, "\n"));
 
 	list = isl_ast_graft_list_from_ast_graft(graft);
@@ -1574,6 +1573,7 @@ static __isl_give isl_ast_graft *create_node_scaled(
 	ISL_DEBUG(isl_ast_node_dump(graft->node));
 	ISL_DEBUG(isl_basic_set_dump(graft->enforced));
 	ISL_DEBUG(isl_set_dump(graft->guard));
+	ISL_DEBUG(fprintf(stderr, "graft for band end\n"));
 	ISL_DEBUG(fprintf(stderr, "\n"));
 	return graft;
 }
@@ -3779,13 +3779,13 @@ static __isl_give isl_union_map *construct_component_executed_ea(
 	struct isl_set_map_pair *domain, int *order, int n)
 {
 	int i;
-	isl_union_map *map;
+	isl_union_map *umap;
 	isl_union_map *executed;
 
 	executed = isl_union_map_copy(domain[order[0]].umap);
 	for (i = 1; i < n; ++i) {
-		map = isl_union_map_copy(domain[order[i]].umap);
-		executed = isl_union_map_union(executed, map);
+		umap = isl_union_map_copy(domain[order[i]].umap);
+		executed = isl_union_map_union(executed, umap);
 	}
 
 	return executed;
@@ -5372,20 +5372,24 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 	ISL_DEBUG(fprintf(stderr, "extra_umap: "));
 	ISL_DEBUG(isl_union_map_dump(extra_umap));
 
+	executed_ea = isl_union_map_add_array_dims(executed_ea, n);
+	ISL_DEBUG(fprintf(stderr, "added new array dims in executed_ea: "));
+	ISL_DEBUG(isl_union_map_dump(executed_ea));
+
 	extra_umap = isl_ast_generate_array_expansion_indexing(node, extra_umap);
-	executed = isl_union_map_add_array_dims(executed, n);
-
-	ISL_DEBUG(fprintf(stderr, "added new array dims in executed: "));
-	ISL_DEBUG(isl_union_map_dump(executed));
-
 	ISL_DEBUG(fprintf(stderr, "extra_umap with array expansion: "));
 	ISL_DEBUG(isl_union_map_dump(extra_umap));
 
 	executed = isl_union_map_domain_product(executed, isl_union_map_copy(extra_umap));
 	executed = isl_union_map_detect_equalities(executed);
 
+	executed_ea = isl_union_map_domain_product(executed_ea, extra_umap);
+	executed_ea = isl_union_map_detect_equalities(executed_ea);
+
 	ISL_DEBUG(fprintf(stderr, "executed . extra_umap: "));
 	ISL_DEBUG(isl_union_map_dump(executed));
+	ISL_DEBUG(fprintf(stderr, "executed_ea . extra_umap: "));
+	ISL_DEBUG(isl_union_map_dump(executed_ea));
 
 	n1 = isl_ast_build_dim(build, isl_dim_param);
 	build = isl_ast_build_product(build, space);
@@ -6016,10 +6020,12 @@ static __isl_give isl_ast_node *build_ast_from_domain(
 	isl_union_set *expanded_arrays =
 		isl_schedule_node_domain_get_expanded_arrays(node);
 	if (expanded_arrays) {
+		ISL_DEBUG(fprintf(stderr, "expanded_array:\n"));
 		ISL_DEBUG(isl_union_set_dump(expanded_arrays));
-		ISL_DEBUG(fprintf(stderr, "Initial executed_ea:\n"));
 		executed_ea = isl_union_map_from_domain_and_range(
 			isl_union_set_copy(schedule_domain), expanded_arrays);
+		ISL_DEBUG(fprintf(stderr, "Initial executed_ea:\n"));
+		ISL_DEBUG(isl_union_map_dump(executed_ea));
 	}
 	executed = isl_union_map_from_domain_and_range(schedule_domain, domain);
 	ISL_DEBUG(fprintf(stderr, "Initial executed:\n"));
