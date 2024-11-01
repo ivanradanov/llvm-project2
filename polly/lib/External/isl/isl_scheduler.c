@@ -6537,10 +6537,10 @@ static isl_stat gea_func(isl_set *set, void *user) {
 	isl_id *array_id = isl_space_get_tuple_id(dspace, isl_dim_set);
 	dspace = isl_space_add_dims(dspace, isl_dim_set, 0);
 	dspace = isl_space_set_tuple_id(dspace, isl_dim_set, array_id);
-	if (0)
-		rspace = isl_space_set_tuple_id(
-			isl_space_params(isl_space_copy(unwrapped)), isl_dim_set,
-			isl_space_get_tuple_id(rspace, isl_dim_set));
+	isl_id *stmt_id = isl_space_get_tuple_id(rspace, isl_dim_set);
+	rspace = isl_space_drop_dims(
+		rspace, isl_dim_set, 0, isl_space_dim(rspace, isl_dim_set));
+	rspace = isl_space_set_tuple_id(rspace, isl_dim_set, stmt_id);
 	isl_space_free(unwrapped);
 	space = isl_space_wrap(isl_space_map_from_domain_and_range(dspace, rspace));
 	set = isl_set_universe(space);

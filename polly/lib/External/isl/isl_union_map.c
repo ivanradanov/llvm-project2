@@ -2402,6 +2402,16 @@ isl_union_map_filter_range_is_wrapping(__isl_take isl_union_map *umap) {
 	return un_op(umap, &control);
 }
 
+static isl_bool isl_map_range_is_wrapping_with_range_space_id(
+	__isl_keep isl_map *map, void *user)
+{
+	isl_id *id = user;
+	return isl_map_range_is_wrapping(map) &&
+		   id == isl_space_get_tuple_id(
+					 isl_space_unwrap(isl_space_range(isl_map_get_space(map))),
+					 isl_dim_out);
+}
+
 static isl_bool isl_map_range_is_wrapping_with_range_space(
 	__isl_keep isl_map *map, void *user)
 {
@@ -2410,6 +2420,17 @@ static isl_bool isl_map_range_is_wrapping_with_range_space(
 		   isl_space_is_equal(space,
 			   isl_space_range(
 				   isl_space_unwrap(isl_space_range(isl_map_get_space(map)))));
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping_with_range_space_id(
+	__isl_take isl_union_map *umap, isl_id *id)
+{
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_wrapping_with_range_space_id,
+		.filter_user = id,
+	};
+	return un_op(umap, &control);
 }
 
 __isl_give isl_union_map *

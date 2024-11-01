@@ -3164,8 +3164,9 @@ __isl_give isl_ast_node *isl_ast_build_call_from_executed_and_ea(
 	isl_pw_multi_aff *iteration;
 	isl_ast_expr *expr;
 
-	executed_ea = isl_union_map_filter_range_is_wrapping_with_range_space(
-		executed_ea, isl_space_range(isl_map_get_space(executed)));
+	executed_ea =
+		isl_union_map_filter_range_is_wrapping_with_range_space_id(executed_ea,
+			isl_space_get_tuple_id(isl_map_get_space(executed), isl_dim_out));
 	expr = get_call_expr(build, executed);
 
 	struct geai_data data = {build, &expr};
