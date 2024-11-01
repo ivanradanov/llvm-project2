@@ -4861,8 +4861,9 @@ static __isl_give isl_ast_graft_list *generate_components(
 		isl_space *space =
 			isl_space_range(isl_map_get_space(data.domain[i].map));
 		data.domain[i].umap =
-			isl_union_map_filter_range_is_wrapping_with_range_space(
-				data.domain[i].umap, space);
+			isl_union_map_filter_range_is_wrapping_with_range_space_id(
+				data.domain[i].umap,
+				isl_space_get_tuple_id(space, isl_dim_set));
 	}
 
 	depth = isl_ast_build_get_depth(build);
@@ -5362,6 +5363,8 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 
 	ISL_DEBUG(fprintf(stderr, "executed: "));
 	ISL_DEBUG(isl_union_map_dump(executed));
+	ISL_DEBUG(fprintf(stderr, "executed_ea: "));
+	ISL_DEBUG(isl_union_map_dump(executed_ea));
 
 	ISL_DEBUG(fprintf(stderr, "extra: "));
 	ISL_DEBUG(isl_multi_union_pw_aff_dump(extra));

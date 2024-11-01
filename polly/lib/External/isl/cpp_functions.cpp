@@ -57,6 +57,7 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 				if (r.is_error())
 					return isl::stat::error();
 				int n_stmt_dims = (unsigned)r;
+				n_stmt_dims = 0;
 				auto stmt_id = map.get_range_tuple_id();
 				isl::aff aff;
 				if (factor == 1) {
