@@ -20,6 +20,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "isl/isl-noexceptions.h"
@@ -297,6 +298,14 @@ public:
   ScopArrayInfo *getArray(mlir::Value memref) {
     auto found =
         llvm::find_if(arrays, [&](auto array) { return array.val == memref; });
+    if (found != arrays.end())
+      return &*found;
+    return nullptr;
+  }
+
+  ScopArrayInfo *getArray(isl_id *id) {
+    auto found =
+        llvm::find_if(arrays, [&](auto array) { return array.id.get() == id; });
     if (found != arrays.end())
       return &*found;
     return nullptr;

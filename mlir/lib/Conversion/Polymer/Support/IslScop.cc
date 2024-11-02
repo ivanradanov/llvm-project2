@@ -7,6 +7,7 @@
 #include "mlir/Conversion/Polymer/Target/ISL.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -41,6 +42,7 @@
 
 #include "isl/aff_type.h"
 #include "isl/ast.h"
+#include "isl/ast_type.h"
 #include "isl/ctx.h"
 #include "isl/id_to_id.h"
 #include "isl/isl-noexceptions.h"
@@ -717,6 +719,37 @@ public:
   unsigned outerParallelBands = 1;
   unsigned outerParallelBandsCreated = 0;
 
+  struct IndexedArray {
+    MemrefValue base, indexed;
+  };
+  IndexedArray createIndexedArray(__isl_take isl_ast_expr *Expr) {
+    if (isl_ast_expr_get_op_type(Expr) != isl_ast_op_call) {
+      llvm_unreachable("unexpected op type");
+    }
+    ISL_DEBUG("Building Call:\n", isl_ast_expr_dump(Expr));
+    isl_ast_expr *CalleeExpr = isl_ast_expr_get_op_arg(Expr, 0);
+    isl_id *Id = isl_ast_expr_get_id(CalleeExpr);
+    const char *CalleeName = isl_id_get_name(Id);
+
+    SmallVector<Value> expanded_idx;
+    for (int i = 1; i < isl_ast_expr_get_op_n_arg(Expr); ++i) {
+      isl_ast_expr *SubExpr = isl_ast_expr_get_op_arg(Expr, i);
+      Value V = create(SubExpr);
+      expanded_idx.push_back(V);
+    }
+
+    ISL_DEBUG("Will be expanding array ", isl_id_dump(Id));
+    ScopArrayInfo *array = scop.getArray(Id);
+    assert(array && "Non existent array");
+    LLVM_DEBUG(llvm::dbgs() << array->val << "\n");
+
+    // TODO:
+    // b.create<memref::SubViewOp>(op->getLoc(), );
+
+    return {cast<MemrefValue>(array->val),
+            cast<MemrefValue>(funcMapping.lookup(array->val))};
+  }
+
   Value createOp(__isl_take isl_ast_expr *Expr) {
     assert(isl_ast_expr_get_type(Expr) == isl_ast_expr_op &&
            "Expression not of type isl_ast_expr_op");
@@ -1014,10 +1047,20 @@ public:
     const char *CalleeName = isl_id_get_name(Id);
 
     SmallVector<Value> ivs;
+    IRMapping arrayMapping;
+    bool arraysStarted = false;
     for (int i = 0; i < isl_ast_expr_get_op_n_arg(Expr) - 1; ++i) {
       isl_ast_expr *SubExpr = isl_ast_expr_get_op_arg(Expr, i + 1);
-      Value V = create(SubExpr);
-      ivs.push_back(V);
+      if (isl_ast_expr_get_type(SubExpr) == isl_ast_expr_op &&
+          isl_ast_expr_get_op_type(SubExpr) == isl_ast_op_call)
+        arraysStarted = true;
+      if (arraysStarted) {
+        IndexedArray ia = createIndexedArray(SubExpr);
+        arrayMapping.map(ia.base, ia.indexed);
+      } else {
+        Value V = create(SubExpr);
+        ivs.push_back(V);
+      }
     }
 
     ScopStmt &stmt = scop.getIslStmt(CalleeName);
@@ -1068,6 +1111,13 @@ public:
         }
       } else {
         assert(funcMapping.contains(origArg));
+        auto indexed = arrayMapping.lookupOrNull(origArg);
+        if (indexed) {
+          stmtMapping.map(origArg, indexed);
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Remapping original array " << origArg
+                     << " to indexed expanded " << indexed << "\n");
+        }
         // TODO originally we had some code to remap scratchpad allocations. Do
         // we need that?
       }
