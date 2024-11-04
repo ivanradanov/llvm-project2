@@ -77,6 +77,8 @@ __isl_give isl_schedule_constraints *isl_schedule_constraints_copy(
 	for (int i = 0; i < sc->n_cache; i++)
 		sc_copy->cache_size[i] = sc->cache_size[i];
 
+	sc_copy->array_size = isl_union_map_copy(sc->array_size);
+
 	return sc_copy;
 }
 

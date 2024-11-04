@@ -67,6 +67,8 @@ namespace mlir {
 #include "mlir/Conversion/Passes.h.inc"
 } // namespace mlir
 
+using polly::dumpIslObj;
+
 namespace mlir {
 namespace gpu {
 namespace affine_opt {
@@ -413,7 +415,7 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
   return sc;
 }
 
-isl::schedule prepareScheduleForGPU(isl::schedule schedule) {
+isl::schedule insertGridPar(isl::schedule schedule) {
   auto root = schedule.get_root();
 
   auto nChildren = root.n_children();
@@ -446,6 +448,116 @@ isl::schedule prepareScheduleForGPU(isl::schedule schedule) {
                                     (void *)(uintptr_t)(unsigned)nMember);
   isl::schedule_node node = band.insert_mark(gridMark);
   return node.get_schedule();
+}
+
+struct PrepScheduleInfo {
+  isl::union_set allArrays;
+  // std::vector<isl::id> allArrays;
+  std::vector<isl::id> unallocatedArrays;
+  std::vector<isl::id> allocatedArrays;
+  isl::union_map lrs;
+  // std::map<isl::id, isl::union_map> lrs;
+  isl::union_map currentExpansion;
+
+  void dump();
+};
+
+bool isLrsCoincident(isl::union_map lrs, isl::union_map schedule) {
+  // lrs.deltas()
+  // lrs.apply_range();
+  // schedule.apply_range(lrs)
+  return true;
+}
+
+isl::union_map getLrsForArray(isl::id array, isl::union_map lrs) { return {}; }
+
+/// Tag the @p Relation domain with @p TagId
+static __isl_give isl_map *tag(__isl_take isl_map *Relation,
+                               __isl_take isl_id *TagId) {
+  isl_space *Space = isl_map_get_space(Relation);
+  Space = isl_space_drop_dims(Space, isl_dim_out, 0,
+                              isl_map_dim(Relation, isl_dim_out));
+  Space = isl_space_set_tuple_id(Space, isl_dim_out, TagId);
+  isl_multi_aff *Tag = isl_multi_aff_domain_map(Space);
+  Relation = isl_map_preimage_domain_multi_aff(Relation, Tag);
+  return Relation;
+}
+
+isl::union_map tag(isl::union_map umap, isl::id id) {
+  isl::union_map taggedMap =
+      isl::manage(isl_union_map_empty(umap.get_space().release()));
+  umap.foreach_map([&](isl::map map) {
+    isl::map tagged = isl::manage(tag(map.release(), id.copy()));
+    taggedMap = taggedMap.unite(tagged.to_union_map());
+    return isl::stat::ok();
+  });
+  return taggedMap;
+}
+
+isl::schedule_node insertArrayExpansion(isl::schedule_node node,
+                                        PrepScheduleInfo psi) {
+
+  auto nChildren = unsignedFromIslSize(node.n_children());
+
+  isl::union_map schedule = isl::manage(
+      isl_schedule_node_get_prefix_and_node_schedule_union_map(node.get()));
+
+  LLVM_DEBUG(llvm::dbgs() << "Prefix schedule "; dumpIslObj(schedule);
+             dumpIslObj(node.get_prefix_schedule_relation()); dumpIslObj(node));
+
+  psi.allArrays.foreach_set([&](isl::set set) {
+    isl::id array = set.get_tuple_id();
+    isl::union_map taggedSchedule = tag(schedule, array);
+    LLVM_DEBUG(llvm::dbgs() << "Tagged prefix schedule ";
+               dumpIslObj(taggedSchedule));
+
+    isl::union_map applied = psi.lrs;
+    applied = applied.apply_domain(taggedSchedule);
+    applied = applied.apply_range(taggedSchedule);
+
+    LLVM_DEBUG(llvm::dbgs() << "Applied schedule "; dumpIslObj(applied));
+
+    isl::union_set deltas = applied.deltas();
+    LLVM_DEBUG(llvm::dbgs() << "Deltas "; dumpIslObj(deltas));
+
+    bool coincident = true;
+    deltas.foreach_set([&](isl::set set) {
+      unsigned size = unsignedFromIslSize(set.dim(isl::dim::set));
+      bool allZero = true;
+      for (unsigned i = 0; i < size; i++) {
+        isl::val v = set.plain_get_val_if_fixed(isl::dim::set, i);
+        allZero &= v.is_zero();
+      }
+      coincident &= allZero;
+      return isl::stat::ok();
+    });
+
+    LLVM_DEBUG(llvm::dbgs() << "Array ";
+               dumpIslObj(set.get_space().get_tuple_id(isl::dim::set));
+               llvm::dbgs() << " coincidence: " << coincident << "\n");
+
+    return isl::stat::ok();
+  });
+
+  for (unsigned i = 0; i < (unsigned)nChildren; i++) {
+    auto child = node.child(0);
+    child = insertArrayExpansion(child, psi);
+  }
+
+  return node;
+}
+
+isl::schedule insertArrayExpansion(isl::schedule schedule,
+                                   PrepScheduleInfo &psi) {
+  auto root = schedule.get_root();
+  return insertArrayExpansion(root, psi).get_schedule();
+}
+
+isl::schedule prepareScheduleForGPU(isl::schedule schedule,
+                                    PrepScheduleInfo &psi) {
+  schedule = insertGridPar(schedule);
+  schedule = insertArrayExpansion(schedule, psi);
+  return schedule;
 }
 
 void transform(LLVM::LLVMFuncOp f) {
@@ -486,13 +598,19 @@ void transform(LLVM::LLVMFuncOp f) {
   auto r = isl_options_set_schedule_whole_component(scop->getIslCtx(), 1);
   assert(r == isl_stat_ok);
 
-  isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(sc);
+  isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(
+      isl_schedule_constraints_copy(sc));
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule:\n";
     isl_schedule_dump(newSchedule);
   });
 
-  newSchedule = prepareScheduleForGPU(isl::manage(newSchedule)).release();
+  PrepScheduleInfo psi;
+  psi.allArrays =
+      isl::manage(isl_schedule_constraints_get_array_size(sc)).domain();
+  psi.lrs = isl::manage(isl_schedule_constraints_get_live_range_span(sc));
+  newSchedule = prepareScheduleForGPU(isl::manage(newSchedule), psi).release();
+  isl_schedule_constraints_free(sc);
 
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule Prepared for GPU:\n";

@@ -788,6 +788,19 @@ __isl_give isl_union_map *isl_schedule_node_get_prefix_schedule_union_map(
 	return isl_union_map_from_union_pw_multi_aff(upma);
 }
 
+__isl_give isl_union_map *
+isl_schedule_node_get_prefix_and_node_schedule_union_map(
+	__isl_keep isl_schedule_node *node)
+{
+	isl_union_pw_multi_aff *upma;
+
+	upma = isl_schedule_node_get_prefix_schedule_union_pw_multi_aff(node);
+	isl_union_map *umap = isl_union_map_from_union_pw_multi_aff(upma);
+
+	return isl_schedule_tree_extend_schedule_with_tree_schedule(
+		node->tree, umap);
+}
+
 /* Return the concatenation of the partial schedules of all outer band
  * nodes of "node" intersected with all outer domain constraints.
  * None of the ancestors of "node" may be an extension node, unless

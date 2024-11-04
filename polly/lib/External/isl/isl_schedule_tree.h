@@ -181,6 +181,8 @@ __isl_give isl_schedule_tree *isl_schedule_tree_first_schedule_descendant(
 	__isl_take isl_schedule_tree *tree, __isl_keep isl_schedule_tree *leaf);
 __isl_give isl_union_map *isl_schedule_tree_get_subtree_schedule_union_map(
 	__isl_keep isl_schedule_tree *tree);
+__isl_give isl_union_map *isl_schedule_tree_extend_schedule_with_tree_schedule(
+	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *umap);
 
 isl_size isl_schedule_tree_band_n_member(__isl_keep isl_schedule_tree *tree);
 
