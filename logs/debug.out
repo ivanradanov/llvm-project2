@@ -807,6 +807,1412 @@ child:
               - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
           - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
     - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Prefix schedule [P0, P1, P2, P3] -> {  }
+[P0, P1, P2, P3] -> {  }
+# YOU ARE HERE
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> {  }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> {  }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> {  }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> []; RS3_affine_parallel[i0, i1, i2] -> []; RS2_affine_parallel[i0, i1, i2, i3] -> []; RS0_affine_parallel[i0, i1, i2] -> [] }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS3_affine_parallel[i0, i1, i2] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  # YOU ARE HERE
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> []; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> []; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> []; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [] }
+Applied schedule [P0, P1, P2, P3] -> { [] -> [] : (P1 > 0 and P2 > 0 and P3 > 0) or (P1 > 0 and P2 > 0 and P3 <= 0) or (P1 > 0 and P2 > 0 and P3 >= 17) or (P1 > 0 and P2 > 0 and P3 > 0) }
+Deltas [P0, P1, P2, P3] -> { [] : (P1 > 0 and P2 > 0 and P3 > 0) or (P1 > 0 and P2 > 0 and P3 <= 0) or (P1 > 0 and P2 > 0 and P3 >= 17) or (P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> []; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> []; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> []; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [] }
+Applied schedule [P0, P1, P2, P3] -> { [] -> [] : P1 > 0 and P2 > 0 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [] : P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> []; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> []; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> []; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [] }
+Applied schedule [P0, P1, P2, P3] -> { [] -> [] : P1 > 0 and P2 > 0 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [] : P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : o0 = i1 and o1 = i0; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : o0 = i1 and o1 = i0; RS3_affine_parallel[i0, i1, i2] -> [o0, o1] : o0 = i1 and o1 = i0; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : o0 = i1 and o1 = i0 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS3_affine_parallel[i0, i1, i2] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [] : i2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    # YOU ARE HERE
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : (o0 = i0 and o1 = i1 and P3 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) or (o0 = i0 and o1 = i1 and P3 <= 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) or (o0 = i0 and o1 = i1 and P3 >= 17 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) or (o0 = i0 and o1 = i1 and P3 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0) or (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 <= 0) or (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0 }
+[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      # YOU ARE HERE
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and P3 >= 17 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and P3 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 1 and P3 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 1 and P3 <= 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P2) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : (i0 = 0 and i1 = 0 and i2 = 0 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and i2 = 0 and P1 > 0 and P2 > 0 and P3 > 0) or (i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 > 0) or (i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 <= 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : o0 = i1 and o1 = i0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : o0 = i1 and o1 = i0; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : o0 = i1 and o1 = i0 }
+[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - # YOU ARE HERE
+        filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : (o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 >= 17) or (o0 = i0 and o1 = i1 and P3 > 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          # YOU ARE HERE
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : (o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 21 and P3 > 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : (i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            # YOU ARE HERE
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : (i3 = 0 and o0 = i0 and o1 = i1 and o2 = 1 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3) or (i2 = 0 and i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 and o3 = 0 and P3 > 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : (i0 = 0 and i1 = 0 and i2 = 1 and i3 = 0 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - # YOU ARE HERE
+              filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                # YOU ARE HERE
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 1 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 1 and i3 = 0 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - # YOU ARE HERE
+              filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                # YOU ARE HERE
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 1 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 1 and i3 = 0 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : o0 = i1 and o1 = i0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : o0 = i1 and o1 = i0; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : o0 = i1 and o1 = i0 }
+[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - # YOU ARE HERE
+        filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : (o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 >= 17) or (o0 = i0 and o1 = i1 and P3 > 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and P3 > 0 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1] : i2 = 0 and o0 = i1 and o1 = i0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          # YOU ARE HERE
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : (o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 21 and P3 > 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : (i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            # YOU ARE HERE
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : (i3 = 0 and o0 = i0 and o1 = i1 and o2 = 1 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3) or (i2 = 0 and i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 and o3 = 0 and P3 > 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1) }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : (i0 = 0 and i1 = 0 and i2 = 1 and i3 = 0 and P1 > 0 and P2 > 0 and P3 >= 17) or (i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0) }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 0 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = 0 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - # YOU ARE HERE
+              filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                # YOU ARE HERE
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 1 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 1 and i3 = 0 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS0_affine_parallel[i0, i1, i2] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 0 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - # YOU ARE HERE
+              filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 21 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                # YOU ARE HERE
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 0 and o0 = i0 and o1 = i1 and o2 = 1 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 1 and i3 = 0 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = i3 and o3 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2, o3] : o0 = i1 and o1 = i0 and o2 = 21 + i3 and o3 = 0 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2, i3] -> [o0, o1, o2, o3] : i3 = 1 and o0 = i0 and o1 = i1 and o2 = 21 + i2 and o3 = 0 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 0 and 16i2 < P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2, i3] : i0 = 0 and i1 = 0 and i2 = 21 and i3 = -1 and P1 > 0 and P2 > 0 and P3 > 0 }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 0
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3; RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - # YOU ARE HERE
+                  filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : o0 = i0 and o1 = i1 and o2 = 1 + i2 and i1 >= 0 and i1 < P2 and i0 >= 0 and i0 < P1 and i2 >= 21 and 16i2 <= 319 + P3 }
+Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 1 and P1 > 0 and P2 > 0 and P3 >= 17 }
+Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 0
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + i3 }
+Applied schedule [P0, P1, P2, P3] -> {  }
+Deltas [P0, P1, P2, P3] -> {  }
+Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
+/scr/ivan/src/transformer-llvm-project/polly/lib/External/isl/isl_schedule_tree.c:1931: leaf node should be handled by caller
+Prefix schedule [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [o0, o1, o2] : i2 = 0 and o0 = i1 and o1 = i0 and o2 = 21 + i3 and i0 >= 0 and i0 < P2 and i1 >= 0 and i1 < P1 and i3 >= 0 and 16i3 < P3 }
+domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
+child:
+  mark: "grid_parallel"
+  child:
+    schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }, { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }]"
+    permutable: 1
+    coincident: [ 1, 1 ]
+    array_expansion: [ [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ], [ A_memref_alloca_res_10: 1, A_memref_alloca_res_7: 1, A_memref_alloca_res_4: 1 ] ]
+    child:
+      sequence:
+      - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2]; RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+        child:
+          schedule: "[P0, P1, P2, P3] -> [{ RS1_affine_parallel[i0, i1, i2, i3] -> [(i3)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + i3)]; RS0_affine_parallel[i0, i1, i2] -> [(0)] }]"
+          permutable: 1
+          coincident: [ 1 ]
+          array_expansion: [ [ A_memref_alloca_res_10: 22, A_memref_alloca_res_7: 22, A_memref_alloca_res_4: 1 ] ]
+          child:
+            set:
+            - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3]; RS1_affine_parallel[i0, i1, i2, i3] }"
+              child:
+                sequence:
+                - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                  child:
+                    # YOU ARE HERE
+                    leaf
+                - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
+            - filter: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] }"
+      - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_4@0x46a27d10
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_10@0x469ead80
+ coincidence: 1
+Tagged prefix schedule Applied schedule Deltas Array A_memref_alloca_res_7@0x46a29430
+ coincidence: 1
 New Schedule Prepared for GPU:
 domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P2 and 0 <= i1 < P1 and i3 >= 0 and 16i3 < P3; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P2 and 0 <= i1 < P1 }"
 child:
@@ -1207,13 +2613,13 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS0_affine_parallel@0x14c3bdb0
+  - id: RS0_affine_parallel@0x46a3c020
   - id: c1
   - id: c0
   - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
     - val: 0
@@ -1222,13 +2628,13 @@ Generated graft for band:
 user:
   op: call
   args:
-  - id: RS0_affine_parallel@0x14c3bdb0
+  - id: RS0_affine_parallel@0x46a3c020
   - id: c1
   - id: c0
   - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
     - val: 0
@@ -1434,14 +2840,14 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS1_affine_parallel@0x14bf2640
+  - id: RS1_affine_parallel@0x469ee610
   - id: c1
   - id: c0
   - val: 0
   - id: c2
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -1453,7 +2859,7 @@ user:
       - val: 22
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -1508,7 +2914,7 @@ cond:
       args:
       - op: sub
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - val: 1
       - val: 16
 inc:
@@ -1517,14 +2923,14 @@ body:
   user:
     op: call
     args:
-    - id: RS1_affine_parallel@0x14bf2640
+    - id: RS1_affine_parallel@0x469ee610
     - id: c1
     - id: c0
     - val: 0
     - id: c2
     - op: call
       args:
-      - id: A_memref_alloca_res_7@0x14c2c5c0
+      - id: A_memref_alloca_res_7@0x46a29430
       - val: 0
       - val: 0
       - op: pdiv_r
@@ -1536,7 +2942,7 @@ body:
         - val: 22
     - op: call
       args:
-      - id: A_memref_alloca_res_10@0x14bef880
+      - id: A_memref_alloca_res_10@0x469ead80
       - val: 0
       - val: 0
       - op: pdiv_r
@@ -1723,7 +3129,7 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS2_affine_parallel@0x14c08750
+  - id: RS2_affine_parallel@0x469fcbe0
   - id: c1
   - id: c0
   - val: 0
@@ -1733,13 +3139,13 @@ user:
     - val: 21
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
     - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -1751,7 +3157,7 @@ user:
       - val: 22
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -1845,14 +3251,14 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS1_affine_parallel@0x14bf2640
+  - id: RS1_affine_parallel@0x469ee610
   - id: c1
   - id: c0
   - val: 0
   - id: c2
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -1864,7 +3270,7 @@ user:
       - val: 22
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -1918,7 +3324,7 @@ cond:
       args:
       - op: sub
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - val: 1
       - val: 16
     - val: 21
@@ -1928,7 +3334,7 @@ body:
 - user:
     op: call
     args:
-    - id: RS2_affine_parallel@0x14c08750
+    - id: RS2_affine_parallel@0x469fcbe0
     - id: c1
     - id: c0
     - val: 0
@@ -1938,13 +3344,13 @@ body:
       - val: 21
     - op: call
       args:
-      - id: A_memref_alloca_res_4@0x14c2aea0
+      - id: A_memref_alloca_res_4@0x46a27d10
       - val: 0
       - val: 0
       - val: 0
     - op: call
       args:
-      - id: A_memref_alloca_res_7@0x14c2c5c0
+      - id: A_memref_alloca_res_7@0x46a29430
       - val: 0
       - val: 0
       - op: pdiv_r
@@ -1956,7 +3362,7 @@ body:
         - val: 22
     - op: call
       args:
-      - id: A_memref_alloca_res_10@0x14bef880
+      - id: A_memref_alloca_res_10@0x469ead80
       - val: 0
       - val: 0
       - op: pdiv_r
@@ -1969,7 +3375,7 @@ body:
 - guard:
     op: ge
     args:
-    - id: P3@0x14c32830
+    - id: P3@0x46a2f1c0
     - op: add
       args:
       - op: mul
@@ -1981,14 +3387,14 @@ body:
     user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x14bf2640
+      - id: RS1_affine_parallel@0x469ee610
       - id: c1
       - id: c0
       - val: 0
       - id: c2
       - op: call
         args:
-        - id: A_memref_alloca_res_7@0x14c2c5c0
+        - id: A_memref_alloca_res_7@0x46a29430
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -2000,7 +3406,7 @@ body:
           - val: 22
       - op: call
         args:
-        - id: A_memref_alloca_res_10@0x14bef880
+        - id: A_memref_alloca_res_10@0x469ead80
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -2091,13 +3497,13 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS3_affine_parallel@0x14c084b0
+  - id: RS3_affine_parallel@0x46a03d70
   - id: c1
   - id: c0
   - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
 
@@ -2110,7 +3516,7 @@ cond:
   op: lt
   args:
   - id: c1
-  - id: P2@0x14bf5b90
+  - id: P2@0x469f1b60
 inc:
   val: 1
 body:
@@ -2118,13 +3524,13 @@ body:
   - user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x14c3bdb0
+      - id: RS0_affine_parallel@0x46a3c020
       - id: c1
       - id: c0
       - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_4@0x14c2aea0
+        - id: A_memref_alloca_res_4@0x46a27d10
         - val: 0
         - val: 0
         - val: 0
@@ -2143,7 +3549,7 @@ body:
           args:
           - op: sub
             args:
-            - id: P3@0x14c32830
+            - id: P3@0x46a2f1c0
             - val: 1
           - val: 16
     inc:
@@ -2152,14 +3558,14 @@ body:
       user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x14bf2640
+        - id: RS1_affine_parallel@0x469ee610
         - id: c1
         - id: c0
         - val: 0
         - id: c2
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -2171,7 +3577,7 @@ body:
             - val: 22
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -2195,7 +3601,7 @@ body:
         args:
         - op: sub
           args:
-          - id: P3@0x14c32830
+          - id: P3@0x46a2f1c0
           - val: 1
         - val: 16
       - val: 21
@@ -2205,7 +3611,7 @@ body:
   - user:
       op: call
       args:
-      - id: RS2_affine_parallel@0x14c08750
+      - id: RS2_affine_parallel@0x469fcbe0
       - id: c1
       - id: c0
       - val: 0
@@ -2215,13 +3621,13 @@ body:
         - val: 21
       - op: call
         args:
-        - id: A_memref_alloca_res_4@0x14c2aea0
+        - id: A_memref_alloca_res_4@0x46a27d10
         - val: 0
         - val: 0
         - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_7@0x14c2c5c0
+        - id: A_memref_alloca_res_7@0x46a29430
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -2233,7 +3639,7 @@ body:
           - val: 22
       - op: call
         args:
-        - id: A_memref_alloca_res_10@0x14bef880
+        - id: A_memref_alloca_res_10@0x469ead80
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -2246,7 +3652,7 @@ body:
   - guard:
       op: ge
       args:
-      - id: P3@0x14c32830
+      - id: P3@0x46a2f1c0
       - op: add
         args:
         - op: mul
@@ -2258,14 +3664,14 @@ body:
       user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x14bf2640
+        - id: RS1_affine_parallel@0x469ee610
         - id: c1
         - id: c0
         - val: 0
         - id: c2
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -2277,7 +3683,7 @@ body:
             - val: 22
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -2290,13 +3696,13 @@ body:
 - user:
     op: call
     args:
-    - id: RS3_affine_parallel@0x14c084b0
+    - id: RS3_affine_parallel@0x46a03d70
     - id: c1
     - id: c0
     - val: 0
     - op: call
       args:
-      - id: A_memref_alloca_res_4@0x14c2aea0
+      - id: A_memref_alloca_res_4@0x46a27d10
       - val: 0
       - val: 0
 [P0, P1, P2, P3] -> { [[] -> [i0, i1]] : P2 > 0 }
@@ -2312,7 +3718,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P1@0x14bf5aa0
+  - id: P1@0x469f1a70
 inc:
   val: 1
 body:
@@ -2324,7 +3730,7 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P2@0x14bf5b90
+    - id: P2@0x469f1b60
   inc:
     val: 1
   body:
@@ -2332,13 +3738,13 @@ body:
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x14c3bdb0
+        - id: RS0_affine_parallel@0x46a3c020
         - id: c1
         - id: c0
         - val: 0
         - op: call
           args:
-          - id: A_memref_alloca_res_4@0x14c2aea0
+          - id: A_memref_alloca_res_4@0x46a27d10
           - val: 0
           - val: 0
           - val: 0
@@ -2357,7 +3763,7 @@ body:
             args:
             - op: sub
               args:
-              - id: P3@0x14c32830
+              - id: P3@0x46a2f1c0
               - val: 1
             - val: 16
       inc:
@@ -2366,14 +3772,14 @@ body:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x14bf2640
+          - id: RS1_affine_parallel@0x469ee610
           - id: c1
           - id: c0
           - val: 0
           - id: c2
           - op: call
             args:
-            - id: A_memref_alloca_res_7@0x14c2c5c0
+            - id: A_memref_alloca_res_7@0x46a29430
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -2385,7 +3791,7 @@ body:
               - val: 22
           - op: call
             args:
-            - id: A_memref_alloca_res_10@0x14bef880
+            - id: A_memref_alloca_res_10@0x469ead80
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -2409,7 +3815,7 @@ body:
           args:
           - op: sub
             args:
-            - id: P3@0x14c32830
+            - id: P3@0x46a2f1c0
             - val: 1
           - val: 16
         - val: 21
@@ -2419,7 +3825,7 @@ body:
     - user:
         op: call
         args:
-        - id: RS2_affine_parallel@0x14c08750
+        - id: RS2_affine_parallel@0x469fcbe0
         - id: c1
         - id: c0
         - val: 0
@@ -2429,13 +3835,13 @@ body:
           - val: 21
         - op: call
           args:
-          - id: A_memref_alloca_res_4@0x14c2aea0
+          - id: A_memref_alloca_res_4@0x46a27d10
           - val: 0
           - val: 0
           - val: 0
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -2447,7 +3853,7 @@ body:
             - val: 22
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -2460,7 +3866,7 @@ body:
     - guard:
         op: ge
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - op: add
           args:
           - op: mul
@@ -2472,14 +3878,14 @@ body:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x14bf2640
+          - id: RS1_affine_parallel@0x469ee610
           - id: c1
           - id: c0
           - val: 0
           - id: c2
           - op: call
             args:
-            - id: A_memref_alloca_res_7@0x14c2c5c0
+            - id: A_memref_alloca_res_7@0x46a29430
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -2491,7 +3897,7 @@ body:
               - val: 22
           - op: call
             args:
-            - id: A_memref_alloca_res_10@0x14bef880
+            - id: A_memref_alloca_res_10@0x469ead80
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -2504,13 +3910,13 @@ body:
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x14c084b0
+      - id: RS3_affine_parallel@0x46a03d70
       - id: c1
       - id: c0
       - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_4@0x14c2aea0
+        - id: A_memref_alloca_res_4@0x46a27d10
         - val: 0
         - val: 0
 [P0, P1, P2, P3] -> { [[] -> [i0, i1]] : P2 > 0 and P1 > 0 }
@@ -2528,7 +3934,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P1@0x14bf5aa0
+    - id: P1@0x469f1a70
   inc:
     val: 1
   body:
@@ -2540,7 +3946,7 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P2@0x14bf5b90
+      - id: P2@0x469f1b60
     inc:
       val: 1
     body:
@@ -2548,13 +3954,13 @@ node:
       - user:
           op: call
           args:
-          - id: RS0_affine_parallel@0x14c3bdb0
+          - id: RS0_affine_parallel@0x46a3c020
           - id: c1
           - id: c0
           - val: 0
           - op: call
             args:
-            - id: A_memref_alloca_res_4@0x14c2aea0
+            - id: A_memref_alloca_res_4@0x46a27d10
             - val: 0
             - val: 0
             - val: 0
@@ -2573,7 +3979,7 @@ node:
               args:
               - op: sub
                 args:
-                - id: P3@0x14c32830
+                - id: P3@0x46a2f1c0
                 - val: 1
               - val: 16
         inc:
@@ -2582,14 +3988,14 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x14bf2640
+            - id: RS1_affine_parallel@0x469ee610
             - id: c1
             - id: c0
             - val: 0
             - id: c2
             - op: call
               args:
-              - id: A_memref_alloca_res_7@0x14c2c5c0
+              - id: A_memref_alloca_res_7@0x46a29430
               - val: 0
               - val: 0
               - op: pdiv_r
@@ -2601,7 +4007,7 @@ node:
                 - val: 22
             - op: call
               args:
-              - id: A_memref_alloca_res_10@0x14bef880
+              - id: A_memref_alloca_res_10@0x469ead80
               - val: 0
               - val: 0
               - op: pdiv_r
@@ -2625,7 +4031,7 @@ node:
             args:
             - op: sub
               args:
-              - id: P3@0x14c32830
+              - id: P3@0x46a2f1c0
               - val: 1
             - val: 16
           - val: 21
@@ -2635,7 +4041,7 @@ node:
       - user:
           op: call
           args:
-          - id: RS2_affine_parallel@0x14c08750
+          - id: RS2_affine_parallel@0x469fcbe0
           - id: c1
           - id: c0
           - val: 0
@@ -2645,13 +4051,13 @@ node:
             - val: 21
           - op: call
             args:
-            - id: A_memref_alloca_res_4@0x14c2aea0
+            - id: A_memref_alloca_res_4@0x46a27d10
             - val: 0
             - val: 0
             - val: 0
           - op: call
             args:
-            - id: A_memref_alloca_res_7@0x14c2c5c0
+            - id: A_memref_alloca_res_7@0x46a29430
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -2663,7 +4069,7 @@ node:
               - val: 22
           - op: call
             args:
-            - id: A_memref_alloca_res_10@0x14bef880
+            - id: A_memref_alloca_res_10@0x469ead80
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -2676,7 +4082,7 @@ node:
       - guard:
           op: ge
           args:
-          - id: P3@0x14c32830
+          - id: P3@0x46a2f1c0
           - op: add
             args:
             - op: mul
@@ -2688,14 +4094,14 @@ node:
           user:
             op: call
             args:
-            - id: RS1_affine_parallel@0x14bf2640
+            - id: RS1_affine_parallel@0x469ee610
             - id: c1
             - id: c0
             - val: 0
             - id: c2
             - op: call
               args:
-              - id: A_memref_alloca_res_7@0x14c2c5c0
+              - id: A_memref_alloca_res_7@0x46a29430
               - val: 0
               - val: 0
               - op: pdiv_r
@@ -2707,7 +4113,7 @@ node:
                 - val: 22
             - op: call
               args:
-              - id: A_memref_alloca_res_10@0x14bef880
+              - id: A_memref_alloca_res_10@0x469ead80
               - val: 0
               - val: 0
               - op: pdiv_r
@@ -2720,13 +4126,13 @@ node:
     - user:
         op: call
         args:
-        - id: RS3_affine_parallel@0x14c084b0
+        - id: RS3_affine_parallel@0x46a03d70
         - id: c1
         - id: c0
         - val: 0
         - op: call
           args:
-          - id: A_memref_alloca_res_4@0x14c2aea0
+          - id: A_memref_alloca_res_4@0x46a27d10
           - val: 0
           - val: 0
 expanded_array:
@@ -3165,20 +4571,20 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS1_affine_parallel@0x14bf2640
+  - id: RS1_affine_parallel@0x469ee610
   - id: c1
   - id: c0
   - val: 0
   - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - val: 21
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - val: 21
@@ -3260,13 +4666,13 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS0_affine_parallel@0x14c3bdb0
+  - id: RS0_affine_parallel@0x46a3c020
   - id: c1
   - id: c0
   - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
     - val: 0
@@ -3276,39 +4682,39 @@ Generated graft for band:
 - guard:
     op: ge
     args:
-    - id: P3@0x14c32830
+    - id: P3@0x46a2f1c0
     - val: 1
   then:
     user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x14bf2640
+      - id: RS1_affine_parallel@0x469ee610
       - id: c1
       - id: c0
       - val: 0
       - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_7@0x14c2c5c0
+        - id: A_memref_alloca_res_7@0x46a29430
         - val: 0
         - val: 0
         - val: 21
       - op: call
         args:
-        - id: A_memref_alloca_res_10@0x14bef880
+        - id: A_memref_alloca_res_10@0x469ead80
         - val: 0
         - val: 0
         - val: 21
 - user:
     op: call
     args:
-    - id: RS0_affine_parallel@0x14c3bdb0
+    - id: RS0_affine_parallel@0x46a3c020
     - id: c1
     - id: c0
     - val: 0
     - op: call
       args:
-      - id: A_memref_alloca_res_4@0x14c2aea0
+      - id: A_memref_alloca_res_4@0x46a27d10
       - val: 0
       - val: 0
       - val: 0
@@ -3511,14 +4917,14 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS1_affine_parallel@0x14bf2640
+  - id: RS1_affine_parallel@0x469ee610
   - id: c1
   - id: c0
   - val: 0
   - id: c2
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - op: sub
@@ -3527,7 +4933,7 @@ user:
       - val: 1
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - op: sub
@@ -3579,7 +4985,7 @@ cond:
       args:
       - op: sub
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - val: 1
       - val: 16
 inc:
@@ -3588,14 +4994,14 @@ body:
   user:
     op: call
     args:
-    - id: RS1_affine_parallel@0x14bf2640
+    - id: RS1_affine_parallel@0x469ee610
     - id: c1
     - id: c0
     - val: 0
     - id: c2
     - op: call
       args:
-      - id: A_memref_alloca_res_7@0x14c2c5c0
+      - id: A_memref_alloca_res_7@0x46a29430
       - val: 0
       - val: 0
       - op: sub
@@ -3604,7 +5010,7 @@ body:
         - val: 1
     - op: call
       args:
-      - id: A_memref_alloca_res_10@0x14bef880
+      - id: A_memref_alloca_res_10@0x469ead80
       - val: 0
       - val: 0
       - op: sub
@@ -3788,7 +5194,7 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS2_affine_parallel@0x14c08750
+  - id: RS2_affine_parallel@0x469fcbe0
   - id: c1
   - id: c0
   - val: 0
@@ -3798,13 +5204,13 @@ user:
     - val: 21
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
     - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -3816,7 +5222,7 @@ user:
       - val: 22
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -3910,14 +5316,14 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS1_affine_parallel@0x14bf2640
+  - id: RS1_affine_parallel@0x469ee610
   - id: c1
   - id: c0
   - val: 0
   - id: c2
   - op: call
     args:
-    - id: A_memref_alloca_res_7@0x14c2c5c0
+    - id: A_memref_alloca_res_7@0x46a29430
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -3929,7 +5335,7 @@ user:
       - val: 22
   - op: call
     args:
-    - id: A_memref_alloca_res_10@0x14bef880
+    - id: A_memref_alloca_res_10@0x469ead80
     - val: 0
     - val: 0
     - op: pdiv_r
@@ -3983,7 +5389,7 @@ cond:
       args:
       - op: sub
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - val: 1
       - val: 16
     - val: 21
@@ -3993,7 +5399,7 @@ body:
 - user:
     op: call
     args:
-    - id: RS2_affine_parallel@0x14c08750
+    - id: RS2_affine_parallel@0x469fcbe0
     - id: c1
     - id: c0
     - val: 0
@@ -4003,13 +5409,13 @@ body:
       - val: 21
     - op: call
       args:
-      - id: A_memref_alloca_res_4@0x14c2aea0
+      - id: A_memref_alloca_res_4@0x46a27d10
       - val: 0
       - val: 0
       - val: 0
     - op: call
       args:
-      - id: A_memref_alloca_res_7@0x14c2c5c0
+      - id: A_memref_alloca_res_7@0x46a29430
       - val: 0
       - val: 0
       - op: pdiv_r
@@ -4021,7 +5427,7 @@ body:
         - val: 22
     - op: call
       args:
-      - id: A_memref_alloca_res_10@0x14bef880
+      - id: A_memref_alloca_res_10@0x469ead80
       - val: 0
       - val: 0
       - op: pdiv_r
@@ -4034,7 +5440,7 @@ body:
 - guard:
     op: ge
     args:
-    - id: P3@0x14c32830
+    - id: P3@0x46a2f1c0
     - op: add
       args:
       - op: mul
@@ -4046,14 +5452,14 @@ body:
     user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x14bf2640
+      - id: RS1_affine_parallel@0x469ee610
       - id: c1
       - id: c0
       - val: 0
       - id: c2
       - op: call
         args:
-        - id: A_memref_alloca_res_7@0x14c2c5c0
+        - id: A_memref_alloca_res_7@0x46a29430
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -4065,7 +5471,7 @@ body:
           - val: 22
       - op: call
         args:
-        - id: A_memref_alloca_res_10@0x14bef880
+        - id: A_memref_alloca_res_10@0x469ead80
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -4156,13 +5562,13 @@ Generated graft for user:
 user:
   op: call
   args:
-  - id: RS3_affine_parallel@0x14c084b0
+  - id: RS3_affine_parallel@0x46a03d70
   - id: c1
   - id: c0
   - val: 0
   - op: call
     args:
-    - id: A_memref_alloca_res_4@0x14c2aea0
+    - id: A_memref_alloca_res_4@0x46a27d10
     - val: 0
     - val: 0
 
@@ -4175,7 +5581,7 @@ cond:
   op: lt
   args:
   - id: c1
-  - id: P2@0x14bf5b90
+  - id: P2@0x469f1b60
 inc:
   val: 1
 body:
@@ -4183,39 +5589,39 @@ body:
   - guard:
       op: ge
       args:
-      - id: P3@0x14c32830
+      - id: P3@0x46a2f1c0
       - val: 1
     then:
       user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x14bf2640
+        - id: RS1_affine_parallel@0x469ee610
         - id: c1
         - id: c0
         - val: 0
         - val: 0
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - val: 21
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - val: 21
   - user:
       op: call
       args:
-      - id: RS0_affine_parallel@0x14c3bdb0
+      - id: RS0_affine_parallel@0x46a3c020
       - id: c1
       - id: c0
       - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_4@0x14c2aea0
+        - id: A_memref_alloca_res_4@0x46a27d10
         - val: 0
         - val: 0
         - val: 0
@@ -4234,7 +5640,7 @@ body:
         args:
         - op: sub
           args:
-          - id: P3@0x14c32830
+          - id: P3@0x46a2f1c0
           - val: 1
         - val: 16
   inc:
@@ -4243,14 +5649,14 @@ body:
     user:
       op: call
       args:
-      - id: RS1_affine_parallel@0x14bf2640
+      - id: RS1_affine_parallel@0x469ee610
       - id: c1
       - id: c0
       - val: 0
       - id: c2
       - op: call
         args:
-        - id: A_memref_alloca_res_7@0x14c2c5c0
+        - id: A_memref_alloca_res_7@0x46a29430
         - val: 0
         - val: 0
         - op: sub
@@ -4259,7 +5665,7 @@ body:
           - val: 1
       - op: call
         args:
-        - id: A_memref_alloca_res_10@0x14bef880
+        - id: A_memref_alloca_res_10@0x469ead80
         - val: 0
         - val: 0
         - op: sub
@@ -4280,7 +5686,7 @@ body:
         args:
         - op: sub
           args:
-          - id: P3@0x14c32830
+          - id: P3@0x46a2f1c0
           - val: 1
         - val: 16
       - val: 21
@@ -4290,7 +5696,7 @@ body:
   - user:
       op: call
       args:
-      - id: RS2_affine_parallel@0x14c08750
+      - id: RS2_affine_parallel@0x469fcbe0
       - id: c1
       - id: c0
       - val: 0
@@ -4300,13 +5706,13 @@ body:
         - val: 21
       - op: call
         args:
-        - id: A_memref_alloca_res_4@0x14c2aea0
+        - id: A_memref_alloca_res_4@0x46a27d10
         - val: 0
         - val: 0
         - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_7@0x14c2c5c0
+        - id: A_memref_alloca_res_7@0x46a29430
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -4318,7 +5724,7 @@ body:
           - val: 22
       - op: call
         args:
-        - id: A_memref_alloca_res_10@0x14bef880
+        - id: A_memref_alloca_res_10@0x469ead80
         - val: 0
         - val: 0
         - op: pdiv_r
@@ -4331,7 +5737,7 @@ body:
   - guard:
       op: ge
       args:
-      - id: P3@0x14c32830
+      - id: P3@0x46a2f1c0
       - op: add
         args:
         - op: mul
@@ -4343,14 +5749,14 @@ body:
       user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x14bf2640
+        - id: RS1_affine_parallel@0x469ee610
         - id: c1
         - id: c0
         - val: 0
         - id: c2
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -4362,7 +5768,7 @@ body:
             - val: 22
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -4375,13 +5781,13 @@ body:
 - user:
     op: call
     args:
-    - id: RS3_affine_parallel@0x14c084b0
+    - id: RS3_affine_parallel@0x46a03d70
     - id: c1
     - id: c0
     - val: 0
     - op: call
       args:
-      - id: A_memref_alloca_res_4@0x14c2aea0
+      - id: A_memref_alloca_res_4@0x46a27d10
       - val: 0
       - val: 0
 [P0, P1, P2, P3] -> { [[] -> [i0, i1]] : P2 > 0 }
@@ -4397,7 +5803,7 @@ cond:
   op: lt
   args:
   - id: c0
-  - id: P1@0x14bf5aa0
+  - id: P1@0x469f1a70
 inc:
   val: 1
 body:
@@ -4409,7 +5815,7 @@ body:
     op: lt
     args:
     - id: c1
-    - id: P2@0x14bf5b90
+    - id: P2@0x469f1b60
   inc:
     val: 1
   body:
@@ -4417,39 +5823,39 @@ body:
     - guard:
         op: ge
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - val: 1
       then:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x14bf2640
+          - id: RS1_affine_parallel@0x469ee610
           - id: c1
           - id: c0
           - val: 0
           - val: 0
           - op: call
             args:
-            - id: A_memref_alloca_res_7@0x14c2c5c0
+            - id: A_memref_alloca_res_7@0x46a29430
             - val: 0
             - val: 0
             - val: 21
           - op: call
             args:
-            - id: A_memref_alloca_res_10@0x14bef880
+            - id: A_memref_alloca_res_10@0x469ead80
             - val: 0
             - val: 0
             - val: 21
     - user:
         op: call
         args:
-        - id: RS0_affine_parallel@0x14c3bdb0
+        - id: RS0_affine_parallel@0x46a3c020
         - id: c1
         - id: c0
         - val: 0
         - op: call
           args:
-          - id: A_memref_alloca_res_4@0x14c2aea0
+          - id: A_memref_alloca_res_4@0x46a27d10
           - val: 0
           - val: 0
           - val: 0
@@ -4468,7 +5874,7 @@ body:
           args:
           - op: sub
             args:
-            - id: P3@0x14c32830
+            - id: P3@0x46a2f1c0
             - val: 1
           - val: 16
     inc:
@@ -4477,14 +5883,14 @@ body:
       user:
         op: call
         args:
-        - id: RS1_affine_parallel@0x14bf2640
+        - id: RS1_affine_parallel@0x469ee610
         - id: c1
         - id: c0
         - val: 0
         - id: c2
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - op: sub
@@ -4493,7 +5899,7 @@ body:
             - val: 1
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - op: sub
@@ -4514,7 +5920,7 @@ body:
           args:
           - op: sub
             args:
-            - id: P3@0x14c32830
+            - id: P3@0x46a2f1c0
             - val: 1
           - val: 16
         - val: 21
@@ -4524,7 +5930,7 @@ body:
     - user:
         op: call
         args:
-        - id: RS2_affine_parallel@0x14c08750
+        - id: RS2_affine_parallel@0x469fcbe0
         - id: c1
         - id: c0
         - val: 0
@@ -4534,13 +5940,13 @@ body:
           - val: 21
         - op: call
           args:
-          - id: A_memref_alloca_res_4@0x14c2aea0
+          - id: A_memref_alloca_res_4@0x46a27d10
           - val: 0
           - val: 0
           - val: 0
         - op: call
           args:
-          - id: A_memref_alloca_res_7@0x14c2c5c0
+          - id: A_memref_alloca_res_7@0x46a29430
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -4552,7 +5958,7 @@ body:
             - val: 22
         - op: call
           args:
-          - id: A_memref_alloca_res_10@0x14bef880
+          - id: A_memref_alloca_res_10@0x469ead80
           - val: 0
           - val: 0
           - op: pdiv_r
@@ -4565,7 +5971,7 @@ body:
     - guard:
         op: ge
         args:
-        - id: P3@0x14c32830
+        - id: P3@0x46a2f1c0
         - op: add
           args:
           - op: mul
@@ -4577,14 +5983,14 @@ body:
         user:
           op: call
           args:
-          - id: RS1_affine_parallel@0x14bf2640
+          - id: RS1_affine_parallel@0x469ee610
           - id: c1
           - id: c0
           - val: 0
           - id: c2
           - op: call
             args:
-            - id: A_memref_alloca_res_7@0x14c2c5c0
+            - id: A_memref_alloca_res_7@0x46a29430
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -4596,7 +6002,7 @@ body:
               - val: 22
           - op: call
             args:
-            - id: A_memref_alloca_res_10@0x14bef880
+            - id: A_memref_alloca_res_10@0x469ead80
             - val: 0
             - val: 0
             - op: pdiv_r
@@ -4609,13 +6015,13 @@ body:
   - user:
       op: call
       args:
-      - id: RS3_affine_parallel@0x14c084b0
+      - id: RS3_affine_parallel@0x46a03d70
       - id: c1
       - id: c0
       - val: 0
       - op: call
         args:
-        - id: A_memref_alloca_res_4@0x14c2aea0
+        - id: A_memref_alloca_res_4@0x46a27d10
         - val: 0
         - val: 0
 [P0, P1, P2, P3] -> { [[] -> [i0, i1]] : P2 > 0 and P1 > 0 }
