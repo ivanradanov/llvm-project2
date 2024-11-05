@@ -182,9 +182,6 @@ static isl_stat add_domain(__isl_take isl_map *executed,
 	isl_map_free(executed);
 	graft = isl_ast_graft_add_guard(graft, guard, data->build);
 
-	ISL_DEBUG(fprintf(stderr, "TODO use the executed_ea\n"));
-	ISL_DEBUG(isl_union_map_dump(data->executed_ea));
-
 	ISL_DEBUG(fprintf(stderr, "Generated graft for user:\n"));
 	ISL_DEBUG(isl_ast_node_dump(graft->node));
 	ISL_DEBUG(fprintf(stderr, "\n"));
@@ -4021,7 +4018,22 @@ static int first_offset(struct isl_set_map_pair *domain, int *order, int n,
  * with "<<" the lexicographic order, proving that the order is preserved
  * in all cases.
  */
-static __isl_give isl_union_map *construct_shifted_executed(
+struct cse_data {
+	isl_union_map *executed_ea;
+	isl_map *map_i;
+};
+static isl_stat cse_func(isl_map *map, void *user)
+{
+	struct cse_data *data = user;
+	isl_map *map_i =
+		isl_map_apply_domain(isl_map_copy(map), isl_map_copy(data->map_i));
+	data->executed_ea = isl_union_map_add_map(data->executed_ea, map_i);
+	return isl_stat_ok;
+}
+struct cse_return {
+	isl_union_map *executed, *executed_ea;
+};
+static __isl_give struct cse_return construct_shifted_executed(
 	struct isl_set_map_pair *domain, int *order, int n,
 	__isl_keep isl_val *stride, __isl_keep isl_multi_val *offset,
 	__isl_keep isl_ast_build *build)
@@ -4032,12 +4044,17 @@ static __isl_give isl_union_map *construct_shifted_executed(
 	isl_map *map;
 	isl_size depth;
 	isl_constraint *c;
+	struct cse_return ret;
 
 	depth = isl_ast_build_get_depth(build);
-	if (depth < 0)
-		return NULL;
+	if (depth < 0) {
+		ret.executed = NULL;
+		ret.executed_ea = NULL;
+		return ret;
+	}
 	space = isl_ast_build_get_space(build, 1);
 	executed = isl_union_map_empty(isl_space_copy(space));
+	isl_union_map *executed_ea = isl_union_map_empty(isl_space_copy(space));
 	space = isl_space_map_from_set(space);
 	map = isl_map_identity(isl_space_copy(space));
 	map = isl_map_eliminate(map, isl_dim_out, depth, 1);
@@ -4047,7 +4064,6 @@ static __isl_give isl_union_map *construct_shifted_executed(
 	c = isl_constraint_alloc_equality(isl_local_space_from_space(space));
 	c = isl_constraint_set_coefficient_si(c, isl_dim_in, depth, 1);
 	c = isl_constraint_set_coefficient_si(c, isl_dim_out, depth, -1);
-
 	for (i = 0; i < n; ++i) {
 		isl_map *map_i;
 		isl_val *v;
@@ -4062,9 +4078,20 @@ static __isl_give isl_union_map *construct_shifted_executed(
 		c = isl_constraint_set_constant_val(c, v);
 		map_i = isl_map_add_constraint(map_i, isl_constraint_copy(c));
 
+		struct cse_data data = {
+			.executed_ea = executed_ea,
+			.map_i = isl_map_copy(map_i),
+		};
 		map_i = isl_map_apply_domain(isl_map_copy(domain[order[i]].map),
 						map_i);
 		executed = isl_union_map_add_map(executed, map_i);
+		if (isl_union_map_foreach_map(domain[order[i]].umap, cse_func, &data) <
+			0) {
+			ret.executed = NULL;
+			ret.executed_ea = NULL;
+			return ret;
+		}
+		executed_ea = data.executed_ea;
 	}
 
 	isl_constraint_free(c);
@@ -4073,7 +4100,9 @@ static __isl_give isl_union_map *construct_shifted_executed(
 	if (i < n)
 		executed = isl_union_map_free(executed);
 
-	return executed;
+	ret.executed = executed;
+	ret.executed_ea = executed_ea;
+	return ret;
 }
 
 /* Generate code for a single component, after exposing the stride,
@@ -4114,7 +4143,7 @@ static __isl_give isl_ast_graft_list *generate_shift_component(
 	isl_multi_val *mv;
 	isl_space *space;
 	isl_multi_aff *ma, *zero;
-	isl_union_map *executed;
+	isl_union_map *executed, *executed_ea;
 
 	depth = isl_ast_build_get_depth(build);
 
@@ -4128,8 +4157,13 @@ static __isl_give isl_ast_graft_list *generate_shift_component(
 	mv = isl_multi_val_add_val(mv, val);
 	mv = isl_multi_val_mod_val(mv, isl_val_copy(stride));
 
-	executed = construct_shifted_executed(domain, order, n, stride, mv,
-						build);
+	// FIXME TODO this is still not correct - we get
+	// isl_tab_pip.c:742: unbounded optimum
+	// when trying to build the correspoinding call expr
+	struct cse_return r =
+		construct_shifted_executed(domain, order, n, stride, mv, build);
+	executed = r.executed;
+	executed_ea = r.executed_ea;
 	space = isl_ast_build_get_space(build, 1);
 	space = isl_space_map_from_set(space);
 	ma = isl_multi_aff_identity(isl_space_copy(space));
@@ -4138,9 +4172,6 @@ static __isl_give isl_ast_graft_list *generate_shift_component(
 	zero = isl_multi_aff_zero(space);
 	ma = isl_multi_aff_range_splice(ma, depth + 1, zero);
 	build = isl_ast_build_insert_dim(build, depth + 1);
-	ISL_DEBUG(fprintf(stderr, "TODO get executed_ea\n"));
-	abort();
-	isl_union_map *executed_ea = NULL;
 	list = generate_shifted_component(executed, executed_ea, build);
 
 	list = isl_ast_graft_list_preimage_multi_aff(list, ma);
