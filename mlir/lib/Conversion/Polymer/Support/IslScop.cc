@@ -1147,6 +1147,18 @@ public:
       auto nMembers = (uintptr_t)isl::manage_copy(Id).get_user();
       auto pop = createParallel(Child, nMembers);
       pop->setAttr("gpu.par.grid", UnitAttr::get(pop->getContext()));
+    } else if (isMark(Id, allocateArrayMark)) {
+      isl::union_set toAllocate =
+          isl::manage((isl_union_set *)isl::manage_copy(Id).get_user());
+      toAllocate.foreach_set([&](isl::set set) {
+        isl::id arrayId = set.get_tuple_id();
+        memref::AllocaOp allocaOp =
+            Value::getFromOpaquePointer(arrayId.get_user())
+                .getDefiningOp<memref::AllocaOp>();
+        b.clone(*allocaOp, funcMapping);
+        return isl::stat::ok();
+      });
+      create(Child);
     } else {
       llvm_unreachable("Unknown mark");
     }
@@ -1481,9 +1493,6 @@ Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
     for (auto &op : originalFunc->getRegion(0).front().getOperations()) {
       if (isa<affine::AffineDialect>(op.getDialect())) {
         assert(op.getNumResults() == 0);
-        op.walk([&](memref::AllocaOp allocaOp) {
-          b.clone(*allocaOp, oldToNewMapping);
-        });
       } else {
         b.clone(op, oldToNewMapping);
       }

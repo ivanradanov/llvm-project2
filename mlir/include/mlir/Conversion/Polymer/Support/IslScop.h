@@ -71,6 +71,7 @@ class IslScop;
 class ScopArrayInfo;
 
 static constexpr char gridParallelMark[] = "grid_parallel";
+static constexpr char allocateArrayMark[] = "allocate_array";
 
 class MemoryAccess {
 public:
