@@ -443,7 +443,6 @@ isl::schedule insertGridPar(isl::schedule schedule) {
   if (!allCoincident)
     return {};
 
-  // TODO make this extensible
   isl::id gridMark = isl::id::alloc(schedule.ctx(), polymer::gridParallelMark,
                                     (void *)(uintptr_t)(unsigned)nMember);
   isl::schedule_node node = band.insert_mark(gridMark);
@@ -455,20 +454,7 @@ struct PrepScheduleInfo {
   isl::union_set unallocatedArrays;
   isl::union_set allocatedArrays;
   isl::union_map lrs;
-  // std::map<isl::id, isl::union_map> lrs;
-  isl::union_map currentExpansion;
-
-  void dump();
 };
-
-bool isLrsCoincident(isl::union_map lrs, isl::union_map schedule) {
-  // lrs.deltas()
-  // lrs.apply_range();
-  // schedule.apply_range(lrs)
-  return true;
-}
-
-isl::union_map getLrsForArray(isl::id array, isl::union_map lrs) { return {}; }
 
 /// Tag the @p Relation domain with @p TagId
 static __isl_give isl_map *tag(__isl_take isl_map *Relation,
@@ -550,9 +536,18 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
   LLVM_DEBUG(llvm::dbgs() << "Unallocated "; dumpIslObj(psi.unallocatedArrays));
   LLVM_DEBUG(llvm::dbgs() << "Allocated "; dumpIslObj(psi.allocatedArrays));
 
+  std::vector<isl::schedule_node> children;
   for (unsigned i = 0; i < (unsigned)nChildren; i++) {
-    auto child = node.child(0);
-    child = insertArrayExpansion(child, psi);
+    auto child = node.child(i);
+    auto newChild = insertArrayExpansion(child, psi);
+    node = newChild.parent();
+  }
+
+  if (!toAllocate.is_empty()) {
+    // TODO add free function
+    isl::id allocateArrayMark = isl::id::alloc(
+        schedule.ctx(), polymer::allocateArrayMark, toAllocate.copy());
+    node = node.insert_mark(allocateArrayMark);
   }
 
   return node;
@@ -664,35 +659,6 @@ void transform(LLVM::LLVMFuncOp f) {
 } // namespace mlir
 
 namespace {
-
-struct MoveAllocas : public OpRewritePattern<memref::AllocaOp> {
-  using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(memref::AllocaOp ao,
-                                PatternRewriter &rewriter) const override {
-    auto mt = ao.getType();
-    if (mt.getMemorySpaceAsInt() !=
-            loop_distribute::crossingRegisterMemorySpace &&
-        !nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(mt))
-      return rewriter.notifyMatchFailure(
-          ao, "Not register or shared memory address space");
-
-    if (gpu::affine_opt::isGridPar(ao->getParentOp()))
-      return rewriter.notifyMatchFailure(ao->getParentOp(),
-                                         "Parent is already grid par");
-
-    Operation *gridPar = nullptr;
-    ao->getParentOp()->walk([&](Operation *op) {
-      if (gpu::affine_opt::isGridPar(op)) {
-        assert(!gridPar);
-        gridPar = op;
-      }
-    });
-    assert(gridPar);
-    rewriter.moveOpBefore(ao, &gridPar->getRegion(0).front().front());
-    return success();
-  }
-};
 
 struct RegisterAllocaReduce : public OpRewritePattern<memref::AllocaOp> {
   using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
@@ -852,8 +818,8 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       // TODO need to forward register stores to loads.
       // Check if the llvm mem2reg does that for us
       RewritePatternSet patterns(context);
-      patterns.insert<MoveAllocas, RegisterAllocaReduce,
-                      SharedMemrefAllocaToGlobal>(context);
+      patterns.insert<RegisterAllocaReduce, SharedMemrefAllocaToGlobal>(
+          context);
       GreedyRewriteConfig config;
       if (failed(
               applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
