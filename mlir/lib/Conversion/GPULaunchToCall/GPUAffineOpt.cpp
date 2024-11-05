@@ -452,9 +452,8 @@ isl::schedule insertGridPar(isl::schedule schedule) {
 
 struct PrepScheduleInfo {
   isl::union_set allArrays;
-  // std::vector<isl::id> allArrays;
-  std::vector<isl::id> unallocatedArrays;
-  std::vector<isl::id> allocatedArrays;
+  isl::union_set unallocatedArrays;
+  isl::union_set allocatedArrays;
   isl::union_map lrs;
   // std::map<isl::id, isl::union_map> lrs;
   isl::union_map currentExpansion;
@@ -505,7 +504,9 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
   LLVM_DEBUG(llvm::dbgs() << "Prefix schedule "; dumpIslObj(schedule);
              dumpIslObj(node.get_prefix_schedule_relation()); dumpIslObj(node));
 
-  psi.allArrays.foreach_set([&](isl::set set) {
+  isl::union_set toAllocate =
+      isl::manage(isl_union_set_empty(psi.allArrays.get_space().release()));
+  psi.unallocatedArrays.foreach_set([&](isl::set set) {
     isl::id array = set.get_tuple_id();
     isl::union_map taggedSchedule = tag(schedule, array);
     LLVM_DEBUG(llvm::dbgs() << "Tagged prefix schedule ";
@@ -536,8 +537,18 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
                dumpIslObj(set.get_space().get_tuple_id(isl::dim::set));
                llvm::dbgs() << " coincidence: " << coincident << "\n");
 
+    if (!coincident)
+      toAllocate =
+          toAllocate.unite(isl::set::universe(set.get_space()).to_union_set());
+
     return isl::stat::ok();
   });
+
+  psi.allocatedArrays = psi.allocatedArrays.unite(toAllocate);
+  psi.unallocatedArrays = psi.unallocatedArrays.subtract(toAllocate);
+
+  LLVM_DEBUG(llvm::dbgs() << "Unallocated "; dumpIslObj(psi.unallocatedArrays));
+  LLVM_DEBUG(llvm::dbgs() << "Allocated "; dumpIslObj(psi.allocatedArrays));
 
   for (unsigned i = 0; i < (unsigned)nChildren; i++) {
     auto child = node.child(0);
@@ -606,8 +617,10 @@ void transform(LLVM::LLVMFuncOp f) {
   });
 
   PrepScheduleInfo psi;
-  psi.allArrays =
+  psi.unallocatedArrays = psi.allArrays =
       isl::manage(isl_schedule_constraints_get_array_size(sc)).domain();
+  psi.allocatedArrays =
+      isl::manage(isl_union_set_empty(psi.allArrays.get_space().release()));
   psi.lrs = isl::manage(isl_schedule_constraints_get_live_range_span(sc));
   newSchedule = prepareScheduleForGPU(isl::manage(newSchedule), psi).release();
   isl_schedule_constraints_free(sc);
