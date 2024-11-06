@@ -17,6 +17,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -536,6 +537,55 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
   LLVM_DEBUG(llvm::dbgs() << "Unallocated "; dumpIslObj(psi.unallocatedArrays));
   LLVM_DEBUG(llvm::dbgs() << "Allocated "; dumpIslObj(psi.allocatedArrays));
 
+  isl::union_set toExpand =
+      isl::manage(isl_union_set_empty(psi.allArrays.get_space().release()));
+  std::map<isl_id *, std::vector<unsigned>> toExpandMap;
+  if (node.isa<isl::schedule_node_band>()) {
+    auto band = node.as<isl::schedule_node_band>();
+    unsigned members = unsignedFromIslSize(band.n_member());
+    for (unsigned i = 0; i < members; i++) {
+      isl_id_to_id *expansion =
+          isl_schedule_node_band_member_get_array_expansion(node.get(), i);
+      auto lambda1 = [&](isl::id arrayId, isl::id expansionId) -> isl_stat {
+        // if (!toAllocate
+        //     .intersect(isl::set::universe(toAllocate.get_space())
+        //                .set_tuple_id(isl::manage_copy(arrayId))
+        //                .to_union_set())
+        //     .is_empty())
+        unsigned factor = (unsigned)(uintptr_t)expansionId.get_user();
+        // TODO put the expansion number in here
+        auto set = isl::set::universe(toAllocate.get_space())
+                       .set_tuple_id(arrayId)
+                       .to_union_set();
+        toExpand = toExpand.unite(set);
+        if (i == 0)
+          toExpandMap.insert({arrayId.get(), {factor}});
+        else
+          toExpandMap[arrayId.get()].push_back(factor);
+        return isl_stat_ok;
+      };
+      struct Data {
+        decltype(lambda1) &fn;
+      } data{lambda1};
+      auto lambda2 = [](isl_id *id, isl_id *target_id, void *user) -> isl_stat {
+        return static_cast<struct Data *>(user)->fn(isl::manage(id),
+                                                    isl::manage(target_id));
+      };
+      if (isl_id_to_id_foreach(expansion, lambda2, &data) < 0)
+        return {};
+    }
+  }
+  for (auto it = toExpandMap.begin(); it != toExpandMap.end();) {
+    auto expand = it->second;
+    bool expanded =
+        !llvm::all_of(expand, [&](unsigned expand) { return expand == 1; });
+    if (!expanded)
+      it = toExpandMap.erase(it);
+    else
+      it++;
+  }
+  LLVM_DEBUG(llvm::dbgs() << "ToExpand "; dumpIslObj(toExpand));
+
   std::vector<isl::schedule_node> children;
   for (unsigned i = 0; i < (unsigned)nChildren; i++) {
     auto child = node.child(i);
@@ -545,8 +595,10 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
 
   if (!toAllocate.is_empty()) {
     // TODO add free function
-    isl::id allocateArrayMark = isl::id::alloc(
-        schedule.ctx(), polymer::allocateArrayMark, toAllocate.copy());
+    polymer::AllocateArrayMarkInfo *aam =
+        new polymer::AllocateArrayMarkInfo{toAllocate, toExpandMap};
+    isl::id allocateArrayMark =
+        isl::id::alloc(schedule.ctx(), polymer::allocateArrayMark, (void *)aam);
     node = node.insert_mark(allocateArrayMark);
   }
 
@@ -814,6 +866,16 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return;
       }
     };
+    auto expandSubView = [&](Operation *op) {
+      RewritePatternSet patterns(context);
+      memref::populateExpandStridedMetadataPatterns(patterns);
+      GreedyRewriteConfig config;
+      if (failed(
+              applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+        signalPassFailure();
+        return;
+      }
+    };
     auto registerAllocaReduce = [&](Operation *op) {
       // TODO need to forward register stores to loads.
       // Check if the llvm mem2reg does that for us
@@ -917,6 +979,8 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           (void)gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
+          expandSubView(func);
+          LLVM_DEBUG(DBGS << "After expand subview:\n" << func << "\n");
           // Generates global so run on module
           registerAllocaReduce(gpuModule);
           LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
