@@ -10,7 +10,9 @@
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
@@ -28,6 +30,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LogicalResult.h"
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -127,7 +130,7 @@ inline unsigned unsignedFromIslSize(const isl_size &size) {
   return static_cast<unsigned>(size);
 }
 
-#define ISL_DEBUG(S, X)                                                        \
+#define POLYMER_ISL_DEBUG(S, X)                                                \
   LLVM_DEBUG({                                                                 \
     llvm::dbgs() << S;                                                         \
     X;                                                                         \
@@ -207,26 +210,25 @@ isl_schedule *IslScop::buildLoopSchedule(T loopOp, unsigned depth,
   SmallVector<Operation *> body = getSequenceScheduleOpList(loopOp.getBody());
 
   isl_schedule *child = buildSequenceSchedule(body, depth + numDims);
-  ISL_DEBUG("CHILD:\n", isl_schedule_dump(child));
+  POLYMER_ISL_DEBUG("CHILD:\n", isl_schedule_dump(child));
   isl_schedule *schedule = child;
   for (unsigned dim = 0; dim < numDims; dim++) {
     isl_union_set *domain = isl_schedule_get_domain(schedule);
-    ISL_DEBUG("MUPA dom: ", isl_union_set_dump(domain));
+    POLYMER_ISL_DEBUG("MUPA dom: ", isl_union_set_dump(domain));
     isl_multi_union_pw_aff *mupa =
         mapToDimensionMUPA(domain, depth + numDims - dim - 1);
     std::string name = ("L" + std::to_string(loopId++) + "." +
                         loopOp->getName().getStringRef().str());
     makeIslCompatible(name);
-    mupa = isl_multi_union_pw_aff_set_tuple_name(
-        mupa, isl_dim_set,
-            name.c_str());
-    ISL_DEBUG("MUPA: ", isl_multi_union_pw_aff_dump(mupa));
+    mupa =
+        isl_multi_union_pw_aff_set_tuple_name(mupa, isl_dim_set, name.c_str());
+    POLYMER_ISL_DEBUG("MUPA: ", isl_multi_union_pw_aff_dump(mupa));
     schedule = isl_schedule_insert_partial_schedule(schedule, mupa);
     if (permutable)
       schedule = markPermutable(schedule);
   }
 
-  ISL_DEBUG("Created loop schedule:\n", isl_schedule_dump(schedule));
+  POLYMER_ISL_DEBUG("Created loop schedule:\n", isl_schedule_dump(schedule));
 
   return schedule;
 }
@@ -575,7 +577,7 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
 
   map = isl_map_set_tuple_id(map, isl_dim_out, arrayId.copy());
   map = isl_map_set_tuple_id(map, isl_dim_in, stmtId.copy());
-  ISL_DEBUG("Created relation: ", isl_map_dump(map));
+  POLYMER_ISL_DEBUG("Created relation: ", isl_map_dump(map));
   stmt.memoryAccesses.push_back(new MemoryAccess{
       accessId, isl::manage(map), MemoryAccess::MT_Array, type, &ai});
 
@@ -726,28 +728,80 @@ public:
     if (isl_ast_expr_get_op_type(Expr) != isl_ast_op_call) {
       llvm_unreachable("unexpected op type");
     }
-    ISL_DEBUG("Building Call:\n", isl_ast_expr_dump(Expr));
+    POLYMER_ISL_DEBUG("Building Call:\n", isl_ast_expr_dump(Expr));
     isl_ast_expr *CalleeExpr = isl_ast_expr_get_op_arg(Expr, 0);
     isl_id *Id = isl_ast_expr_get_id(CalleeExpr);
     const char *CalleeName = isl_id_get_name(Id);
 
-    SmallVector<Value> expanded_idx;
-    for (int i = 1; i < isl_ast_expr_get_op_n_arg(Expr); ++i) {
-      isl_ast_expr *SubExpr = isl_ast_expr_get_op_arg(Expr, i);
-      Value V = create(SubExpr);
-      expanded_idx.push_back(V);
-    }
-
-    ISL_DEBUG("Will be expanding array ", isl_id_dump(Id));
+    POLYMER_ISL_DEBUG("Will be expanding array ", isl_id_dump(Id));
     ScopArrayInfo *array = scop.getArray(Id);
     assert(array && "Non existent array");
     LLVM_DEBUG(llvm::dbgs() << array->val << "\n");
 
-    // TODO:
-    // b.create<memref::SubViewOp>(op->getLoc(), );
+    auto originalArray = cast<MemrefValue>(array->val);
+    auto expandedArray = cast<MemrefValue>(funcMapping.lookup(array->val));
+    unsigned originalRank = originalArray.getType().getRank();
+    unsigned expandedRank = expandedArray.getType().getRank();
+    unsigned expandedDims = expandedRank - originalRank;
 
-    return {cast<MemrefValue>(array->val),
-            cast<MemrefValue>(funcMapping.lookup(array->val))};
+    if (expandedRank == originalRank)
+      return {originalArray, expandedArray};
+
+    auto one = b.getIndexAttr(1);
+    auto zero = b.getIndexAttr(0);
+    unsigned numAvailableIndices = isl_ast_expr_get_op_n_arg(Expr) - 1;
+
+    // Indexing for each array will be generated from the root of the schedule
+    // tree. However, additional dimensions for the memref will only be added
+    // after the scope the array is allocated, so there is a discrepancy here
+    // and we need to drop these unneeded leading indices.
+    unsigned toDrop = numAvailableIndices - expandedDims;
+    // indices.erase(indices.begin(), std::next(indices.begin(), toDrop));
+    // strides.erase(strides.begin(), std::next(strides.begin(), toDrop));
+    // sizes.erase(sizes.begin(), std::next(sizes.begin(), toDrop));
+
+    uint64_t curStride = 1;
+    // Generate indexing into the expandedDims
+    SmallVector<OpFoldResult> offsets;
+    SmallVector<OpFoldResult> sizes;
+    SmallVector<OpFoldResult> strides;
+    for (unsigned i = 0; i < numAvailableIndices - toDrop; ++i) {
+      isl_ast_expr *SubExpr = isl_ast_expr_get_op_arg(Expr, i + 1 + toDrop);
+      Value V = create(SubExpr);
+      convertToIndex(V);
+      offsets.push_back(V);
+      auto stride = b.getIndexAttr(1);
+      uint64_t curSize = expandedArray.getType().getShape()[i];
+      curStride *= curSize;
+      strides.push_back(stride);
+      sizes.push_back(one);
+    }
+
+    // Generate indexing into the original memref rank.
+    for (unsigned i = 0; i < originalRank; i++) {
+      offsets.push_back(zero);
+      auto curSize = originalArray.getType().getShape()[i];
+      assert(curSize != ShapedType::kDynamic &&
+             "dynamic sized array expansion currently unsupported");
+      auto sizeAttr = b.getIndexAttr(curSize);
+      sizes.push_back(sizeAttr);
+      strides.push_back(b.getIndexAttr(1));
+      curStride *= curSize;
+    }
+
+    auto inferredType =
+        cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+            originalArray.getType().getShape(),
+            cast<MemRefType>(expandedArray.getType()), offsets, sizes,
+            strides));
+    LLVM_DEBUG(llvm::dbgs() << "Inferred " << inferredType << "\n");
+
+    auto subview = b.create<memref::SubViewOp>(
+        array->val.getLoc(), cast<MemRefType>(inferredType), expandedArray,
+        offsets, /*sizes=*/sizes, /*strides=*/strides);
+
+    return {cast<MemrefValue>(originalArray),
+            cast<MemrefValue>(subview.getResult())};
   }
 
   Value createOp(__isl_take isl_ast_expr *Expr) {
@@ -1036,7 +1090,7 @@ public:
   }
 
   void createUser(__isl_keep isl_ast_node *User) {
-    ISL_DEBUG("Building User:\n", isl_ast_node_dump(User));
+    POLYMER_ISL_DEBUG("Building User:\n", isl_ast_node_dump(User));
 
     isl_ast_expr *Expr = isl_ast_node_user_get_expr(User);
     if (isl_ast_expr_get_op_type(Expr) != isl_ast_op_call) {
@@ -1118,8 +1172,6 @@ public:
                      << "Remapping original array " << origArg
                      << " to indexed expanded " << indexed << "\n");
         }
-        // TODO originally we had some code to remap scratchpad allocations. Do
-        // we need that?
       }
     }
 
@@ -1132,7 +1184,7 @@ public:
   }
 
   void createMark(__isl_take isl_ast_node *Node) {
-    ISL_DEBUG("Building Mark:\n", isl_ast_node_dump(Node));
+    POLYMER_ISL_DEBUG("Building Mark:\n", isl_ast_node_dump(Node));
 
     auto *Id = isl_ast_node_mark_get_id(Node);
     auto *Child = isl_ast_node_mark_get_node(Node);
@@ -1148,16 +1200,50 @@ public:
       auto pop = createParallel(Child, nMembers);
       pop->setAttr("gpu.par.grid", UnitAttr::get(pop->getContext()));
     } else if (isMark(Id, allocateArrayMark)) {
-      isl::union_set toAllocate =
-          isl::manage((isl_union_set *)isl::manage_copy(Id).get_user());
-      toAllocate.foreach_set([&](isl::set set) {
+      AllocateArrayMarkInfo *info =
+          (AllocateArrayMarkInfo *)isl::manage_copy(Id).get_user();
+      isl::union_set &toAllocate = info->allocate;
+      auto &toExpand = info->expand;
+      for (auto [arrayId, expand] : info->expand) {
+        assert(
+            llvm::any_of(expand, [&](unsigned expand) { return expand > 1; }));
+        if (toAllocate
+                .intersect(isl::set::universe(toAllocate.get_space())
+                               .set_tuple_id(isl::manage_copy(arrayId))
+                               .to_union_set())
+                .is_empty()) {
+          llvm_unreachable("Expansion with no allocation unsupported");
+        }
+      }
+      auto r = toAllocate.foreach_set([&](isl::set set) {
         isl::id arrayId = set.get_tuple_id();
         memref::AllocaOp allocaOp =
             Value::getFromOpaquePointer(arrayId.get_user())
                 .getDefiningOp<memref::AllocaOp>();
-        b.clone(*allocaOp, funcMapping);
+        auto found = toExpand.find(arrayId.get());
+        if (found == toExpand.end()) {
+          b.clone(*allocaOp, funcMapping);
+        } else {
+          auto expand = found->second;
+          MemRefType ty = allocaOp.getMemref().getType();
+          ArrayRef<int64_t> shapeArray = ty.getShape();
+          // Prepend expanded dimensions
+          SmallVector<int64_t> shape(expand.begin(), expand.end());
+          shape.insert(shape.end(), shapeArray.begin(), shapeArray.end());
+          auto layout = ty.getLayout();
+          // TODO need to add layout for the new dimensions
+          layout = {};
+          MemRefType newType = MemRefType::get(shape, ty.getElementType(),
+                                               layout, ty.getMemorySpace());
+          auto newAllocaOp = b.create<memref::AllocaOp>(
+              allocaOp->getLoc(), newType, allocaOp.getDynamicSizes(),
+              allocaOp.getSymbolOperands(), allocaOp.getAlignmentAttr());
+          funcMapping.map(allocaOp.getResult(), newAllocaOp.getResult());
+        }
         return isl::stat::ok();
       });
+      if (r.is_error())
+        llvm_unreachable("error?");
       create(Child);
     } else {
       llvm_unreachable("Unknown mark");
@@ -1167,7 +1253,7 @@ public:
   }
 
   void createIf(__isl_take isl_ast_node *If) {
-    ISL_DEBUG("Building If:\n", isl_ast_node_dump(If));
+    POLYMER_ISL_DEBUG("Building If:\n", isl_ast_node_dump(If));
     isl_ast_expr *Cond = isl_ast_node_if_get_cond(If);
 
     Value Predicate = create(Cond);
@@ -1194,7 +1280,7 @@ public:
   }
 
   void createBlock(__isl_keep isl_ast_node *Block) {
-    ISL_DEBUG("Building Block:\n", isl_ast_node_dump(Block));
+    POLYMER_ISL_DEBUG("Building Block:\n", isl_ast_node_dump(Block));
     isl_ast_node_list *List = isl_ast_node_block_get_children(Block);
 
     for (int i = 0; i < isl_ast_node_list_n_ast_node(List); ++i)
@@ -1307,7 +1393,7 @@ public:
     SmallVector<Value> UBs;
     isl_ast_node *Body;
     while (For && nLoops > 0) {
-      ISL_DEBUG("Building Parallel:\n", isl_ast_node_dump(For));
+      POLYMER_ISL_DEBUG("Building Parallel:\n", isl_ast_node_dump(For));
       Body = isl_ast_node_for_get_body(For);
       isl_ast_expr *Init = isl_ast_node_for_get_init(For);
       isl_ast_expr *Inc = isl_ast_node_for_get_inc(For);
@@ -1368,7 +1454,7 @@ public:
 
   void createFor(__isl_take isl_ast_node *For) {
     using ForOpTy = scf::ForOp;
-    ISL_DEBUG("Building For:\n", isl_ast_node_dump(For));
+    POLYMER_ISL_DEBUG("Building For:\n", isl_ast_node_dump(For));
     isl_ast_node *Body = isl_ast_node_for_get_body(For);
     isl_ast_expr *Init = isl_ast_node_for_get_init(For);
     isl_ast_expr *Inc = isl_ast_node_for_get_inc(For);
@@ -1463,9 +1549,7 @@ static void setIslOptions(isl_ctx *ctx) {
 }
 
 void IslScop::cleanup(Operation *func) {
-  func->walk([](affine::AffineStoreVar op) {
-    op->erase();
-  });
+  func->walk([](affine::AffineStoreVar op) { op->erase(); });
 }
 
 Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,

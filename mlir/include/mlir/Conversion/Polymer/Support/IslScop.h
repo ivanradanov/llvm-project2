@@ -73,6 +73,11 @@ class ScopArrayInfo;
 static constexpr char gridParallelMark[] = "grid_parallel";
 static constexpr char allocateArrayMark[] = "allocate_array";
 
+struct AllocateArrayMarkInfo {
+  isl::union_set allocate;
+  std::map<isl_id *, std::vector<unsigned>> expand;
+};
+
 class MemoryAccess {
 public:
   enum MemoryKind { MT_Array, MT_Value };
