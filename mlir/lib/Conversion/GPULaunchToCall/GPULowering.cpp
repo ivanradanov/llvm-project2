@@ -107,6 +107,63 @@ public:
   }
 };
 
+struct ReinterpretCastOpLowering
+    : public ConvertOpToLLVMPattern<memref::ReinterpretCastOp> {
+public:
+  using ConvertOpToLLVMPattern<
+      memref::ReinterpretCastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::ReinterpretCastOp castOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto sourceType = castOp.getSource().getType();
+    sourceType.getElementType();
+
+    Value newAddr = adaptor.getSource();
+    Type newAddrType = getTypeConverter()->convertType(castOp.getType());
+    Type newElType =
+        getTypeConverter()->convertType(castOp.getType().getElementType());
+    MemRefType targetMemRefType =
+        cast<MemRefType>(castOp.getResult().getType());
+
+    Value offset;
+    // Set offset.
+    if (castOp.isDynamicOffset(0))
+      offset = adaptor.getOffsets()[0];
+    else
+      offset = rewriter.create<LLVM::ConstantOp>(
+          castOp->getLoc(), getTypeConverter()->getIndexType(),
+          castOp.getStaticOffset(0));
+
+    // // Set sizes and strides.
+    // unsigned dynSizeId = 0;
+    // unsigned dynStrideId = 0;
+    // Value curStride = nullptr;
+    // for (int e = -1, i = targetMemRefType.getRank(); i > e; --i) {
+    //   Value size, stride;
+    //   if (castOp.isDynamicSize(i)) {
+    //     size = adaptor.getSizes()[dynSizeId++];
+    //   } else {
+    //     size = rewriter.create<arith::ConstantIndexOp>(castOp->getLoc(),
+    //     castOp.getStaticSize(i));
+    //   }
+    //   if (castOp.isDynamicStride(i)) {
+    //     stride = adaptor.getStrides()[dynStrideId++];
+    //   } else {
+    //     stride = rewriter.create<arith::ConstantIndexOp>(castOp->getLoc(),
+    //     castOp.getStaticStride(i));
+    //   }
+    //   if (!curStride)
+    //     curStride = stride;
+    // }
+
+    rewriter.replaceOpWithNewOp<LLVM::GEPOp>(castOp, newAddrType, newElType,
+                                             newAddr, ValueRange{offset});
+
+    return success();
+  }
+};
+
 struct GlobalOpLowering : public ConvertOpToLLVMPattern<memref::GlobalOp> {
 public:
   using ConvertOpToLLVMPattern<memref::GlobalOp>::ConvertOpToLLVMPattern;
@@ -234,6 +291,10 @@ struct AtAddrLower : public ConvertOpToLLVMPattern<memref::AtAddrOp> {
   }
 };
 
+static bool isAtAddrMemref(Value v) {
+  return v.getDefiningOp<memref::AtAddrOp>();
+}
+
 struct VectorLoadLower : public ConvertOpToLLVMPattern<vector::LoadOp> {
   using ConvertOpToLLVMPattern<vector::LoadOp>::ConvertOpToLLVMPattern;
   LogicalResult
@@ -243,8 +304,11 @@ struct VectorLoadLower : public ConvertOpToLLVMPattern<vector::LoadOp> {
     if (!tyAttr)
       return rewriter.notifyMatchFailure(op, "Access type attribute missing");
     auto memref = op.getBase();
-    if (!memref.getType().getLayout().isIdentity())
-      return rewriter.notifyMatchFailure(op, "Memref layout is not identity");
+    auto memrefTy = memref.getType();
+    auto isContiguious =
+        mlir::trailingNDimsContiguous(memrefTy, memrefTy.getRank());
+    if (!isContiguious && !isAtAddrMemref(memref))
+      return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
 
     Type ty = tyAttr.getValue();
     Value ptr = adaptor.getBase();
@@ -269,8 +333,11 @@ struct VectorStoreLower : public ConvertOpToLLVMPattern<vector::StoreOp> {
     if (!tyAttr)
       return rewriter.notifyMatchFailure(op, "Access type attribute missing");
     auto memref = op.getBase();
-    if (!memref.getType().getLayout().isIdentity())
-      return rewriter.notifyMatchFailure(op, "Memref layout is not identity");
+    auto memrefTy = memref.getType();
+    auto isContiguious =
+        mlir::trailingNDimsContiguous(memrefTy, memrefTy.getRank());
+    if (!isContiguious && !isAtAddrMemref(memref))
+      return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
 
     Type ty = tyAttr.getValue();
     Value ptr = adaptor.getBase();
@@ -360,7 +427,8 @@ public:
 
 void mlir::populateGPULoweringPatterns(RewritePatternSet &patterns,
                                        LLVMTypeConverter &typeConverter) {
-  patterns.add<AtAddrLower, CLoadOpLowering, CStoreOpLowering, VectorStoreLower,
-               VectorLoadLower, CAllocaOpLowering, GlobalOpLowering,
-               GetGlobalOpLowering>(typeConverter);
+  patterns.add<ReinterpretCastOpLowering, AtAddrLower, CLoadOpLowering,
+               CStoreOpLowering, VectorStoreLower, VectorLoadLower,
+               CAllocaOpLowering, GlobalOpLowering, GetGlobalOpLowering>(
+      typeConverter);
 }

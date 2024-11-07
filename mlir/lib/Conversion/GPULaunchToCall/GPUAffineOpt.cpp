@@ -1,6 +1,7 @@
 #include "LoopUndistribute.h"
 #include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/Polymer/Support/IslScop.h"
@@ -931,7 +932,6 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
     };
     auto lowerAccesses = [&](Operation *op) {
       auto dl = dataLayoutAnalysis.getAtOrAbove(op);
-      // TODO need to forward register stores to loads
       LowerToLLVMOptions options(&getContext(),
                                  dataLayoutAnalysis.getAtOrAbove(op));
       // TODO need to tweak options.indexBitwidth in some cases? consult
@@ -952,6 +952,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
                                           type.getMemorySpaceAsInt());
       });
       populateGPULoweringPatterns(patterns, converter);
+      arith::populateArithToLLVMConversionPatterns(converter, patterns);
       ConversionTarget target(getContext());
       target.addIllegalDialect<affine::AffineDialect>();
       target.addIllegalDialect<memref::MemRefDialect>();
