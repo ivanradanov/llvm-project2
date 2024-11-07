@@ -159,11 +159,11 @@ LogicalResult interchange(Operation *parent, RewriterBase &rewriter) {
        llvm::zip(child->getRegions(), parent->getRegions())) {
     if (parentRegion.getBlocks().size() == 0)
       continue;
-    Block *parentBody = &parent->getRegion(0).front();
+    Block *parentBody = &parentRegion.front();
     rewriter.createBlock(&childRegion, childRegion.begin(),
                          parentBody->getArgumentTypes(),
                          parentBody->getArgumentLocs());
-    Block *childBody = &child->getRegion(0).front();
+    Block *childBody = &childRegion.front();
     rewriter.inlineBlockBefore(&parentBody->front().getRegion(0).front(),
                                childBody, childBody->begin(),
                                newPar.getBody()->getArguments());
@@ -247,6 +247,8 @@ LogicalResult mlir::undistributeLoops(Operation *func) {
 
     for (auto blockPar : blockPars) {
       changed |= interchange(blockPar->getParentOp(), rewriter).succeeded();
+      if (changed)
+        break;
     }
     if (changed)
       continue;
