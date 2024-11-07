@@ -876,12 +876,23 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return;
       }
     };
+    auto sharedMemrefAllocaToGlobal = [&](Operation *op) {
+      // TODO need to forward register stores to loads.
+      // Check if the llvm mem2reg does that for us
+      RewritePatternSet patterns(context);
+      patterns.insert<SharedMemrefAllocaToGlobal>(context);
+      GreedyRewriteConfig config;
+      if (failed(
+              applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
+        signalPassFailure();
+        return;
+      }
+    };
     auto registerAllocaReduce = [&](Operation *op) {
       // TODO need to forward register stores to loads.
       // Check if the llvm mem2reg does that for us
       RewritePatternSet patterns(context);
-      patterns.insert<RegisterAllocaReduce, SharedMemrefAllocaToGlobal>(
-          context);
+      patterns.insert<RegisterAllocaReduce>(context);
       GreedyRewriteConfig config;
       if (failed(
               applyPatternsAndFoldGreedily(op, std::move(patterns), config))) {
@@ -977,12 +988,14 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
+          // Generates global so run on module
+          sharedMemrefAllocaToGlobal(gpuModule);
+          LLVM_DEBUG(DBGS << "After shmem to alloca:\n" << func << "\n");
           (void)gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
           expandSubView(func);
           LLVM_DEBUG(DBGS << "After expand subview:\n" << func << "\n");
-          // Generates global so run on module
-          registerAllocaReduce(gpuModule);
+          registerAllocaReduce(func);
           LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           lowerAffine(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
