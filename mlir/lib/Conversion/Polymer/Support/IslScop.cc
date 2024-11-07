@@ -1021,7 +1021,53 @@ public:
   }
 
   Value createOpBoolean(__isl_take isl_ast_expr *Expr) {
-    llvm_unreachable("unimplemented");
+    assert(isl_ast_expr_get_type(Expr) == isl_ast_expr_op &&
+           "Expected an isl_ast_expr_op expression");
+
+    Value LHS, RHS, Res;
+    isl_ast_op_type OpType;
+
+    OpType = isl_ast_expr_get_op_type(Expr);
+
+    assert((OpType == isl_ast_op_and || OpType == isl_ast_op_or) &&
+           "Unsupported isl_ast_op_type");
+
+    LHS = create(isl_ast_expr_get_op_arg(Expr, 0));
+    RHS = create(isl_ast_expr_get_op_arg(Expr, 1));
+
+    // Even though the isl pretty printer prints the expressions as 'exp && exp'
+    // or 'exp || exp', we actually code generate the bitwise expressions
+    // 'exp & exp' or 'exp | exp'. This forces the evaluation of both branches,
+    // but it is, due to the use of i1 types, otherwise equivalent. The reason
+    // to go for bitwise operations is, that we assume the reduced control flow
+    // will outweigh the overhead introduced by evaluating unneeded expressions.
+    // The isl code generation currently does not take advantage of the fact
+    // that the expression after an '||' or '&&' is in some cases not evaluated.
+    // Evaluating it anyways does not cause any undefined behaviour.
+    //
+    // TODO: Document in isl itself, that the unconditionally evaluating the
+    // second part of '||' or '&&' expressions is safe.
+    if (!(LHS.getType().isInteger() &&
+          LHS.getType().getIntOrFloatBitWidth() == 1))
+      llvm_unreachable("unhandled");
+    if (!(RHS.getType().isInteger() &&
+          RHS.getType().getIntOrFloatBitWidth() == 1))
+      llvm_unreachable("unhandled");
+    // RHS = Builder.CreateIsNotNull(RHS);
+
+    switch (OpType) {
+    default:
+      llvm_unreachable("Unsupported boolean expression");
+    case isl_ast_op_and:
+      Res = b.create<arith::AndIOp>(LHS.getLoc(), LHS, RHS);
+      break;
+    case isl_ast_op_or:
+      Res = b.create<arith::OrIOp>(LHS.getLoc(), LHS, RHS);
+      break;
+    }
+
+    isl_ast_expr_free(Expr);
+    return Res;
   }
   Value createOpBooleanConditional(__isl_take isl_ast_expr *Expr) {
     llvm_unreachable("unimplemented");
