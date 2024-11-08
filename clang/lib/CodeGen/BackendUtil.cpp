@@ -99,6 +99,11 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include "mlir/Analysis/DataLayoutAnalysis.h"
+#include "mlir/Conversion/ArithToEmitC/ArithToEmitCPass.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
 #include "mlir/Dialect/Transform/IR/TransformAttrs.h"
@@ -117,6 +122,7 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/All.h"
+#include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Target/LLVMIR/Import.h"
 #include "mlir/Target/LLVMIR/ModuleImport.h"
 
@@ -181,9 +187,21 @@ static constexpr char DefaultPostMergeMlirPipeline[] =
     "convert-llvm-to-arith,"
     "canonicalize,"
     "gpu-launch-to-parallel,"
-    "canonicalize"
+    "cse,"
+    "canonicalize,"
+    "gpu-affine-opt"
     //"llvm-to-affine-access,"
     //"canonicalize"
+    ;
+static constexpr char DefaultLowerToLLVMPipeline[] =
+    "gpu-parallel-to-launch,"
+    // "nvvm-attach-target{chip=sm_90 O=3},"
+    "gpu.module(convert-gpu-to-nvvm),"
+    "gpu-to-llvm,"
+    "gpu-module-to-binary,"
+    "convert-scf-to-cf,"
+    "convert-cf-to-llvm,"
+    "convert-arith-to-llvm"
     ;
 // clang-format on
 
@@ -196,6 +214,11 @@ static cl::opt<std::string>
     ClMlirPostMergePipeline("transformer-post-merge-mlir-pipeline",
                             cl::init(DefaultPostMergeMlirPipeline), cl::Hidden,
                             cl::desc("post-merge MLIR pipeline"));
+
+static cl::opt<std::string>
+    ClMlirLowerToLLVMPipeline("transformer-lower-to-llvm-pipeline",
+                              cl::init(DefaultLowerToLLVMPipeline), cl::Hidden,
+                              cl::desc("lower to llvm pipeline"));
 
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
 } // namespace llvm
@@ -1813,24 +1836,60 @@ void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
 void embedMlirModule(llvm::Module *TheModule, mlir::ModuleOp MlirModule) {
   using namespace mlir;
 
-  if (EmitMLIR) {
-    std::string MlirString;
-    llvm::raw_string_ostream MlirStream(MlirString);
-    mlir::OpPrintingFlags Flags;
-    Flags.enableDebugInfo();
-    mlir::AsmState asmState(MlirModule, Flags);
-    MlirModule->print(MlirStream, asmState);
-    MlirStream.flush();
+  std::string MlirString;
+  llvm::raw_string_ostream MlirStream(MlirString);
+  mlir::OpPrintingFlags Flags;
+  Flags.enableDebugInfo();
+  mlir::AsmState asmState(MlirModule, Flags);
+  MlirModule->print(MlirStream, asmState);
+  MlirStream.flush();
 
-    llvm::IRBuilder<> B(TheModule->getContext());
-    auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
-                                   TheModule, true);
-    GV->setSection("llvm.metadata");
-    appendToUsed(*TheModule, {GV});
+  llvm::IRBuilder<> B(TheModule->getContext());
+  auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
+                                 TheModule, true);
+  GV->setSection("llvm.metadata");
+  appendToUsed(*TheModule, {GV});
+}
+
+void translateToLLVM(mlir::ModuleOp MlirModule) {
+  mlir::PassManager pm(MlirModule->getContext());
+  (void)mlir::applyPassManagerCLOptions(pm);
+
+  pm.addPass(mlir::createGPUParallelToLaunchPass());
+  pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+  pm.addPass(mlir::createArithToLLVMConversionPass());
+  pm.addPass(mlir::createArithToLLVMConversionPass());
+  LLVM_DEBUG(llvm::errs() << "Lower LLVM Pipeline: "
+                          << ClMlirLowerToLLVMPipeline << "\n");
+  if (mlir::failed(
+          mlir::parsePassPipeline(ClMlirLowerToLLVMPipeline.c_str(), pm))) {
+    llvm::errs() << "Invalid lower llvm pipeline";
+    abort();
+  }
+  if (mlir::failed(pm.run(MlirModule))) {
+    llvm::errs() << "Mlir passes failed";
+    abort();
+  }
+  LLVM_DEBUG(llvm::errs() << "Post-lower-to-llvm MLIR\n"
+                          << *MlirModule << "\n");
+}
+
+void postProcessMlirModule(llvm::Module *&TheModule,
+                           mlir::ModuleOp MlirModule) {
+  if (EmitMLIR) {
+    embedMlirModule(TheModule, MlirModule);
+  } else {
+    translateToLLVM(MlirModule);
+    auto NewModule =
+        mlir::translateModuleToLLVMIR(MlirModule, TheModule->getContext());
+    // TODO How does one erase an LLVM module??
+    delete TheModule;
+    TheModule = NewModule.release();
   }
 }
 
-void defaultPipeline(llvm::Module *TheModule) {
+void defaultPipeline(llvm::Module *&TheModule) {
   LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
   mlir::registerMLIRContextCLOptions();
@@ -1872,12 +1931,12 @@ void defaultPipeline(llvm::Module *TheModule) {
     llvm::errs() << "Verification failed\n";
   LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
 
-  embedMlirModule(TheModule, MlirModule.get());
+  postProcessMlirModule(TheModule, MlirModule.get());
 
   LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
 }
 
-void gpuOptPipeline(llvm::Module *TheModule) {
+void gpuOptPipeline(llvm::Module *&TheModule) {
   LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
   mlir::registerMLIRContextCLOptions();
@@ -1896,7 +1955,7 @@ void gpuOptPipeline(llvm::Module *TheModule) {
 
   // TODO run gpu-affine-opt
 
-  embedMlirModule(TheModule, MlirModule.get());
+  postProcessMlirModule(TheModule, MlirModule.get());
 
   LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
 }
@@ -1904,7 +1963,8 @@ void gpuOptPipeline(llvm::Module *TheModule) {
 } // namespace
 
 void EmitAssemblyHelper::RunTransformer() {
-  llvm::StringSwitch<std::function<void(llvm::Module *)>>(ClTransformerPipeline)
+  llvm::StringSwitch<std::function<void(llvm::Module *&)>>(
+      ClTransformerPipeline)
       .Case("gpu-opt", gpuOptPipeline)
       .Default(defaultPipeline)(TheModule);
 }
