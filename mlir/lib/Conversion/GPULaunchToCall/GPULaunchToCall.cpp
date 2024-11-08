@@ -1,4 +1,5 @@
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
+#include "LoopUndistribute.h"
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -13,6 +14,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -27,12 +29,14 @@
 #include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -41,6 +45,7 @@
 
 namespace mlir {
 #define GEN_PASS_DEF_GPULAUNCHTOPARALLELPASS
+#define GEN_PASS_DEF_GPUPARALLELTOLAUNCHPASS
 #include "mlir/Conversion/Passes.h.inc"
 } // namespace mlir
 
@@ -135,7 +140,39 @@ static void replaceIdDim(RewriterBase &rewriter, Region *region, Value v) {
 
 static constexpr int32_t getSharedMemAddrSpace() { return 3; }
 
+template <typename T>
+struct FindSingleResult {
+  SmallVector<Operation *> before, after;
+  T theOp;
+};
+template <typename T>
+static FindSingleResult<T>
+findSingleNestedOp(Operation *parent, std::function<bool(Operation *)> isIt) {
+  assert(parent->getNumRegions() == 1);
+  Region &region = parent->getRegion(0);
+  assert(region.getBlocks().size() == 1);
+  Block *block = &region.front();
+
+  FindSingleResult<T> fsr;
+
+  Operation *theOp = nullptr;
+  for (auto &op : *block) {
+    if (isIt(&op)) {
+      assert(!theOp);
+      theOp = &op;
+    } else if (theOp) {
+      fsr.after.push_back(&op);
+    } else {
+      fsr.before.push_back(&op);
+    }
+  }
+  assert(theOp);
+  fsr.theOp = cast<T>(theOp);
+  return fsr;
+}
+
 namespace mlir {
+
 struct ConvertedKernel {
   SmallString<128> name;
   Operation *kernel;
@@ -144,6 +181,7 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
                                                       Type shmemSizeType,
                                                       RewriterBase &rewriter,
                                                       bool generateNewKernel) {
+  OpBuilder::InsertionGuard g(rewriter);
   MLIRContext *context = gpuKernelFunc->getContext();
   auto funcLoc = gpuKernelFunc->getLoc();
   rewriter.setInsertionPoint(gpuKernelFunc);
@@ -203,7 +241,6 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     assert(paramLocs.size() == newArgs && paramTypes.size() == newArgs &&
            paramAttrs.size() == newArgs);
 
-    // TODO we can use affine::AffineScopeOp in an llvm func
     auto newFty = LLVM::LLVMFunctionType::get(fty.getReturnType(), paramTypes,
                                               fty.isVarArg());
     auto oldAttrs = llvmKernel->getAttrs();
@@ -427,6 +464,177 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
 
   return success();
 }
+
+static mlir::Value createConstantInt(RewriterBase &rewriter, Location loc,
+                                     Type ty, int64_t v) {
+  if (ty.isIndex())
+    return rewriter.create<arith::ConstantIndexOp>(loc, v);
+  else
+    return rewriter.create<arith::ConstantIntOp>(loc, v, ty);
+}
+
+struct ConvertedForLaunch {
+  SymbolRefAttr symbol;
+  Value shmem;
+  Value stream;
+  gpu::KernelDim3 blocks, threads;
+};
+
+LogicalResult convertGPUCallToLaunch(gpu::CallOp callOp,
+                                     RewriterBase &rewriter) {
+  auto st = SymbolTable::getNearestSymbolTable(callOp);
+  if (!st)
+    return failure();
+
+  auto kernelSymbol = callOp.getKernel();
+  Operation *gpuKernelFunc = SymbolTable::lookupSymbolIn(st, kernelSymbol);
+  if (!gpuKernelFunc)
+    return rewriter.notifyMatchFailure(callOp->getLoc(), "Kernel not found");
+  auto loc = gpuKernelFunc->getLoc();
+
+  auto gridPar = findSingleNestedOp<scf::ParallelOp>(
+      gpuKernelFunc, gpu::affine_opt::isGridPar);
+  auto blockPar = findSingleNestedOp<scf::ParallelOp>(
+      gridPar.theOp, gpu::affine_opt::isBlockPar);
+
+  st = SymbolTable::getNearestSymbolTable(gpuKernelFunc);
+  if (!st)
+    return failure();
+
+  IRMapping toHost;
+  ConvertedForLaunch cfl;
+  Block *newEntryBlock = nullptr;
+  [[maybe_unused]]
+  Operation *newKernel;
+  [[maybe_unused]]
+  Region *kernelRegion = nullptr;
+  SmallString<128> newSymName;
+  if (isa<gpu::GPUFuncOp>(gpuKernelFunc)) {
+    return failure();
+  } else if (auto llvmKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
+    newSymName = "__mlir.launch.kernel." + llvmKernel.getSymName().str();
+    unsigned counter;
+    newSymName = SymbolTable::generateSymbolName<128>(
+        newSymName,
+        [&st](StringRef newName) {
+          return SymbolTable::lookupSymbolIn(st, newName);
+        },
+        counter);
+
+    auto fty = llvmKernel.getFunctionType();
+    assert(!fty.isVarArg());
+
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPoint(gpuKernelFunc);
+    LLVM::LLVMFuncOp funcOp;
+    newKernel = funcOp =
+        cast<LLVM::LLVMFuncOp>(rewriter.cloneWithoutRegions(*gpuKernelFunc));
+    funcOp.setSymName(newSymName);
+    // funcOp.setVisibility(SymbolTable::Visibility::Private);
+    funcOp->removeAttr("gpu.par.kernel");
+    // funcOp.setLinkage(LLVM::Linkage::Private);
+
+    newEntryBlock = funcOp.addEntryBlock(rewriter);
+    kernelRegion = &llvmKernel.getFunctionBody();
+
+    auto kernelModule = gpuKernelFunc->getParentOfType<gpu::GPUModuleOp>();
+    auto kernelSymbol = SymbolRefAttr::get(
+        kernelModule.getNameAttr(), {SymbolRefAttr::get(funcOp.getNameAttr())});
+    cfl.symbol = kernelSymbol;
+    toHost.map(llvmKernel.getArguments(), callOp.getKernelOperands());
+  } else {
+    return failure();
+  }
+
+  rewriter.setInsertionPoint(callOp);
+  SmallVector<Operation *> clonedToHost;
+  for (auto *op : gridPar.before) {
+    assert(isMemoryEffectFree(op));
+    clonedToHost.push_back(rewriter.clone(*op, toHost));
+  }
+  for (auto *op : blockPar.before) {
+    assert(isMemoryEffectFree(op));
+    if (llvm::all_of(op->getOperands(),
+                     [&](Value v) { return toHost.lookupOrNull(v); }))
+      clonedToHost.push_back(rewriter.clone(*op, toHost));
+  }
+  for (auto *op : gridPar.after)
+    assert(isMemoryEffectFree(op));
+  for (auto *op : blockPar.after)
+    assert(isMemoryEffectFree(op));
+
+  // FIXME assert normalized parallel loops [0; n)
+
+  auto hoistDims = [&](gpu::KernelDim3 &dims, scf::ParallelOp par) {
+    SmallVector<Value *, 3> dimsVec = {&dims.x, &dims.y, &dims.z};
+    for (auto [dim, ub] : llvm::zip_longest(dimsVec, par.getUpperBound())) {
+      assert(dim);
+      if (ub) {
+        **dim = toHost.lookup(*ub);
+      } else {
+        assert(*dimsVec[0]);
+        **dim = createConstantInt(rewriter, loc, dimsVec[0]->getType(), 1);
+      }
+    }
+  };
+  hoistDims(cfl.blocks, gridPar.theOp);
+  hoistDims(cfl.threads, blockPar.theOp);
+
+  // FIXME 0 for now
+  cfl.shmem = nullptr;
+  // FIXME default for now
+  cfl.stream = nullptr;
+
+  IRMapping toNew;
+  toNew.map(gpuKernelFunc->getRegion(0).getArguments(),
+            newEntryBlock->getArguments());
+  rewriter.setInsertionPointToStart(newEntryBlock);
+
+  for (auto *op : gridPar.before)
+    clonedToHost.push_back(rewriter.clone(*op, toNew));
+
+  assert(gridPar.theOp.getNumLoops() <= 3);
+  for (unsigned i = 0; i < gridPar.theOp.getNumLoops(); ++i)
+    toNew.map(gridPar.theOp.getInductionVars()[i],
+              rewriter.create<gpu::BlockIdOp>(loc, (gpu::Dimension)i));
+
+  for (auto *op : blockPar.before)
+    clonedToHost.push_back(rewriter.clone(*op, toNew));
+
+  assert(blockPar.theOp.getNumLoops() <= 3);
+  for (unsigned i = 0; i < blockPar.theOp.getNumLoops(); ++i)
+    toNew.map(blockPar.theOp.getInductionVars()[i],
+              rewriter.create<gpu::ThreadIdOp>(loc, (gpu::Dimension)i));
+
+  assert(blockPar.theOp->getNumRegions() == 1);
+  Region &region = blockPar.theOp->getRegion(0);
+  assert(region.getBlocks().size() == 1);
+  Block *block = &region.front();
+
+  assert(block->back().getNumOperands() == 0);
+  for (auto &op : llvm::drop_end(*block))
+    rewriter.clone(op, toNew);
+  rewriter.create<LLVM::ReturnOp>(loc, ValueRange{});
+
+  LLVM_DEBUG(assert(verify(newKernel, true).succeeded()));
+
+  // We should be using streams currently.
+  assert(!callOp.getAsyncToken());
+  rewriter.setInsertionPoint(callOp);
+  auto launch = rewriter.create<gpu::LaunchFuncOp>(
+      callOp.getLoc(), cfl.symbol, cfl.blocks, cfl.threads, cfl.shmem,
+      callOp.getKernelOperands(), callOp.getAsyncObject());
+  rewriter.replaceOp(callOp, launch.getResults());
+
+  // We need this to get rid of the invalid addressof ops that got cloned to the
+  // host.
+  for (auto *op : llvm::reverse(clonedToHost))
+    if (isOpTriviallyDead(op))
+      rewriter.eraseOp(op);
+
+  return success();
+}
+
 } // namespace mlir
 
 namespace {
@@ -513,6 +721,22 @@ struct GPULaunchToParallelPass
       signalPassFailure();
   }
 };
+
+struct GPUParallelToLaunchPass
+    : public impl::GPUParallelToLaunchPassBase<GPUParallelToLaunchPass> {
+  using Base::Base;
+  void runOnOperation() override {
+    auto context = &getContext();
+    IRRewriter rewriter(context);
+    getOperation()->walk([&](gpu::CallOp callOp) {
+      (void)convertGPUCallToLaunch(callOp, rewriter);
+    });
+  }
+};
 std::unique_ptr<Pass> mlir::createGPULaunchToParallelPass() {
   return std::make_unique<GPULaunchToParallelPass>();
+}
+
+std::unique_ptr<Pass> mlir::createGPUParallelToLaunchPass() {
+  return std::make_unique<GPUParallelToLaunchPass>();
 }

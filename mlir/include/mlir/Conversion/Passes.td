@@ -332,6 +332,15 @@ def ConvertComplexToStandard : Pass<"convert-complex-to-standard"> {
 // GPULaunchToCall
 //===----------------------------------------------------------------------===//
 
+def GPUParallelToLaunchPass : Pass<"gpu-parallel-to-launch", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createGPUParallelToLaunchPass()";
+}
+
 def GPULaunchToParallelPass : Pass<"gpu-launch-to-parallel", "ModuleOp"> {
   let summary = "";
   let dependentDialects = [
