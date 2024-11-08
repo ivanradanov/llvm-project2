@@ -379,6 +379,8 @@ protected:
       (void)rewriter.notifyMatchFailure(loc, "unsupported memref type");
       return nullptr;
     }
+    if (args.empty())
+      return adaptor.getMemref();
     return rewriter.create<LLVM::GEPOp>(
         loc,
         LLVM::LLVMPointerType::get(op.getContext(),
