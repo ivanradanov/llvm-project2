@@ -1704,9 +1704,6 @@ LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
       /*linkLibs=*/nullptr);
   gpuModule.setTargetsAttr(moduleBuilder.getArrayAttr({target}));
 
-  auto gpuModuleBuilder = OpBuilder::atBlockEnd(gpuModule.getBody());
-  gpuModuleBuilder.create<gpu::ModuleEndOp>(gpuModule->getLoc());
-
   for (auto launchFunc : launchFuncs) {
     auto launchFuncUses = launchFunc.getSymbolUses(hostModule);
     for (auto use : *launchFuncUses) {

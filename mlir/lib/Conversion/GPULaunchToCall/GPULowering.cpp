@@ -204,10 +204,11 @@ public:
     bool thread_local_ = false;
     LLVM::UnnamedAddrAttr unnamed_addr = nullptr;
     StringAttr section = nullptr;
+    bool externallyInitialized = false;
     auto newGlobal = rewriter.replaceOpWithNewOp<LLVM::GlobalOp>(
         globalOp, convertedType, globalOp.getConstant(), globalOp.getSymName(),
-        linkage, dso_local, thread_local_, initialValue, alignment,
-        originalType.getMemorySpaceAsInt(), unnamed_addr, section,
+        linkage, dso_local, thread_local_, externallyInitialized, initialValue,
+        alignment, originalType.getMemorySpaceAsInt(), unnamed_addr, section,
         /*comdat=*/nullptr, /*dbg_expr=*/nullptr);
     if (!globalOp.isExternal() && globalOp.isUninitialized()) {
       Block *block =

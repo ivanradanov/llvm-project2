@@ -85,7 +85,6 @@ outlineFunctionForJit(func::FuncOp f) {
         auto newNM = rewriter.cloneWithoutRegions(*nm, mapping);
         OpBuilder::InsertionGuard g(rewriter);
         auto newBlock = rewriter.createBlock(&newNM->getRegion(0));
-        rewriter.create<gpu::ModuleEndOp>(newNM->getLoc());
         mapping.map(&nm->getRegion(0).front(), newBlock);
       }
       for (auto nf : nestedFuncs) {
