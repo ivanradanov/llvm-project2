@@ -1906,7 +1906,6 @@ void embedMlirModule(llvm::Module *TheModule, mlir::ModuleOp MlirModule) {
 
 void translateToLLVM(mlir::ModuleOp MlirModule) {
   mlir::PassManager pm(MlirModule->getContext());
-  pm.enableVerifier(true);
   (void)mlir::applyPassManagerCLOptions(pm);
 
   LLVM_DEBUG(llvm::errs() << "Lower LLVM Pipeline: "
