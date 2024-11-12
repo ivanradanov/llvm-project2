@@ -57,6 +57,9 @@ public:
     return iface.initializeImport(llvmModule->getContext());
   }
 
+  /// Initializes the target triple.
+  LogicalResult initializeTriple();
+
   /// Converts all functions of the LLVM module to MLIR functions.
   LogicalResult convertFunctions();
 
