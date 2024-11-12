@@ -68,7 +68,7 @@ struct CrossingLoad {
 
 static CrossingLoad isCrossingLoad(Operation *op) {
   if (!op)
-    return {nullptr};
+    return {};
   // Follow through casts until the load
   while (isa<LLVM::BitcastOp, LLVM::IntToPtrOp>(op)) {
     op = op->getOperand(0).getDefiningOp();
@@ -76,11 +76,11 @@ static CrossingLoad isCrossingLoad(Operation *op) {
   affine::AffineVectorLoadOp vecLoad = dyn_cast<affine::AffineVectorLoadOp>(op);
   affine::AffineLoadOp load = dyn_cast<affine::AffineLoadOp>(op);
   if (!(vecLoad || load))
-    return {nullptr};
+    return {};
   CrossingLoad cl;
   cl.memref = load ? load.getMemref() : vecLoad.getMemref();
   if (cl.memref.getType().getMemorySpaceAsInt() != crossingRegisterMemorySpace)
-    return {nullptr};
+    return {};
   // Not sure if we need the final `0` in the vecload operands
   cl.indices = load ? load.getMapOperands() : vecLoad.getMapOperands();
   cl.op = load ? load : vecLoad;
