@@ -20,13 +20,22 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace llvm;
 
 extern cl::opt<bool> WriteNewDbgInfoFormat;
 
+namespace llvm {
 cl::opt<bool> EmitMLIR("emit-mlir", cl::Hidden, cl::init(false),
                        cl::desc("Whether to emit mlir instead of llvm"));
+}
+
+// TODO quick hack - this should actually check if we are post-merge, this
+// currently works for cuda/hip if the host is x86
+static bool transformerIsTargetOffloadingModule(llvm::Module *M) {
+  return !llvm::Triple(M->getTargetTriple()).isX86();
+}
 
 PrintModulePass::PrintModulePass() : OS(dbgs()) {}
 PrintModulePass::PrintModulePass(raw_ostream &OS, const std::string &Banner,
@@ -46,7 +55,7 @@ PreservedAnalyses PrintModulePass::run(Module &M, ModuleAnalysisManager &AM) {
   if (WriteNewDbgInfoFormat)
     M.removeDebugIntrinsicDeclarations();
 
-  if (EmitMLIR) {
+  if (EmitMLIR || transformerIsTargetOffloadingModule(&M)) {
     if (auto Arr = dyn_cast_or_null<ConstantDataSequential>(
             dyn_cast_or_null<GlobalVariable>(
                 M.getNamedValue("__clang_mlir_output"))

@@ -222,9 +222,18 @@ static cl::opt<std::string>
                               cl::desc("lower to llvm pipeline"));
 
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
+
+extern cl::opt<bool> EmitMLIR;
+
 } // namespace llvm
 
 namespace {
+
+// TODO quick hack - this should actually check if we are post-merge, this
+// currently works for cuda/hip if the host is x86
+bool transformerIsTargetOffloadingModule(llvm::Module *M) {
+  return !llvm::Triple(M->getTargetTriple()).isX86();
+}
 
 // Default filename used for profile generation.
 std::string getDefaultProfileGenName() {
@@ -308,6 +317,8 @@ class EmitAssemblyHelper {
            (CodeGenOpts.PrepareForThinLTO || shouldEmitRegularLTOSummary());
   }
 
+  bool shouldEmitMLIR;
+
 public:
   EmitAssemblyHelper(DiagnosticsEngine &_Diags,
                      const HeaderSearchOptions &HeaderSearchOpts,
@@ -318,7 +329,9 @@ public:
       : Diags(_Diags), HSOpts(HeaderSearchOpts), CodeGenOpts(CGOpts),
         TargetOpts(TOpts), LangOpts(LOpts), TheModule(M), VFS(std::move(VFS)),
         CodeGenerationTime("codegen", "Code Generation Time"),
-        TargetTriple(TheModule->getTargetTriple()) {}
+        TargetTriple(TheModule->getTargetTriple()) {
+    shouldEmitMLIR = EmitMLIR || transformerIsTargetOffloadingModule(TheModule);
+  }
 
   ~EmitAssemblyHelper() {
     if (CodeGenOpts.DisableFree)
@@ -332,6 +345,8 @@ public:
   // Emit output using the new pass manager for the optimization pipeline.
   void EmitAssembly(BackendAction Action, std::unique_ptr<raw_pwrite_stream> OS,
                     BackendConsumer *BC);
+
+  llvm::Module *getTheModule() { return TheModule; }
 };
 } // namespace
 
@@ -907,8 +922,6 @@ static void addSanitizers(const Triple &TargetTriple,
   }
 }
 
-extern cl::opt<bool> EmitMLIR;
-
 void EmitAssemblyHelper::RunOptimizationPipeline(
     BackendAction Action, std::unique_ptr<raw_pwrite_stream> &OS,
     std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC,
@@ -1225,7 +1238,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   if (!TransformerEnabled ||
       (TransformerEnabled && !TransformerPreprocessing)) {
     if (Action == Backend_EmitBC || Action == Backend_EmitLL ||
-        CodeGenOpts.FatLTO || EmitMLIR) {
+        CodeGenOpts.FatLTO || shouldEmitMLIR) {
       if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
         if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
           TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
@@ -1242,7 +1255,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
           MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       /*EmitLTOSummary=*/true));
         } else {
-          assert(EmitMLIR);
+          assert(shouldEmitMLIR);
           MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       /*EmitLTOSummary=*/true));
         }
@@ -1265,7 +1278,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
           MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       EmitLTOSummary));
         } else {
-          assert(EmitMLIR);
+          assert(shouldEmitMLIR);
           MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       /*EmitLTOSummary=*/true));
         }
@@ -1315,7 +1328,7 @@ void EmitAssemblyHelper::RunCodegenPipeline(
   case Backend_EmitAssembly:
   case Backend_EmitMCNull:
   case Backend_EmitObj:
-    if (EmitMLIR)
+    if (shouldEmitMLIR)
       return;
     CodeGenPasses.add(
         createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
@@ -1838,6 +1851,7 @@ void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
 
   {
     mlir::PassManager pm(&context);
+    pm.enableVerifier(true);
     (void)mlir::applyPassManagerCLOptions(pm);
     if (mlir::failed(
             mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
@@ -1855,10 +1869,9 @@ void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
   LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR with device\n"
                           << *MlirModule << "\n");
 
-  // TODO quick hack - this should actually check if we are post-merge, this
-  // currently works for cuda/hip if the host is x86
-  if (llvm::Triple(TheModule->getTargetTriple()).isX86()) {
+  if (!transformerIsTargetOffloadingModule(TheModule)) {
     mlir::PassManager pm(&context);
+    pm.enableVerifier(true);
     (void)mlir::applyPassManagerCLOptions(pm);
     if (mlir::failed(
             mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
@@ -1893,13 +1906,9 @@ void embedMlirModule(llvm::Module *TheModule, mlir::ModuleOp MlirModule) {
 
 void translateToLLVM(mlir::ModuleOp MlirModule) {
   mlir::PassManager pm(MlirModule->getContext());
+  pm.enableVerifier(true);
   (void)mlir::applyPassManagerCLOptions(pm);
 
-  pm.addPass(mlir::createGPUParallelToLaunchPass());
-  pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addPass(mlir::createConvertControlFlowToLLVMPass());
-  pm.addPass(mlir::createArithToLLVMConversionPass());
-  pm.addPass(mlir::createArithToLLVMConversionPass());
   LLVM_DEBUG(llvm::errs() << "Lower LLVM Pipeline: "
                           << ClMlirLowerToLLVMPipeline << "\n");
   if (mlir::failed(
@@ -1917,7 +1926,7 @@ void translateToLLVM(mlir::ModuleOp MlirModule) {
 
 void postProcessMlirModule(llvm::Module *&TheModule,
                            mlir::ModuleOp MlirModule) {
-  if (EmitMLIR) {
+  if (EmitMLIR || transformerIsTargetOffloadingModule(TheModule)) {
     embedMlirModule(TheModule, MlirModule);
   } else {
     translateToLLVM(MlirModule);
@@ -2027,7 +2036,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
   cl::PrintOptionValues();
 
   std::unique_ptr<llvm::ToolOutputFile> ThinLinkOS, DwoOS;
-  if (ClTransformerEnable || EmitMLIR) {
+  if (ClTransformerEnable || shouldEmitMLIR) {
     LLVM_DEBUG(llvm::errs() << "Enabling MLIR transformer\n");
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
     RunTransformer();
@@ -2200,6 +2209,9 @@ void clang::EmitBackendOutput(
 
   EmitAssemblyHelper AsmHelper(Diags, HeaderOpts, CGOpts, TOpts, LOpts, M, VFS);
   AsmHelper.EmitAssembly(Action, std::move(OS), BC);
+  // AsmHelper may or may not consume the original module M, so we need to
+  // update it just in case.
+  M = AsmHelper.getTheModule();
 
   // Verify clang's TargetInfo DataLayout against the LLVM TargetMachine's
   // DataLayout.
