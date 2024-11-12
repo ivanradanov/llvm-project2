@@ -26,6 +26,8 @@ func.func @nvvm_special_regs() -> i32 {
   %10 = nvvm.read.ptx.sreg.nctaid.y : i32
   // CHECK: nvvm.read.ptx.sreg.nctaid.z : i32
   %11 = nvvm.read.ptx.sreg.nctaid.z : i32
+  // CHECK: nvvm.read.ptx.sreg.nctaid.z : i32
+  %12 = nvvm.read.ptx.sreg.ctaid.x range <i32, 0, 2147483647> : i32
   llvm.return %0 : i32
 }
 
