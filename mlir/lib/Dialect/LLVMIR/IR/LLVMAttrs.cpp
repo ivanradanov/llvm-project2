@@ -275,6 +275,23 @@ Attribute ConstantRangeAttr::parse(AsmParser &parser, Type odsType) {
     lower = lower.sextOrTrunc(bitWidth);
   if (upper.isZero())
     upper = upper.sextOrTrunc(bitWidth);
+  // The parseInteger function over-estimates the bitwidth required and may
+  // extend our APInt's. Truncate them back down if needed. (see `bool
+  // StringRef::consumeInteger(unsigned Radix, APInt &Result)`)
+  auto ensureBitWidth = [bitWidth](APInt &b) {
+    if (b.getBitWidth() == bitWidth)
+      return success();
+    assert(b.getBitWidth() > bitWidth);
+    auto newB = b.trunc(bitWidth);
+    if (newB.sext(b.getBitWidth()) != b)
+      return failure();
+    b = newB;
+    return success();
+  };
+  if (ensureBitWidth(lower).failed())
+    return Attribute{};
+  if (ensureBitWidth(upper).failed())
+    return Attribute{};
   return parser.getChecked<ConstantRangeAttr>(loc, parser.getContext(), lower,
                                               upper);
 }
