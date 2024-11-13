@@ -97,34 +97,17 @@ private:
 /// The cf->LLVM lowerings for branching ops require that the blocks they jump
 /// to first have updated types which should be handled by a pattern operating
 /// on the parent op.
-static LogicalResult verifyMatchingValues(ConversionPatternRewriter &rewriter,
-                                          ValueRange operands,
-                                          ValueRange blockArgs, Location loc,
-                                          llvm::StringRef messagePrefix) {
-  for (const auto &idxAndTypes :
-       llvm::enumerate(llvm::zip(blockArgs, operands))) {
-    int64_t i = idxAndTypes.index();
-    Value argValue =
-        rewriter.getRemappedValue(std::get<0>(idxAndTypes.value()));
-    Type operandType = std::get<1>(idxAndTypes.value()).getType();
-    // In the case of an invalid jump, the block argument will have been
-    // remapped to an UnrealizedConversionCast. In the case of a valid jump,
-    // there might still be a no-op conversion cast with both types being equal.
-    // Consider both of these details to see if the jump would be invalid.
-    if (auto op = dyn_cast_or_null<UnrealizedConversionCastOp>(
-            argValue.getDefiningOp())) {
-      if (op.getOperandTypes().front() != operandType) {
-        return rewriter.notifyMatchFailure(loc, [&](Diagnostic &diag) {
-          diag << messagePrefix;
-          diag << "mismatched types from operand # " << i << " ";
-          diag << operandType;
-          diag << " not compatible with destination block argument type ";
-          diag << op.getOperandTypes().front();
-          diag << " which should be converted with the parent op.";
-        });
-      }
-    }
-  }
+static LogicalResult rewriteBlockArgs(const TypeConverter &converter,
+                                      ConversionPatternRewriter &rewriter,
+                                      Block *block) {
+
+  // Compute the signature for the block with the provided converter.
+  std::optional<TypeConverter::SignatureConversion> conversion =
+      converter.convertBlockSignature(block);
+  if (!conversion)
+    return failure();
+  // Convert the block with the computed signature.
+  rewriter.applySignatureConversion(block, *conversion, &converter);
   return success();
 }
 
@@ -135,10 +118,8 @@ struct BranchOpLowering : public ConvertOpToLLVMPattern<cf::BranchOp> {
   LogicalResult
   matchAndRewrite(cf::BranchOp op, typename cf::BranchOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (failed(verifyMatchingValues(rewriter, adaptor.getDestOperands(),
-                                    op.getSuccessor()->getArguments(),
-                                    op.getLoc(),
-                                    /*messagePrefix=*/"")))
+    if (failed(
+            rewriteBlockArgs(*getTypeConverter(), rewriter, op.getSuccessor())))
       return failure();
 
     rewriter.replaceOpWithNewOp<LLVM::BrOp>(
@@ -155,13 +136,11 @@ struct CondBranchOpLowering : public ConvertOpToLLVMPattern<cf::CondBranchOp> {
   matchAndRewrite(cf::CondBranchOp op,
                   typename cf::CondBranchOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (failed(verifyMatchingValues(rewriter, adaptor.getFalseDestOperands(),
-                                    op.getFalseDest()->getArguments(),
-                                    op.getLoc(), "in false case branch ")))
+    if (failed(
+            rewriteBlockArgs(*getTypeConverter(), rewriter, op.getFalseDest())))
       return failure();
-    if (failed(verifyMatchingValues(rewriter, adaptor.getTrueDestOperands(),
-                                    op.getTrueDest()->getArguments(),
-                                    op.getLoc(), "in true case branch ")))
+    if (failed(
+            rewriteBlockArgs(*getTypeConverter(), rewriter, op.getTrueDest())))
       return failure();
 
     rewriter.replaceOpWithNewOp<LLVM::CondBrOp>(
@@ -177,17 +156,14 @@ struct SwitchOpLowering : public ConvertOpToLLVMPattern<cf::SwitchOp> {
   LogicalResult
   matchAndRewrite(cf::SwitchOp op, typename cf::SwitchOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (failed(verifyMatchingValues(rewriter, adaptor.getDefaultOperands(),
-                                    op.getDefaultDestination()->getArguments(),
-                                    op.getLoc(), "in switch default case ")))
+    if (failed(rewriteBlockArgs(*getTypeConverter(), rewriter,
+                                op.getDefaultDestination())))
       return failure();
 
     for (const auto &i : llvm::enumerate(
              llvm::zip(adaptor.getCaseOperands(), op.getCaseDestinations()))) {
-      if (failed(verifyMatchingValues(
-              rewriter, std::get<0>(i.value()),
-              std::get<1>(i.value())->getArguments(), op.getLoc(),
-              "in switch case " + std::to_string(i.index()) + " "))) {
+      if (failed(rewriteBlockArgs(*getTypeConverter(), rewriter,
+                                  std::get<1>(i.value())))) {
         return failure();
       }
     }
