@@ -731,6 +731,15 @@ struct GPUParallelToLaunchPass
     getOperation()->walk([&](gpu::CallOp callOp) {
       (void)convertGPUCallToLaunch(callOp, rewriter);
     });
+    getOperation()->walk([&](gpu::GPUModuleOp gpum) {
+      for (auto &op :
+           llvm::make_early_inc_range(gpum.getBodyRegion().getOps())) {
+        if (op.getAttr("gpu.par.kernel")) {
+          assert(cast<mlir::SymbolOpInterface>(op).symbolKnownUseEmpty(gpum));
+          op.erase();
+        }
+      }
+    });
   }
 };
 std::unique_ptr<Pass> mlir::createGPULaunchToParallelPass() {
