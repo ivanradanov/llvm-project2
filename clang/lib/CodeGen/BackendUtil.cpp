@@ -107,6 +107,7 @@
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
+#include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/Transform/IR/TransformAttrs.h"
 #include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
@@ -126,6 +127,7 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Target/LLVMIR/Import.h"
 #include "mlir/Target/LLVMIR/ModuleImport.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 #include <cstdint>
 #include <memory>
@@ -187,6 +189,7 @@ static constexpr char DefaultPostMergeMlirPipeline[] =
     // We need this to canonicalize the trunc(const) shared mem size
     "convert-llvm-to-arith,"
     "canonicalize,"
+    "cse,"
     "gpu-launch-to-parallel,"
     "cse,"
     "canonicalize,"
@@ -196,13 +199,15 @@ static constexpr char DefaultPostMergeMlirPipeline[] =
     ;
 static constexpr char DefaultLowerToLLVMPipeline[] =
     "gpu-parallel-to-launch,"
-    // "nvvm-attach-target{chip=sm_90 O=3},"
-    "gpu.module(convert-gpu-to-nvvm),"
-    "gpu-to-llvm,"
+    "gpu.module("
+      "convert-gpu-to-nvvm,"
+      "convert-scf-to-cf,"
+      "convert-to-llvm"
+    "),"
     "gpu-module-to-binary,"
     "convert-scf-to-cf,"
-    "convert-cf-to-llvm,"
-    "convert-arith-to-llvm"
+    "gpu-to-llvm,"
+    "convert-to-llvm"
     ;
 // clang-format on
 
@@ -1904,7 +1909,7 @@ void embedMlirModule(llvm::Module *TheModule, mlir::ModuleOp MlirModule) {
   appendToUsed(*TheModule, {GV});
 }
 
-void translateToLLVM(mlir::ModuleOp MlirModule) {
+LogicalResult lowerToLLVM(mlir::ModuleOp MlirModule) {
   mlir::PassManager pm(MlirModule->getContext());
   (void)mlir::applyPassManagerCLOptions(pm);
 
@@ -1913,14 +1918,15 @@ void translateToLLVM(mlir::ModuleOp MlirModule) {
   if (mlir::failed(
           mlir::parsePassPipeline(ClMlirLowerToLLVMPipeline.c_str(), pm))) {
     llvm::errs() << "Invalid lower llvm pipeline";
-    abort();
+    return failure();
   }
   if (mlir::failed(pm.run(MlirModule))) {
     llvm::errs() << "Mlir passes failed";
-    abort();
+    return failure();
   }
   LLVM_DEBUG(llvm::errs() << "Post-lower-to-llvm MLIR\n"
                           << *MlirModule << "\n");
+  return success();
 }
 
 void postProcessMlirModule(llvm::Module *&TheModule,
@@ -1928,7 +1934,8 @@ void postProcessMlirModule(llvm::Module *&TheModule,
   if (EmitMLIR || transformerIsTargetOffloadingModule(TheModule)) {
     embedMlirModule(TheModule, MlirModule);
   } else {
-    translateToLLVM(MlirModule);
+    if (failed(lowerToLLVM(MlirModule)))
+      return;
     auto NewModule =
         mlir::translateModuleToLLVMIR(MlirModule, TheModule->getContext());
     // TODO How does one erase an LLVM module??
@@ -1948,6 +1955,7 @@ void defaultPipeline(llvm::Module *&TheModule) {
   mlir::registerAllExtensions(registry);
   mlir::registerAllToLLVMIRTranslations(registry);
   mlir::registerAllFromLLVMIRTranslations(registry);
+  registerAllGPUToLLVMIRTranslations(registry);
   mlir::MLIRContext context(registry);
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
 
@@ -1995,6 +2003,7 @@ void gpuOptPipeline(llvm::Module *&TheModule) {
   mlir::registerAllExtensions(registry);
   mlir::registerAllToLLVMIRTranslations(registry);
   mlir::registerAllFromLLVMIRTranslations(registry);
+  registerAllGPUToLLVMIRTranslations(registry);
   mlir::MLIRContext context(registry);
   std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
 
