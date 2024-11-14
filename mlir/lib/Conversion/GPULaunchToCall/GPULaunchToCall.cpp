@@ -202,8 +202,8 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
     auto st = SymbolTable::getNearestSymbolTable(gpuKernelFunc);
     if (!st)
       return failure();
+    newSymName = "__mlir_par_kernel_" + llvmKernel.getSymName().str();
     if (generateNewKernel) {
-      newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
       unsigned counter;
       newSymName = SymbolTable::generateSymbolName<128>(
           newSymName,
@@ -212,7 +212,6 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
           },
           counter);
     } else {
-      newSymName = "__mlir.par.kernel." + llvmKernel.getSymName().str();
       auto existing = SymbolTable::lookupSymbolIn(st, newSymName);
       if (existing)
         return ConvertedKernel{newSymName, existing};
@@ -512,7 +511,7 @@ LogicalResult convertGPUCallToLaunch(gpu::CallOp callOp,
   if (isa<gpu::GPUFuncOp>(gpuKernelFunc)) {
     return failure();
   } else if (auto llvmKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
-    newSymName = "__mlir.launch.kernel." + llvmKernel.getSymName().str();
+    newSymName = "__mlir_launch_kernel_" + llvmKernel.getSymName().str();
     unsigned counter;
     newSymName = SymbolTable::generateSymbolName<128>(
         newSymName,
