@@ -76,17 +76,26 @@ void fixup(Module &M) {
     CI->eraseFromParent();
   }
 
+  SmallVector<Function *> InlinedStubs;
   for (CallInst *CI : CoercedKernels) {
-    auto StubFunc = cast<Function>(CI->getArgOperand(0));
-    for (auto callee : StubFunc->users()) {
-      if (auto *CI = dyn_cast<CallInst>(callee))
+    Function *StubFunc = cast<Function>(CI->getArgOperand(0));
+    for (User *callee : StubFunc->users()) {
+      if (auto *CI = dyn_cast<CallInst>(callee)) {
         if (CI->getCalledFunction() == StubFunc) {
           InlineFunctionInfo IFI;
           InlineResult Res =
               InlineFunction(*CI, IFI, /*MergeAttributes=*/false);
           assert(Res.isSuccess());
+          InlinedStubs.push_back(StubFunc);
+          continue;
         }
+      }
     }
+  }
+  for (Function *F : InlinedStubs) {
+    F->erase(F->begin(), F->end());
+    BasicBlock *BB = BasicBlock::Create(F->getContext(), "entry", F);
+    ReturnInst::Create(F->getContext(), nullptr, BB->begin());
   }
 
   CoercedKernels.clear();
