@@ -412,6 +412,9 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
     const int maxShmemPerBlock = 48 * 1000;
     sc = isl_schedule_constraints_set_caches(sc, 1, &maxShmemPerBlock);
     sc = isl_schedule_constraints_set_array_sizes(sc, arraySizes.release());
+  } else {
+    LLVM_DEBUG(llvm::dbgs() << "Computing array sizes failed\n");
+    return nullptr;
   }
 
   return sc;
@@ -642,6 +645,10 @@ void transform(LLVM::LLVMFuncOp f) {
 
   ppcg_scop *ps = computeDeps(*scop);
   isl_schedule_constraints *sc = construct_schedule_constraints(ps, *scop);
+  if (!sc) {
+    LLVM_DEBUG(llvm::dbgs() << "Computing schedule constraints failed\n");
+    return;
+  }
 
   LLVM_DEBUG({
     llvm::dbgs() << "Schedule constraints:\n";
@@ -990,7 +997,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           // Generates global so run on module
-          sharedMemrefAllocaToGlobal(gpuModule);
+          sharedMemrefAllocaToGlobal(func);
           LLVM_DEBUG(DBGS << "After shmem to alloca:\n" << func << "\n");
           (void)gpuify(func);
           LLVM_DEBUG(DBGS << "After gpuify:\n" << func << "\n");
@@ -1000,13 +1007,16 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           LLVM_DEBUG(DBGS << "After rar:\n" << func << "\n");
           lowerAffine(func);
           LLVM_DEBUG(DBGS << "After lower affine:\n" << func << "\n");
-          // Need to handle globals so run on module
-          lowerAccesses(gpuModule);
+          lowerAccesses(func);
           LLVM_DEBUG(DBGS << "After lower accesses:\n" << func << "\n");
           canonicalize(func);
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
         }
       });
+      // This is for lowering the memref.globals
+      lowerAccesses(gpuModule);
+      LLVM_DEBUG(DBGS << "After gpu module lower accesses:" << gpuModule
+                      << "\n");
     });
   }
 };
