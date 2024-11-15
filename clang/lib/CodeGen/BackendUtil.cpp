@@ -1818,16 +1818,16 @@ LogicalResult mergeInDeviceModule(llvm::Module &M, mlir::ModuleOp HostModule,
     }
   }
   if (!Wrapper) {
-    LLVM_DEBUG(llvm::errs() << "No device module found\n");
+    LLVM_DEBUG(llvm::dbgs() << "No device module found\n");
     return failure();
   }
 
-  LLVM_DEBUG(llvm::errs() << "FOUND  WRAPPER\n" << *Wrapper << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "FOUND  WRAPPER\n" << *Wrapper << "\n");
 
   llvm::Constant *ModuleStringPtr = Wrapper->getOperand(2);
   StringRef DeviceModuleString = getGlobalString(ModuleStringPtr);
 
-  LLVM_DEBUG(llvm::errs() << "MLIR Device Module\n"
+  LLVM_DEBUG(llvm::dbgs() << "MLIR Device Module\n"
                           << DeviceModuleString << "\n");
 
   // verification fails if we enable verifyAfterParse as the device module
@@ -1852,12 +1852,14 @@ void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
   using namespace mlir;
 
   MLIRContext &context = *MlirModule->getContext();
-  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
 
   {
     mlir::PassManager pm(&context);
     pm.enableVerifier(true);
     (void)mlir::applyPassManagerCLOptions(pm);
+    LLVM_DEBUG(llvm::dbgs()
+               << "Pre Merge Pipeline: " << ClMlirPreMergePipeline << "\n");
     if (mlir::failed(
             mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
       llvm::errs() << "Invalid pipeline";
@@ -1867,17 +1869,19 @@ void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
       llvm::errs() << "Mlir passes failed";
       abort();
     }
-    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
   }
 
   (void)mergeInDeviceModule(*TheModule, MlirModule, context);
-  LLVM_DEBUG(llvm::errs() << "Pre-preprocess MLIR with device\n"
+  LLVM_DEBUG(llvm::dbgs() << "Pre-preprocess MLIR with device\n"
                           << *MlirModule << "\n");
 
   if (!transformerIsTargetOffloadingModule(TheModule)) {
     mlir::PassManager pm(&context);
     pm.enableVerifier(true);
     (void)mlir::applyPassManagerCLOptions(pm);
+    LLVM_DEBUG(llvm::dbgs()
+               << "Post Merge Pipeline: " << ClMlirPostMergePipeline << "\n");
     if (mlir::failed(
             mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
       llvm::errs() << "Invalid pipeline";
@@ -1887,7 +1891,7 @@ void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
       llvm::errs() << "Mlir passes failed";
       abort();
     }
-    LLVM_DEBUG(llvm::errs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
   }
 }
 
@@ -1913,7 +1917,7 @@ LogicalResult lowerToLLVM(mlir::ModuleOp MlirModule) {
   mlir::PassManager pm(MlirModule->getContext());
   (void)mlir::applyPassManagerCLOptions(pm);
 
-  LLVM_DEBUG(llvm::errs() << "Lower LLVM Pipeline: "
+  LLVM_DEBUG(llvm::dbgs() << "Lower LLVM Pipeline: "
                           << ClMlirLowerToLLVMPipeline << "\n");
   if (mlir::failed(
           mlir::parsePassPipeline(ClMlirLowerToLLVMPipeline.c_str(), pm))) {
@@ -1924,7 +1928,7 @@ LogicalResult lowerToLLVM(mlir::ModuleOp MlirModule) {
     llvm::errs() << "Mlir passes failed";
     return failure();
   }
-  LLVM_DEBUG(llvm::errs() << "Post-lower-to-llvm MLIR\n"
+  LLVM_DEBUG(llvm::dbgs() << "Post-lower-to-llvm MLIR\n"
                           << *MlirModule << "\n");
   return success();
 }
@@ -1945,7 +1949,7 @@ void postProcessMlirModule(llvm::Module *&TheModule,
 }
 
 void defaultPipeline(llvm::Module *&TheModule) {
-  LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
@@ -1981,19 +1985,19 @@ void defaultPipeline(llvm::Module *&TheModule) {
 
   if (failed(mlir::verify(transformModule)))
     llvm::errs() << "Transform module verification failed after transform\n";
-  LLVM_DEBUG(llvm::errs() << "Transform module:\n" << transformModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Transform module:\n" << transformModule << "\n");
 
   if (failed(mlir::verify(&**MlirModule)))
     llvm::errs() << "Verification failed\n";
-  LLVM_DEBUG(llvm::errs() << "Post-transform MLIR\n" << *MlirModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Post-transform MLIR\n" << *MlirModule << "\n");
 
   postProcessMlirModule(TheModule, MlirModule.get());
 
-  LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Post-transform LLVM\n" << *TheModule << "\n");
 }
 
 void gpuOptPipeline(llvm::Module *&TheModule) {
-  LLVM_DEBUG(llvm::errs() << "Pre-transform LLVM\n" << *TheModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Pre-transform LLVM\n" << *TheModule << "\n");
   mlir::DialectRegistry registry;
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
@@ -2014,7 +2018,7 @@ void gpuOptPipeline(llvm::Module *&TheModule) {
 
   postProcessMlirModule(TheModule, MlirModule.get());
 
-  LLVM_DEBUG(llvm::errs() << "Post-transform LLVM\n" << *TheModule << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Post-transform LLVM\n" << *TheModule << "\n");
 }
 
 } // namespace
@@ -2045,7 +2049,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
 
   std::unique_ptr<llvm::ToolOutputFile> ThinLinkOS, DwoOS;
   if (ClTransformerEnable || shouldEmitMLIR) {
-    LLVM_DEBUG(llvm::errs() << "Enabling MLIR transformer\n");
+    LLVM_DEBUG(llvm::dbgs() << "Enabling MLIR transformer\n");
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
     RunTransformer();
     RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, false);
