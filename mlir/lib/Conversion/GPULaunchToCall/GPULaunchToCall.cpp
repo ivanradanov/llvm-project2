@@ -529,9 +529,9 @@ LogicalResult convertGPUCallToLaunch(gpu::CallOp callOp,
     newKernel = funcOp =
         cast<LLVM::LLVMFuncOp>(rewriter.cloneWithoutRegions(*gpuKernelFunc));
     funcOp.setSymName(newSymName);
-    // funcOp.setVisibility(SymbolTable::Visibility::Private);
+    funcOp.setVisibility(SymbolTable::Visibility::Public);
     funcOp->removeAttr("gpu.par.kernel");
-    // funcOp.setLinkage(LLVM::Linkage::Private);
+    funcOp.setLinkage(LLVM::Linkage::External);
 
     newEntryBlock = funcOp.addEntryBlock(rewriter);
     kernelRegion = &llvmKernel.getFunctionBody();
