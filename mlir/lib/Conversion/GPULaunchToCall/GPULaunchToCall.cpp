@@ -205,7 +205,7 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
       return failure();
     newSymName = "__mlir_par_kernel_" + llvmKernel.getSymName().str();
     if (generateNewKernel) {
-      unsigned counter;
+      unsigned counter = 0;
       newSymName = SymbolTable::generateSymbolName<128>(
           newSymName,
           [&st](StringRef newName) {
@@ -513,7 +513,7 @@ LogicalResult convertGPUCallToLaunch(gpu::CallOp callOp,
     return failure();
   } else if (auto llvmKernel = dyn_cast<LLVM::LLVMFuncOp>(gpuKernelFunc)) {
     newSymName = "__mlir_launch_kernel_" + llvmKernel.getSymName().str();
-    unsigned counter;
+    unsigned counter = 0;
     newSymName = SymbolTable::generateSymbolName<128>(
         newSymName,
         [&st](StringRef newName) {
