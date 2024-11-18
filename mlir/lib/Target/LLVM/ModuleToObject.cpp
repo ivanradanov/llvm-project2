@@ -205,6 +205,17 @@ ModuleToObject::moduleToObject(llvm::Module &llvmModule) {
   return binaryData;
 }
 
+llvm::Expected<std::unique_ptr<llvm::Module>>
+createModuleFromMemoryBuffer(std::unique_ptr<llvm::MemoryBuffer> &MB,
+                             llvm::LLVMContext &Context) {
+  llvm::SMDiagnostic Err;
+  auto Mod = parseIR(*MB, Err, Context);
+  if (!Mod)
+    return llvm::make_error<llvm::StringError>("Failed to create module",
+                                               llvm::inconvertibleErrorCode());
+  return std::move(Mod);
+}
+
 std::optional<SmallVector<char, 0>> ModuleToObject::run() {
   // Translate the module to LLVM IR.
   llvm::LLVMContext llvmContext;
@@ -225,6 +236,39 @@ std::optional<SmallVector<char, 0>> ModuleToObject::run() {
       if (failed(linkFiles(*llvmModule, std::move(*libs))))
         return std::nullopt;
     handleModulePostLink(*llvmModule);
+  }
+
+  if (postLinkLLVMIRModuleDump.isPresent()) {
+    std::error_code EC;
+    llvm::raw_fd_stream FD(postLinkLLVMIRModuleDump.get(), EC);
+    if (EC) {
+      getOperation().emitError()
+          << EC.message()
+          << " Could not open %s to write the post-opt IR module\n"
+          << postLinkLLVMIRModuleDump.get().c_str() << "\n";
+      return {};
+    }
+    llvmModule->print(FD, nullptr);
+  }
+  if (postLinkLLVMIRModuleReplace.isPresent()) {
+    auto MBOrErr =
+        llvm::MemoryBuffer::getFileOrSTDIN(postLinkLLVMIRModuleReplace.get());
+    if (!MBOrErr) {
+      getOperation().emitError()
+          << MBOrErr.getError().message()
+          << "Could not read replacement module from "
+          << postLinkLLVMIRModuleReplace.get().c_str() << "\n";
+      return {};
+    }
+    auto ModOrErr =
+        createModuleFromMemoryBuffer(MBOrErr.get(), llvmModule->getContext());
+    if (!ModOrErr) {
+      getOperation().emitError()
+          << "Could not read replacement module from "
+          << postLinkLLVMIRModuleReplace.get().c_str() << "\n";
+      return {};
+    }
+    llvmModule.reset(ModOrErr->release());
   }
 
   // Optimize the module.

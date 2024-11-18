@@ -17,6 +17,8 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/IR/Module.h"
 
+#include "mlir/../../../offload/include/Shared/EnvironmentVar.h"
+
 namespace llvm {
 class TargetMachine;
 } // namespace llvm
@@ -118,6 +120,11 @@ private:
   /// The TargetMachine created for the given Triple, if available.
   /// Accessible through `getOrCreateTargetMachine()`.
   std::unique_ptr<llvm::TargetMachine> targetMachine;
+
+  StringEnvar postLinkLLVMIRModuleDump =
+      StringEnvar("HYDRA_DEVICE_LLVM_MODULE_POST_LINK_DUMP");
+  StringEnvar postLinkLLVMIRModuleReplace =
+      StringEnvar("HYDRA_DEVICE_LLVM_MODULE_POST_LINK_REPLACE");
 };
 } // namespace LLVM
 } // namespace mlir
