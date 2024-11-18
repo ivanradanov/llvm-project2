@@ -38,6 +38,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <functional>
@@ -545,22 +546,28 @@ LogicalResult convertGPUCallToLaunch(gpu::CallOp callOp,
     return failure();
   }
 
+  auto assertIsMemEffectFree = [&](Operation *op) {
+    if (!isMemoryEffectFree(op)) {
+      op->dump();
+      llvm_unreachable("Operation not memory effect free");
+    }
+  };
   rewriter.setInsertionPoint(callOp);
   SmallVector<Operation *> clonedToHost;
   for (auto *op : gridPar.before) {
-    assert(isMemoryEffectFree(op));
+    assertIsMemEffectFree(op);
     clonedToHost.push_back(rewriter.clone(*op, toHost));
   }
   for (auto *op : blockPar.before) {
-    assert(isMemoryEffectFree(op));
+    assertIsMemEffectFree(op);
     if (llvm::all_of(op->getOperands(),
                      [&](Value v) { return toHost.lookupOrNull(v); }))
       clonedToHost.push_back(rewriter.clone(*op, toHost));
   }
   for (auto *op : gridPar.after)
-    assert(isMemoryEffectFree(op));
+    assertIsMemEffectFree(op);
   for (auto *op : blockPar.after)
-    assert(isMemoryEffectFree(op));
+    assertIsMemEffectFree(op);
 
   // FIXME assert normalized parallel loops [0; n)
 
