@@ -311,13 +311,24 @@ struct VectorLoadLower : public ConvertOpToLLVMPattern<vector::LoadOp> {
     if (!isContiguious && !isAtAddrMemref(memref))
       return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
 
-    Type ty = tyAttr.getValue();
+    Type tyToAccess = tyAttr.getValue();
     Value ptr = adaptor.getBase();
+
+    if (adaptor.getIndices().size() != 1)
+      return rewriter.notifyMatchFailure(op, "Only 1-d memrefs for now");
+
+    Type tyForOffset =
+        getTypeConverter()->convertType(memrefTy.getElementType());
+    if (!tyForOffset)
+      return rewriter.notifyMatchFailure(op, "Could not convert el type");
+    ptr =
+        rewriter.create<LLVM::GEPOp>(op->getLoc(), ptr.getType(), tyForOffset,
+                                     ptr, ValueRange{adaptor.getIndices()[0]});
 
     Value newVal = bitcastToVec(
         rewriter, getTypeConverter()->getDataLayoutAnalysis()->getAbove(op),
 
-        rewriter.create<LLVM::LoadOp>(op.getLoc(), ty, ptr));
+        rewriter.create<LLVM::LoadOp>(op.getLoc(), tyToAccess, ptr));
 
     rewriter.replaceOp(op, newVal);
 
@@ -340,14 +351,25 @@ struct VectorStoreLower : public ConvertOpToLLVMPattern<vector::StoreOp> {
     if (!isContiguious && !isAtAddrMemref(memref))
       return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
 
-    Type ty = tyAttr.getValue();
+    Type tyToAccess = tyAttr.getValue();
     Value ptr = adaptor.getBase();
+
+    if (adaptor.getIndices().size() != 1)
+      return rewriter.notifyMatchFailure(op, "Only 1-d memrefs for now");
+
+    Type tyForOffset =
+        getTypeConverter()->convertType(memrefTy.getElementType());
+    if (!tyForOffset)
+      return rewriter.notifyMatchFailure(op, "Could not convert el type");
+    ptr =
+        rewriter.create<LLVM::GEPOp>(op->getLoc(), ptr.getType(), tyForOffset,
+                                     ptr, ValueRange{adaptor.getIndices()[0]});
 
     rewriter.replaceOpWithNewOp<LLVM::StoreOp>(
         op,
         bitcastFromVec(
             rewriter, getTypeConverter()->getDataLayoutAnalysis()->getAbove(op),
-            ty, adaptor.getValueToStore()),
+            tyToAccess, adaptor.getValueToStore()),
         ptr);
 
     return success();
