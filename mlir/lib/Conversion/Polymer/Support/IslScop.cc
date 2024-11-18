@@ -1180,17 +1180,22 @@ public:
       auto ba = dyn_cast<BlockArgument>(origArg);
       if (ba) {
         Operation *owner = ba.getOwner()->getParentOp();
-        // if (isa<func::FuncOp>(owner)) {
-        //   args.push_back(funcMapping.lookup(ba));
-        // }
         if (isa<affine::AffineForOp, affine::AffineParallelOp>(owner)) {
           SmallVector<Operation *> enclosing;
-          stmt.getEnclosingOps(enclosing);
+          stmt.getEnclosingAffineOps(enclosing);
           unsigned ivId = 0;
           for (auto *op : enclosing) {
             if (isa<affine::AffineIfOp>(op)) {
               continue;
-            } else if (isa<affine::AffineForOp, affine::AffineParallelOp>(op)) {
+            } else if (auto par = dyn_cast<affine::AffineParallelOp>(op)) {
+              if (owner == op) {
+                ivId += ba.getArgNumber();
+                assert(par.getIVs()[0].getArgNumber() == 0 &&
+                       "Make sure the IVs start at arg #0");
+                break;
+              }
+              ivId += par.getNumDims();
+            } else if (isa<affine::AffineForOp>(op)) {
               if (owner == op)
                 break;
               ivId++;
@@ -1718,8 +1723,6 @@ void IslScop::rescopeStatements(
     affine::FlatAffineValueConstraints domain = *newStmt.getMlirDomain();
     addDomainRelation(newStmt, domain);
 
-    llvm::SmallVector<mlir::Operation *, 8> enclosingOps;
-    newStmt.getEnclosingOps(enclosingOps);
     unsigned depth = domain.getNumDimVars();
     // FIXME wrong
     LLVM_DEBUG(llvm::dbgs() << "Depth " << depth << "\n");

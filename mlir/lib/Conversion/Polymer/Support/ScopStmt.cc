@@ -140,11 +140,10 @@ isl::map ScopStmt::getSchedule() const {
   M = M.coalesce();
   return M;
 }
-void ScopStmt::getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
-                               bool forOnly) const {
+void ScopStmt::getEnclosingAffineOps(
+    llvm::SmallVectorImpl<mlir::Operation *> &ops) const {
   for (mlir::Operation *op : enclosingOps)
-    if (!forOnly || isa<mlir::affine::AffineForOp>(op))
-      ops.push_back(op);
+    ops.push_back(op);
 }
 
 Operation *ScopStmt::getOperation() const { return op; }

@@ -134,8 +134,8 @@ public:
   IslScop *getParent() const { return parent; }
 
   /// Get a copy of the enclosing operations.
-  void getEnclosingOps(llvm::SmallVectorImpl<mlir::Operation *> &ops,
-                       bool forOnly = false) const;
+  void
+  getEnclosingAffineOps(llvm::SmallVectorImpl<mlir::Operation *> &ops) const;
   /// Get the callee of this scop stmt.
   mlir::Operation *getOperation() const;
   /// Get the access affine::AffineValueMap of an op in the callee and the
