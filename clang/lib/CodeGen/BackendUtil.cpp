@@ -202,7 +202,8 @@ static constexpr char DefaultLowerToLLVMPipeline[] =
     "gpu.module("
       "convert-gpu-to-nvvm,"
       "convert-scf-to-cf,"
-      "convert-to-llvm"
+      "convert-to-llvm,"
+      "reconcile-unrealized-casts"
     "),"
     "gpu-module-to-binary,"
     "convert-scf-to-cf,"
@@ -1922,11 +1923,11 @@ LogicalResult lowerToLLVM(mlir::ModuleOp MlirModule) {
   if (mlir::failed(
           mlir::parsePassPipeline(ClMlirLowerToLLVMPipeline.c_str(), pm))) {
     llvm::errs() << "Invalid lower llvm pipeline";
-    return failure();
+    abort();
   }
   if (mlir::failed(pm.run(MlirModule))) {
     llvm::errs() << "Mlir passes failed";
-    return failure();
+    abort();
   }
   LLVM_DEBUG(llvm::dbgs() << "Post-lower-to-llvm MLIR\n"
                           << *MlirModule << "\n");
