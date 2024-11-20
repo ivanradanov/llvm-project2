@@ -55,14 +55,17 @@ PreservedAnalyses PrintModulePass::run(Module &M, ModuleAnalysisManager &AM) {
   if (WriteNewDbgInfoFormat)
     M.removeDebugIntrinsicDeclarations();
 
+  // TODO Whether to print this should be an option to the pass which is set in
+  // BackendUtil.cpp
   if (EmitMLIR || transformerIsTargetOffloadingModule(&M)) {
-    if (auto Arr = dyn_cast_or_null<ConstantDataSequential>(
-            dyn_cast_or_null<GlobalVariable>(
-                M.getNamedValue("__clang_mlir_output"))
-                ->getInitializer())) {
-      StringRef Str = Arr->getAsString();
-      OS.write(Str.data(), Arr->getAsString().size());
-      return PreservedAnalyses::all();
+    if (auto MlirGlobal = dyn_cast_or_null<GlobalVariable>(
+            M.getNamedValue("__clang_mlir_output"))) {
+      if (auto Arr = dyn_cast_or_null<ConstantDataSequential>(
+              MlirGlobal->getInitializer())) {
+        StringRef Str = Arr->getAsString();
+        OS.write(Str.data(), Arr->getAsString().size());
+        return PreservedAnalyses::all();
+      }
     }
   }
 
