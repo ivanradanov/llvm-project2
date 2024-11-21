@@ -24,6 +24,7 @@ void setNativeProperties(Operation *op, IntegerOverflowFlags overflowFlags);
 
 /// Replaces the given operation "op" with a new operation of type "targetOp"
 /// and given operands.
+template <bool convertIntegerAttrs = false>
 LogicalResult oneToOneRewrite(
     Operation *op, StringRef targetOp, ValueRange operands,
     ArrayRef<NamedAttribute> targetAttrs,
