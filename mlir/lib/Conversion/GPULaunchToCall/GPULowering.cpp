@@ -241,10 +241,12 @@ protected:
 
     // TODO index size
     Type indexType = rewriter.getI64Type();
-    return this->createIndexAttrConstant(
-        rewriter, original->getLoc(), indexType,
-        original.getType().getRank() == 0 ? 1
-                                          : original.getType().getDimSize(0));
+    return rewriter.create<LLVM::ConstantOp>(
+        original.getLoc(), indexType,
+        rewriter.getIntegerAttr(indexType,
+                                original.getType().getRank() == 0
+                                    ? 1
+                                    : original.getType().getDimSize(0)));
   }
 };
 
