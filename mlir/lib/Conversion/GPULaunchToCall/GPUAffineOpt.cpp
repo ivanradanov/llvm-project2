@@ -680,6 +680,13 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_dump(newSchedule);
   });
 
+  // TODO we want to collect statistics and emit remarks about this kind of
+  // stuff
+  if (!newSchedule)
+    return;
+
+  // TODO add a round-trip mode where we codegen the original schedule
+
   PrepScheduleInfo psi;
   psi.unallocatedArrays = psi.allArrays =
       isl::manage(isl_schedule_constraints_get_array_size(sc)).domain();
