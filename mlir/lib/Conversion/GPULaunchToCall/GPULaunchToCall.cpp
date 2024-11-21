@@ -420,15 +420,21 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
     return failure();
 
   // TODO Only kernels with no dynamic mem for now
-  Value shMemSize = launchOp.getDynamicSharedMemorySize();
-  auto cst = dyn_cast_or_null<arith::ConstantIntOp>(shMemSize.getDefiningOp());
-  if (!(cst && cst.value() == 0)) {
-    return failure();
+  Value shmemSize = launchOp.getDynamicSharedMemorySize();
+  Type shmemSizeType;
+  if (shmemSize) {
+    shmemSizeType = shmemSize.getType();
+    auto cst =
+        dyn_cast_or_null<arith::ConstantIntOp>(shmemSize.getDefiningOp());
+    if (!(cst && cst.value() == 0)) {
+      return failure();
+    }
+  } else {
+    shmemSizeType = rewriter.getI32Type();
   }
 
   auto kernelSymbol = launchOp.getKernel();
   auto gpuKernelFunc = SymbolTable::lookupSymbolIn(st, kernelSymbol);
-  Type shmemSizeType = launchOp.getDynamicSharedMemorySize().getType();
   auto converted =
       convertGPUKernelToParallel(gpuKernelFunc, shmemSizeType, rewriter, true);
   if (failed(converted))
@@ -449,7 +455,8 @@ LogicalResult convertGPULaunchFuncToParallel(gpu::LaunchFuncOp launchOp,
   operands.push_back(launchOp.getBlockSizeX());
   operands.push_back(launchOp.getBlockSizeY());
   operands.push_back(launchOp.getBlockSizeZ());
-  operands.push_back(launchOp.getDynamicSharedMemorySize());
+  if (shmemSize)
+    operands.push_back(shmemSize);
   operands.insert(operands.end(), launchOp.getKernelOperands().begin(),
                   launchOp.getKernelOperands().end());
 
