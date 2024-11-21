@@ -228,9 +228,9 @@ struct CmpFOpLowering : public ConvertOpToLLVMPattern<arith::CmpFOp> {
 LogicalResult
 ConstantOpLowering::matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
                                     ConversionPatternRewriter &rewriter) const {
-  return LLVM::detail::oneToOneRewrite(op, LLVM::ConstantOp::getOperationName(),
-                                       adaptor.getOperands(), op->getAttrs(),
-                                       *getTypeConverter(), rewriter);
+  return LLVM::detail::oneToOneRewrite<true>(
+      op, LLVM::ConstantOp::getOperationName(), adaptor.getOperands(),
+      op->getAttrs(), *getTypeConverter(), rewriter);
 }
 
 //===----------------------------------------------------------------------===//

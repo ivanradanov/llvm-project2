@@ -335,6 +335,7 @@ void LLVM::detail::setNativeProperties(Operation *op,
 
 /// Replaces the given operation "op" with a new operation of type "targetOp"
 /// and given operands.
+template <bool convertIntegerAttrs>
 LogicalResult LLVM::detail::oneToOneRewrite(
     Operation *op, StringRef targetOp, ValueRange operands,
     ArrayRef<NamedAttribute> targetAttrs,
@@ -355,6 +356,16 @@ LogicalResult LLVM::detail::oneToOneRewrite(
       rewriter.create(op->getLoc(), rewriter.getStringAttr(targetOp), operands,
                       resultTypes, targetAttrs);
 
+  if constexpr (convertIntegerAttrs) {
+    for (auto attr : newOp->getAttrs().vec())
+      if (auto ia = dyn_cast<IntegerAttr>(attr.getValue()))
+        if (rewriter.getIndexType() == ia.getType())
+          newOp->setAttr(
+              attr.getName(),
+              IntegerAttr::get(typeConverter.convertType(ia.getType()),
+                               ia.getValue()));
+  }
+
   setNativeProperties(newOp, overflowFlags);
 
   // If the operation produced 0 or 1 result, return them immediately.
@@ -374,3 +385,15 @@ LogicalResult LLVM::detail::oneToOneRewrite(
   rewriter.replaceOp(op, results);
   return success();
 }
+template
+LogicalResult LLVM::detail::oneToOneRewrite<true>(
+    Operation *op, StringRef targetOp, ValueRange operands,
+    ArrayRef<NamedAttribute> targetAttrs,
+    const LLVMTypeConverter &typeConverter, ConversionPatternRewriter &rewriter,
+    IntegerOverflowFlags overflowFlags);
+template
+LogicalResult LLVM::detail::oneToOneRewrite<false>(
+    Operation *op, StringRef targetOp, ValueRange operands,
+    ArrayRef<NamedAttribute> targetAttrs,
+    const LLVMTypeConverter &typeConverter, ConversionPatternRewriter &rewriter,
+    IntegerOverflowFlags overflowFlags);
