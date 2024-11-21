@@ -3,14 +3,58 @@
 #include "isl/map.h"
 #include "isl/schedule_node.h"
 #include "isl/schedule_type.h"
+#include "isl/union_map.h"
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "cpp_functions.h"
 
-isl_union_map *
-isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
-										  isl_union_map *_extra_umap) {
+isl::stat isl_id_to_id_foreach(
+	isl_id_to_id *id_to_id, std::function<isl::stat(isl::id, isl::id)> f)
+{
+	struct Data {
+		decltype(f) &fn;
+	} data{f};
+	auto lambda2 = [](isl_id *id, isl_id *target_id, void *user) -> isl_stat {
+		return static_cast<struct Data *>(user)
+			->fn(isl::manage(id), isl::manage(target_id))
+			.release();
+	};
+	return isl::manage(isl_id_to_id_foreach(id_to_id, lambda2, &data));
+}
+
+/// Tag the @p Relation domain with @p TagId
+static __isl_give isl_map *tag(
+	__isl_take isl_map *Relation, __isl_take isl_id *TagId)
+{
+	isl_space *Space = isl_map_get_space(Relation);
+	Space = isl_space_drop_dims(
+		Space, isl_dim_out, 0, isl_map_dim(Relation, isl_dim_out));
+	Space = isl_space_set_tuple_id(Space, isl_dim_out, TagId);
+	isl_multi_aff *Tag = isl_multi_aff_domain_map(Space);
+	Relation = isl_map_preimage_domain_multi_aff(Relation, Tag);
+	return Relation;
+}
+
+isl::union_map tag(isl::union_map umap, isl::id id)
+{
+	isl::union_map taggedMap =
+		isl::manage(isl_union_map_empty(umap.get_space().release()));
+	umap.foreach_map([&](isl::map map) {
+		isl::map tagged = isl::manage(tag(map.release(), id.copy()));
+		taggedMap = taggedMap.unite(tagged.to_union_map());
+		return isl::stat::ok();
+	});
+	return taggedMap;
+}
+
+isl_union_map *isl_ast_generate_array_expansion_indexing(
+	isl_schedule_node *_node, isl_union_map *_extra_umap, isl_union_map *_lrs)
+{
+	ISL_DEBUG(std::cerr << "isl_ast_generate_array_expansion_indexing\n");
+	isl::union_map lrs = isl::manage(_lrs);
+	ISL_DEBUG(std::cerr << "lrs "; isl_union_map_dump(lrs.get()));
 
 	isl::schedule_node_band node =
 		isl::manage_copy(_node).as<isl::schedule_node_band>();
@@ -35,17 +79,23 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 	for (int member = 0; member < n_members; member++) {
 
 		isl_id_to_id *array_expansion =
-			isl_schedule_node_band_member_get_array_expansion(node.get(),
-															  member);
+			isl_schedule_node_band_member_get_array_expansion(
+				node.get(), member);
+
+		auto partial_schedule = node.get_partial_schedule().at(member);
+		ISL_DEBUG(std::cerr << "partial_schedule ";
+				  isl_union_pw_aff_dump(partial_schedule.get()));
 
 		isl::union_map member_array_umap;
 
-		auto lambda1 = [&](isl_id *id, isl_id *target_id) -> isl_stat {
-			isl::id array_id = isl::manage(id);
-			int factor = (int)(uintptr_t)isl::manage_copy(target_id).get_user();
-			// TODO offset
-			int offset = factor - 1;
-			// assert(offset
+		auto lambda1 = [&](isl::id array_id, isl::id target_id) -> isl::stat {
+			int factor = (int)(uintptr_t)target_id.get_user();
+			isl::id offset_base_stmt;
+
+			isl::union_map tagged_partial_schedule =
+				tag(partial_schedule.as_union_map(), array_id);
+			ISL_DEBUG(std::cerr << "tagged_partial_schedule ";
+					  isl_union_map_dump(tagged_partial_schedule.get()));
 
 			isl::union_map umap;
 			extra_umap.foreach_map([&](isl::map map) {
@@ -59,6 +109,104 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 				int n_stmt_dims = (unsigned)r;
 				n_stmt_dims = 0;
 				auto stmt_id = map.get_range_tuple_id();
+
+				ISL_DEBUG(std::cerr << "handling "; isl_id_dump(stmt_id.get()));
+
+				int offset = [&]() {
+					if (factor == 1)
+						return 0;
+
+					// FIXME This assumes there is no disjoint sets of live
+					// range spans wrt to a specific array in each band. I.e.
+					// for all statements that access the same array that got
+					// expanded, we will always be able to get a valid offset
+					// for all statements wrt an arbitrary single one.
+					if (offset_base_stmt.is_null()) {
+						offset_base_stmt = stmt_id;
+					}
+
+					int invalid_offset = std::numeric_limits<int>::min();
+					int offset = invalid_offset;
+
+					bool lrs_relation_found = false;
+
+					lrs.foreach_map([&](isl::map map) {
+						// map is in a space ((S1->A) -> (S2->A))
+						isl::id domain_stmt = map.get_space()
+												  .domain()
+												  .unwrap()
+												  .get_domain_tuple_id();
+						isl::id range_stmt = map.get_space()
+												 .range()
+												 .unwrap()
+												 .get_domain_tuple_id();
+						isl::id map_array_id = map.get_space()
+												   .domain()
+												   .unwrap()
+												   .get_range_tuple_id();
+
+						if (array_id.get() != map_array_id.get())
+							return isl::stat::ok();
+
+						if (domain_stmt.get() != stmt_id.get() &&
+							range_stmt.get() != stmt_id.get())
+							return isl::stat::ok();
+						lrs_relation_found = true;
+
+						if (domain_stmt.get() != offset_base_stmt.get() &&
+							range_stmt.get() != offset_base_stmt.get())
+							return isl::stat::ok();
+
+						ISL_DEBUG(std::cerr << "map "; isl_map_dump(map.get()));
+
+						isl::union_map applied = map.to_union_map();
+						applied = applied.apply_domain(tagged_partial_schedule);
+						applied = applied.apply_range(tagged_partial_schedule);
+						ISL_DEBUG(std::cerr << "applied ";
+								  isl_union_map_dump(applied.get()));
+						isl::map applied_map = applied.as_map();
+
+						auto offset_set =
+							isl::manage(isl_map_deltas(applied_map.copy()));
+						ISL_DEBUG(std::cerr << "offset_set ";
+								  isl_set_dump(offset_set.get()));
+
+						isl::val offset_val =
+							offset_set.plain_get_val_if_fixed(isl::dim::set, 0);
+						isl_assert(ctx,
+							offset_val.is_int() && "must be an integer",
+							abort());
+						int num = offset_val.get_num_si();
+						int den = offset_val.get_den_si();
+						int cur_offset = num / den;
+						ISL_DEBUG(
+							std::cerr << "offset " << cur_offset << std::endl);
+
+						if (domain_stmt.get() == range_stmt.get())
+							isl_assert(ctx,
+								cur_offset == 0 &&
+									"offset must be 0 for intra relations",
+								abort());
+						if (offset != invalid_offset)
+							isl_assert(ctx,
+								cur_offset == offset && "conflicting offsets",
+								abort());
+
+						offset = cur_offset;
+
+						return isl::stat::ok();
+					});
+
+					if (!lrs_relation_found)
+						offset = 0;
+
+					isl_assert(ctx,
+						offset != invalid_offset && "no valid offset found",
+						abort());
+
+					return offset;
+				}();
+
 				isl::aff aff;
 				if (factor == 1) {
 					aff = isl::aff::zero_on_domain(map.domain().space());
@@ -76,8 +224,8 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 					aff = aff.mod(factor);
 
 				auto as_map = aff.as_map();
-				as_map = as_map.add_dims(isl::dim::out,
-										 n_expanded_dims - 1 - depth - member);
+				as_map = as_map.add_dims(
+					isl::dim::out, n_expanded_dims - 1 - depth - member);
 				as_map = isl::manage(isl_map_insert_dims(
 					as_map.release(), isl_dim_out, 0, depth + member));
 
@@ -106,16 +254,9 @@ isl_ast_generate_array_expansion_indexing(isl_schedule_node *_node,
 			else
 				member_array_umap = member_array_umap.unite(umap);
 
-			return isl_stat_ok;
+			return isl::stat::ok();
 		};
-		struct Data {
-			decltype(lambda1) &fn;
-		} data{lambda1};
-		auto lambda2 = [](isl_id *id, isl_id *target_id,
-						  void *user) -> isl_stat {
-			return static_cast<struct Data *>(user)->fn(id, target_id);
-		};
-		if (isl_id_to_id_foreach(array_expansion, lambda2, &data) < 0)
+		if (isl_id_to_id_foreach(array_expansion, lambda1).is_error())
 			return nullptr;
 
 		if (full_array_umap.is_null())

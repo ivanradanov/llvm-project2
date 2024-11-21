@@ -484,6 +484,19 @@ isl::union_map tag(isl::union_map umap, isl::id id) {
   return taggedMap;
 }
 
+isl::stat isl_id_to_id_foreach(isl_id_to_id *id_to_id,
+                               std::function<isl::stat(isl::id, isl::id)> f) {
+  struct Data {
+    decltype(f) &fn;
+  } data{f};
+  auto lambda2 = [](isl_id *id, isl_id *target_id, void *user) -> isl_stat {
+    return static_cast<struct Data *>(user)
+        ->fn(isl::manage(id), isl::manage(target_id))
+        .release();
+  };
+  return isl::manage(isl_id_to_id_foreach(id_to_id, lambda2, &data));
+}
+
 isl::schedule_node insertArrayExpansion(isl::schedule_node node,
                                         PrepScheduleInfo psi) {
 
@@ -511,6 +524,9 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
 
     isl::union_set deltas = applied.deltas();
     LLVM_DEBUG(llvm::dbgs() << "Deltas "; dumpIslObj(deltas));
+    isl::union_map deltas_map =
+        isl::manage(isl_union_map_deltas_map(applied.copy()));
+    LLVM_DEBUG(llvm::dbgs() << "Deltas map "; dumpIslObj(deltas_map));
 
     bool coincident = true;
     deltas.foreach_set([&](isl::set set) {
@@ -550,7 +566,7 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
     for (unsigned i = 0; i < members; i++) {
       isl_id_to_id *expansion =
           isl_schedule_node_band_member_get_array_expansion(node.get(), i);
-      auto lambda1 = [&](isl::id arrayId, isl::id expansionId) -> isl_stat {
+      auto getFactors = [&](isl::id arrayId, isl::id expansionId) -> isl::stat {
         // if (!toAllocate
         //     .intersect(isl::set::universe(toAllocate.get_space())
         //                .set_tuple_id(isl::manage_copy(arrayId))
@@ -566,16 +582,9 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
           toExpandMap.insert({arrayId.get(), {factor}});
         else
           toExpandMap[arrayId.get()].push_back(factor);
-        return isl_stat_ok;
+        return isl::stat::ok();
       };
-      struct Data {
-        decltype(lambda1) &fn;
-      } data{lambda1};
-      auto lambda2 = [](isl_id *id, isl_id *target_id, void *user) -> isl_stat {
-        return static_cast<struct Data *>(user)->fn(isl::manage(id),
-                                                    isl::manage(target_id));
-      };
-      if (isl_id_to_id_foreach(expansion, lambda2, &data) < 0)
+      if (isl_id_to_id_foreach(expansion, getFactors).is_error())
         return {};
     }
   }
@@ -678,7 +687,6 @@ void transform(LLVM::LLVMFuncOp f) {
       isl::manage(isl_union_set_empty(psi.allArrays.get_space().release()));
   psi.lrs = isl::manage(isl_schedule_constraints_get_live_range_span(sc));
   newSchedule = prepareScheduleForGPU(isl::manage(newSchedule), psi).release();
-  isl_schedule_constraints_free(sc);
 
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule Prepared for GPU:\n";
@@ -686,12 +694,15 @@ void transform(LLVM::LLVMFuncOp f) {
   });
 
   isl_ast_build *build = isl_ast_build_alloc(scop->getIslCtx());
+  build = isl_ast_build_set_live_range_span(
+      build, isl_schedule_constraints_get_live_range_span(sc));
   isl_ast_node *node =
       isl_ast_build_node_from_schedule(build, isl_schedule_copy(newSchedule));
   LLVM_DEBUG({
     llvm::dbgs() << "New AST:\n";
     isl_ast_node_dump(node);
   });
+  isl_schedule_constraints_free(sc);
 
   auto g = cast<LLVM::LLVMFuncOp>(scop->applySchedule(newSchedule, f));
 

@@ -158,6 +158,8 @@ struct isl_ast_build {
 
 	isl_union_map *options;
 
+	isl_union_map *live_range_span;
+
 	__isl_give isl_ast_node *(*at_each_domain)(
 		__isl_take isl_ast_node *node,
 		__isl_keep isl_ast_build *build, void *user);

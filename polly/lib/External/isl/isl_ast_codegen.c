@@ -5410,7 +5410,8 @@ static __isl_give isl_ast_graft_list *build_ast_from_band(
 	ISL_DEBUG(fprintf(stderr, "added new array dims in executed_ea: "));
 	ISL_DEBUG(isl_union_map_dump(executed_ea));
 
-	extra_umap = isl_ast_generate_array_expansion_indexing(node, extra_umap);
+	extra_umap = isl_ast_generate_array_expansion_indexing(
+		node, extra_umap, build->live_range_span);
 	ISL_DEBUG(fprintf(stderr, "extra_umap with array expansion: "));
 	ISL_DEBUG(isl_union_map_dump(extra_umap));
 
