@@ -48,6 +48,8 @@
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "Utils.h"
+
 #include <functional>
 #include <memory>
 
@@ -1237,13 +1239,11 @@ struct NormalizeLoop : public OpRewritePattern<scf::ForOp> {
       return failure();
     }
 
-    OpBuilder::InsertPoint point = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPoint(op->getParentOp());
+    rewriter.setInsertionPoint(op);
     Value zero = createConstantInt(rewriter, op.getLoc(),
                                    op.getInductionVar().getType(), 0);
     Value one = createConstantInt(rewriter, op.getLoc(),
                                   op.getInductionVar().getType(), 1);
-    rewriter.restoreInsertionPoint(point);
 
     Value difference = rewriter.create<SubIOp>(op.getLoc(), op.getUpperBound(),
                                                op.getLowerBound());
@@ -1256,6 +1256,7 @@ struct NormalizeLoop : public OpRewritePattern<scf::ForOp> {
     // rewriter.create<CeilDivSIOp>(op.getLoc(), difference, op.getStep());
     auto newForOp = rewriter.create<scf::ForOp>(op.getLoc(), zero, tripCount,
                                                 one, op.getInits());
+    clearBlock(newForOp.getBody(), rewriter);
     rewriter.setInsertionPointToStart(newForOp.getBody());
     Value scaled = rewriter.create<MulIOp>(
         op.getLoc(), newForOp.getInductionVar(), op.getStep());
