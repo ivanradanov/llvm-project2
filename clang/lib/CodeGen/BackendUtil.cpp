@@ -1114,11 +1114,13 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     const bool PrepareForThinLTO = CodeGenOpts.PrepareForThinLTO;
     const bool PrepareForLTO = CodeGenOpts.PrepareForLTO;
 
-    if (!TransformerEnabled || TransformerPreprocessing) {
+    if (TransformerEnabled && TransformerPreprocessing) {
       PB.registerPipelineStartEPCallback(
           [](ModulePassManager &MPM, OptimizationLevel Level) {
             MPM.addPass(CUDALaunchFixUp());
           });
+    }
+    if (!TransformerEnabled || TransformerPreprocessing) {
       if (LangOpts.ObjCAutoRefCount) {
         PB.registerPipelineStartEPCallback(
             [](ModulePassManager &MPM, OptimizationLevel Level) {
