@@ -53,46 +53,10 @@ using namespace mlir;
 
 namespace flangomp {
 
-// Checks for nesting pattern below as we need to avoid sharing the work of
-// statements which are nested in some constructs such as omp.critical or
-// another omp.parallel.
-//
-// omp.workshare { // `wsOp`
-//   ...
-//     omp.T { // `parent`
-//       ...
-//         `op`
-//
-template <typename T>
-static bool isNestedIn(omp::WorkshareOp wsOp, Operation *op) {
-  T parent = op->getParentOfType<T>();
-  if (!parent)
-    return false;
-  return wsOp->isProperAncestor(parent);
-}
-
 bool shouldUseWorkshareLowering(Operation *op) {
-  auto parentWorkshare = op->getParentOfType<omp::WorkshareOp>();
+  auto parentWorkshare = dyn_cast<omp::WorkshareOp>(op->getParentOp());
 
   if (!parentWorkshare)
-    return false;
-
-  if (isNestedIn<omp::CriticalOp>(parentWorkshare, op))
-    return false;
-
-  // 2.8.3  workshare Construct
-  // For a parallel construct, the construct is a unit of work with respect to
-  // the workshare construct. The statements contained in the parallel construct
-  // are executed by a new thread team.
-  if (isNestedIn<omp::ParallelOp>(parentWorkshare, op))
-    return false;
-
-  // 2.8.2  single Construct
-  // Binding The binding thread set for a single region is the current team. A
-  // single region binds to the innermost enclosing parallel region.
-  // Description Only one of the encountering threads will execute the
-  // structured block associated with the single construct.
-  if (isNestedIn<omp::SingleOp>(parentWorkshare, op))
     return false;
 
   // Do not use workshare lowering until we support CFG in omp.workshare
