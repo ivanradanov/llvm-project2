@@ -632,3 +632,104 @@ llvm.func @shr(%arg : i32) -> i32 {
   }
   llvm.return %a : i32
 }
+
+// -----
+
+// CHECK: #set = affine_set<()[s0] : (-s0 + 9 >= 0)>
+
+llvm.func @if(%a: i32) -> i32 {
+  %c10_i32 = arith.constant 10 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %cond = arith.cmpi ult, %a, %c10_i32 : i32
+  %r = scf.if %cond -> (i32) {
+    scf.yield %c0_i32 : i32
+  } else {
+    scf.yield %c1_i32 : i32
+  }
+  llvm.return %r : i32
+}
+
+// -----
+
+// CHECK: #set = affine_set<()[s0] : (-s0 + 10 >= 0)>
+
+llvm.func @if(%a: i32) -> i32 {
+  %c10_i32 = arith.constant 10 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %cond = arith.cmpi ule, %a, %c10_i32 : i32
+  %r = scf.if %cond -> (i32) {
+    scf.yield %c0_i32 : i32
+  } else {
+    scf.yield %c1_i32 : i32
+  }
+  llvm.return %r : i32
+}
+
+// -----
+
+// CHECK: #set = affine_set<()[s0] : (s0 - 11 >= 0)>
+
+llvm.func @if(%a: i32) -> i32 {
+  %c10_i32 = arith.constant 10 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %cond = arith.cmpi ugt, %a, %c10_i32 : i32
+  %r = scf.if %cond -> (i32) {
+    scf.yield %c0_i32 : i32
+  } else {
+    scf.yield %c1_i32 : i32
+  }
+  llvm.return %r : i32
+}
+
+// -----
+
+// CHECK: #set = affine_set<()[s0] : (s0 - 10 >= 0)>
+
+llvm.func @if(%a: i32) -> i32 {
+  %c10_i32 = arith.constant 10 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %cond = arith.cmpi uge, %a, %c10_i32 : i32
+  %r = scf.if %cond -> (i32) {
+    scf.yield %c0_i32 : i32
+  } else {
+    scf.yield %c1_i32 : i32
+  }
+  llvm.return %r : i32
+}
+
+// -----
+
+// CHECK: #set = affine_set<()[s0] : (s0 - 10 == 0)>
+llvm.func @if(%a: i32) -> i32 {
+  %c10_i32 = arith.constant 10 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %cond = arith.cmpi eq, %a, %c10_i32 : i32
+  %r = scf.if %cond -> (i32) {
+    scf.yield %c0_i32 : i32
+  } else {
+    scf.yield %c1_i32 : i32
+  }
+  llvm.return %r : i32
+}
+
+// -----
+
+// CHECK-LABEL: if_no_raise
+// CHECK-NOT: affine.if
+llvm.func @if_no_raise(%a: i32) -> i32 {
+  %c10_i32 = arith.constant 10 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %cond = arith.cmpi ne, %a, %c10_i32 : i32
+  %r = scf.if %cond -> (i32) {
+    scf.yield %c0_i32 : i32
+  } else {
+    scf.yield %c1_i32 : i32
+  }
+  llvm.return %r : i32
+}

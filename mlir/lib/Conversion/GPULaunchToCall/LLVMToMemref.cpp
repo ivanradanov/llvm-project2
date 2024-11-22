@@ -45,6 +45,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -763,11 +764,7 @@ public:
         eqs.push_back(true);
         break;
       case arith::CmpIPredicate::ne:
-        // TODO not very sure about this, write some tests
-        exprs.push_back(rhs - lhs + 1);
-        eqs.push_back(false);
-        exprs.push_back(lhs - rhs + 1);
-        eqs.push_back(false);
+        llvm_unreachable("no ne");
         break;
       case arith::CmpIPredicate::slt:
       case arith::CmpIPredicate::ult:
@@ -775,7 +772,7 @@ public:
         [[fallthrough]];
       case arith::CmpIPredicate::sle:
       case arith::CmpIPredicate::ule:
-        expr = expr + rhs - lhs;
+        expr = expr + lhs - rhs;
         exprs.push_back(expr);
         eqs.push_back(false);
         break;
@@ -785,7 +782,7 @@ public:
         [[fallthrough]];
       case arith::CmpIPredicate::sge:
       case arith::CmpIPredicate::uge:
-        expr = expr + lhs - rhs;
+        expr = expr + rhs - lhs;
         exprs.push_back(expr);
         eqs.push_back(false);
         break;
@@ -813,6 +810,10 @@ public:
         return failure();
     }
     if (auto cmp = dyn_cast<arith::CmpIOp>(op)) {
+      // TODO there is a way to make this work with ne, but it is annoying to
+      // think through, ingore for now.
+      if (cmp.getPredicate() == arith::CmpIPredicate::ne)
+        return failure();
       constraints.emplace_back(
           Constraint{cmp.getPredicate(),
                      {cmp.getLhs(), AffineExprBuilder(ifOp, legalizeSymbols)},
