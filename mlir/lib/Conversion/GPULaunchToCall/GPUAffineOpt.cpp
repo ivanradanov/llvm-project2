@@ -39,6 +39,7 @@
 #include "polly/Support/GICHelper.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include "isl/ast.h"
@@ -63,6 +64,9 @@ using namespace mlir;
 
 #define DEBUG_TYPE "gpu-affine-opt"
 #define DBGS (llvm::dbgs() << "gpu-affine-opt: ")
+
+STATISTIC(numKernels, "number of kernels");
+STATISTIC(newSchedulesComputed, "how many new schedules we computed");
 
 namespace mlir {
 #define GEN_PASS_DEF_GPUAFFINEOPTPASS
@@ -673,17 +677,20 @@ void transform(LLVM::LLVMFuncOp f) {
   auto r = isl_options_set_schedule_whole_component(scop->getIslCtx(), 1);
   assert(r == isl_stat_ok);
 
-  isl_schedule *newSchedule = isl_schedule_constraints_compute_schedule(
-      isl_schedule_constraints_copy(sc));
+  isl::schedule newSchedule =
+      isl::manage(isl_schedule_constraints_compute_schedule(
+          isl_schedule_constraints_copy(sc)));
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule:\n";
-    isl_schedule_dump(newSchedule);
+    isl_schedule_dump(newSchedule.get());
   });
 
   // TODO we want to collect statistics and emit remarks about this kind of
   // stuff
-  if (!newSchedule)
+  if (newSchedule.is_null())
     return;
+
+  newSchedulesComputed++;
 
   // TODO add a round-trip mode where we codegen the original schedule
 
@@ -693,25 +700,25 @@ void transform(LLVM::LLVMFuncOp f) {
   psi.allocatedArrays =
       isl::manage(isl_union_set_empty(psi.allArrays.get_space().release()));
   psi.lrs = isl::manage(isl_schedule_constraints_get_live_range_span(sc));
-  newSchedule = prepareScheduleForGPU(isl::manage(newSchedule), psi).release();
+  newSchedule = prepareScheduleForGPU(newSchedule, psi);
 
   LLVM_DEBUG({
     llvm::dbgs() << "New Schedule Prepared for GPU:\n";
-    isl_schedule_dump(newSchedule);
+    isl_schedule_dump(newSchedule.get());
   });
 
   isl_ast_build *build = isl_ast_build_alloc(scop->getIslCtx());
   build = isl_ast_build_set_live_range_span(
       build, isl_schedule_constraints_get_live_range_span(sc));
   isl_ast_node *node =
-      isl_ast_build_node_from_schedule(build, isl_schedule_copy(newSchedule));
+      isl_ast_build_node_from_schedule(build, newSchedule.copy());
   LLVM_DEBUG({
     llvm::dbgs() << "New AST:\n";
     isl_ast_node_dump(node);
   });
   isl_schedule_constraints_free(sc);
 
-  auto g = cast<LLVM::LLVMFuncOp>(scop->applySchedule(newSchedule, f));
+  auto g = cast<LLVM::LLVMFuncOp>(scop->applySchedule(newSchedule.copy(), f));
 
   scop->cleanup(g);
 
@@ -875,8 +882,9 @@ struct SingleRegion {
   Block::iterator begin, end;
 };
 
-struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
-  using Base::Base;
+struct GPUAffineOptPass : impl::GPUAffineOptPassBase<GPUAffineOptPass> {
+  using impl::GPUAffineOptPassBase<GPUAffineOptPass>::GPUAffineOptPassBase;
+
   void runOnOperation() override {
     Operation *op = getOperation();
     MLIRContext *context = &getContext();
@@ -1001,6 +1009,7 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
         if (func->getAttr("gpu.par.kernel")) {
+          numKernels++;
           LLVM_DEBUG(DBGS << "Before opt:\n" << func << "\n");
           removeIVs(func);
           LLVM_DEBUG(DBGS << "Removed IVs:\n" << func << "\n");
@@ -1012,7 +1021,8 @@ struct GPUAffineOptPass : public impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           canonicalize(func);
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
           //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
-          mlir::gpu::affine_opt::transform(func);
+          if (!getenv("GPU_AFFINE_OPT_ROUNDTRIP"))
+            mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
           // Generates global so run on module
           sharedMemrefAllocaToGlobal(func);
