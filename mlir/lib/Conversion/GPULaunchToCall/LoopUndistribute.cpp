@@ -41,18 +41,6 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/ErrorHandling.h"
 
-#include "isl/ast.h"
-#include "isl/ast_build.h"
-#include "isl/constraint.h"
-#include "isl/id.h"
-#include "isl/isl-noexceptions.h"
-#include "isl/map.h"
-#include "isl/schedule.h"
-#include "isl/schedule_node.h"
-#include "isl/space.h"
-#include "isl/union_map.h"
-#include "isl/union_set.h"
-
 #include "LoopUndistribute.h"
 
 using namespace mlir;
@@ -90,6 +78,17 @@ LogicalResult parallelizePreceeding(affine::AffineParallelOp parOp,
   }
 
   return success(changed);
+}
+
+bool regionNeedsBarrier(Region &region) {
+  Operation *op = region.getParentOp();
+  if (isa<affine::AffineForOp, scf::ForOp>(op)) {
+    return true;
+  } else if (isa<affine::AffineIfOp, scf::IfOp>(op)) {
+    return false;
+  }
+  op->dump();
+  llvm_unreachable("unknown op");
 }
 
 // interchange is only supported for operations with no results for now
@@ -159,6 +158,9 @@ LogicalResult interchange(Operation *parent, RewriterBase &rewriter) {
        llvm::zip(child->getRegions(), parent->getRegions())) {
     if (parentRegion.getBlocks().size() == 0)
       continue;
+
+    bool needsBarrier = regionNeedsBarrier(childRegion);
+
     Block *parentBody = &parentRegion.front();
     rewriter.createBlock(&childRegion, childRegion.begin(),
                          parentBody->getArgumentTypes(),
@@ -170,6 +172,11 @@ LogicalResult interchange(Operation *parent, RewriterBase &rewriter) {
     assert(childBody->getTerminator()->getNumResults() == 0);
     rewriter.eraseOp(childBody->getTerminator());
     rewriter.setInsertionPointToEnd(childBody);
+
+    if (needsBarrier)
+      rewriter.create<affine::AffineBarrierOp>(
+          newPar.getLoc(), newPar.getBody()->getArguments());
+
     assert(parentBody->getTerminator()->getNumResults() == 0);
     assert(parentBody->getTerminator()->getNumOperands() == 0);
     rewriter.clone(*parentBody->getTerminator());
@@ -276,8 +283,3 @@ LogicalResult mlir::undistributeLoops(Operation *func) {
 
   return didSucceed(gridPar);
 }
-
-// void mlir::populateLoopUndistributePatterns(RewritePatternSet &patterns) {
-//   patterns.insert<FuseBlockPars, Interchange, ParallelizeSequential>(
-//       patterns.getContext());
-// }
