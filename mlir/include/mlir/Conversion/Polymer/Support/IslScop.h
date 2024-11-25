@@ -299,7 +299,9 @@ public:
   }
 
   void
-  rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope);
+  rescopeStatements(
+    std::function<bool(mlir::Operation *op)> shouldRescope,
+    std::function<bool(mlir::Operation *op)> isValidAsyncCopy);
 
   ScopArrayInfo *getArray(mlir::Value memref) {
     auto found =

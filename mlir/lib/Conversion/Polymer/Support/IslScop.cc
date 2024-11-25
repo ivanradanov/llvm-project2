@@ -1660,50 +1660,13 @@ Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
   return f;
 }
 
-// TODO we can do flow analysis on the operation to check that:
-// 1. all live-in memory come from global memory
-// 2. all live-out memory locations are in shared memory
-// 3. any live-out memory location that does not flow from global memory is
-//    either undefined, or flows from a 0-constant (because cuda async copy
-//    supports padding with 0s)
-//
-// then, it is a valid async copy
-static bool isValidAsyncCopy(Operation *op) {
-  return !op->walk([&](Operation *nested) {
-              if (isa<affine::AffineParallelOp, affine::AffineForOp,
-                      affine::AffineYieldOp, affine::AffineIfOp,
-                      LLVM::BitcastOp, LLVM::IntToPtrOp, LLVM::PtrToIntOp>(
-                      nested))
-                return WalkResult::advance();
-              if (isa<affine::AffineVectorStoreOp, affine::AffineStoreOp,
-                      affine::AffineVectorLoadOp, affine::AffineLoadOp>(
-                      nested)) {
-                affine::MemRefAccess access(nested);
-                auto memrefTy = cast<MemRefType>(access.memref.getType());
-                if (access.isStore() &&
-                    !nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(memrefTy))
-                  return WalkResult::interrupt();
-                // FIXME Currently assume that memrefs with the default memory
-                // space (no memory space) are global, we need to actually check
-                // - e.g. they come from kernel arguments
-                bool isGlobalMemref =
-                    nvgpu::NVGPUDialect::hasGlobalMemoryAddressSpace(
-                        memrefTy) ||
-                    (!memrefTy.getMemorySpace());
-                if (access.isLoad() && !isGlobalMemref)
-                  return WalkResult::interrupt();
-                return WalkResult::advance();
-              }
-              return WalkResult::interrupt();
-            }).wasInterrupted();
-}
-
 // TODO this takes the union of the write effects in the operations we rescope
 // to. instead, what should happen is we should do flow analysis to see what
 // memory effects live-out and live-in, i.e. not care about memory effects that
 // are not observable outside the rescoped op.
 void IslScop::rescopeStatements(
-    std::function<bool(Operation *op)> shouldRescope) {
+    std::function<bool(Operation *op)> shouldRescope,
+    std::function<bool(Operation *op)> isValidAsyncCopy) {
 
   unsigned rescopedNum = 0;
 
