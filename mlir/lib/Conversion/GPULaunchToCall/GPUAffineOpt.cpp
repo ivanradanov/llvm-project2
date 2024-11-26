@@ -689,11 +689,18 @@ static bool isValidAsyncCopy(Operation *op) {
             }).wasInterrupted();
 }
 
+template <typename OpTy>
+static bool isNormalLoop(OpTy op) {
+  // TODO
+  return true;
+}
+
 // template <typename ParTy>
-static void convertToSingleThreadFor(affine::AffineParallelOp par) {
+static std::pair<affine::AffineParallelOp, affine::AffineIfOp>
+convertToSingleThreadFor(affine::AffineParallelOp par, RewriterBase &rewriter) {
   assert(par->getNumResults() == 0);
   auto loc = par->getLoc();
-  IRRewriter rewriter(par);
+  rewriter.setInsertionPoint(par);
   auto newPar =
       cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*par));
   Block *oldParBody = &par->getRegion(0).front();
@@ -704,21 +711,42 @@ static void convertToSingleThreadFor(affine::AffineParallelOp par) {
   rewriter.setInsertionPoint(rewriter.create<affine::AffineYieldOp>(loc));
 
   unsigned dims = par.getNumDims();
+
+  SmallVector<AffineExpr> ifExprs;
+  SmallVector<bool> ifEqs;
+  SmallVector<Value> ifOperands;
+  MLIRContext *ctx = loc.getContext();
+  assert(isNormalLoop(newPar));
+  for (unsigned i = 0; i < dims; i++) {
+    ifOperands.push_back(newPar.getIVs()[i]);
+    ifExprs.push_back(getAffineDimExpr(i, ctx));
+    ifEqs.push_back(true);
+  }
+  IntegerSet set = IntegerSet::get(dims, 0, ifExprs, ifEqs);
+  auto affineIfOp =
+      rewriter.create<affine::AffineIfOp>(loc, TypeRange(), set, ifOperands,
+                                          /*hasElse=*/false);
+  rewriter.setInsertionPointToStart(affineIfOp.getThenBlock());
+
   affine::AffineForOp forOp;
+  Block *forBody;
   for (unsigned i = 0; i < dims; i++) {
     forOp = rewriter.create<affine::AffineForOp>(
         loc, par.getLowerBoundsOperands(), par.getLowerBoundMap(i),
         par.getUpperBoundsOperands(), par.getUpperBoundMap(i),
         par.getSteps()[i]);
-    Block *forBody = &forOp->getRegion(0).front();
+    forBody = &forOp->getRegion(0).front();
     clearBlock(forBody, rewriter);
+    rewriter.setInsertionPointToStart(forBody);
     rewriter.replaceAllUsesWith(par.getIVs()[i], forOp.getInductionVar());
     rewriter.setInsertionPoint(rewriter.create<affine::AffineYieldOp>(loc));
   }
   rewriter.eraseOp(oldParBody->getTerminator());
-  rewriter.inlineRegionBefore(par.getBodyRegion(), forOp.getBodyRegion(),
-                              forOp.getBodyRegion().begin());
+  rewriter.inlineBlockBefore(oldParBody, forBody,
+                             forBody->getTerminator()->getIterator(),
+                             SmallVector<Value, 3>(dims, nullptr));
   rewriter.eraseOp(par);
+  return {newPar, affineIfOp};
 }
 
 static void convertToAsync(polymer::IslScop &scop,
@@ -749,119 +777,98 @@ static void convertToAsync(polymer::IslScop &scop,
         return op;
     return nullptr;
   };
-  auto shouldConvert = [&](Operation *op) {
-    if (Operation *blockPar = getBlockPar(op))
-      if (op->getAttr("polymer.stmt.async.copy"))
-        return true;
-    return false;
-  };
 
   DenseSet<Operation *> asyncCopyStmts;
 
-  for (auto alloca : shmemAllocas) {
-    LLVM_DEBUG(llvm::dbgs() << "Handling " << *alloca << ":\n");
-    SmallVector<Copy> copies;
-    bool allAffineAccesses = true;
-    for (auto opInst : alloca.getMemref().getUsers()) {
-      if (auto load = dyn_cast<affine::AffineReadOpInterface>(opInst)) {
-        // These can't be optimized, copy_async only supports global->shared
-        continue;
-      }
-      if (!shouldConvert(opInst))
-        continue;
+  SmallVector<Copy> copies;
+  root->walk([&](Operation *op) {
+    auto par = isAffineBlockPar(op);
+    if (!par || !op->getAttr("polymer.stmt.async.copy"))
+      return WalkResult::advance();
+
+    asyncCopyStmts.insert(par);
+    par->walk([&](Operation *opInst) {
       if (auto writeOp = dyn_cast<affine::AffineWriteOpInterface>(opInst)) {
+        if (!nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(
+                cast<MemRefType>(writeOp.getMemRef().getType())))
+          return;
         if (auto store = dyn_cast<affine::AffineStoreOp>(opInst)) {
-          if (auto vectorStore = isVectorStore(store)) {
-            if (!vectorStore->val.hasOneUse())
-              continue;
-            auto parLoad = dyn_cast_or_null<affine::AffineParallelOp>(
-                vectorStore->val.getDefiningOp());
-            if (!parLoad)
-              continue;
-            auto vectorLoad = isVectorLoad(parLoad);
-            if (!vectorLoad)
-              continue;
-            if (isGlobalMemref(cast<MemrefValue>(vectorLoad->load.getMemRef())))
-              copies.push_back({vectorLoad->load, vectorStore->store,
-                                vectorLoad->par, vectorStore->par});
-          } else {
-            if (!store.getValueToStore().hasOneUse())
-              continue;
-            auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
-                store.getValueToStore().getDefiningOp());
-            if (!load)
-              continue;
-            if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
-              copies.push_back({load, store, load, store});
-          }
+          llvm_unreachable("?");
         } else if (auto store = dyn_cast<affine::AffineVectorStoreOp>(opInst)) {
           if (!store.getValueToStore().hasOneUse())
-            continue;
+            return;
           auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
               store.getValueToStore().getDefiningOp());
           if (!load)
-            continue;
+            return;
           if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
             copies.push_back({load, store, load, store});
+          return;
         }
       } else {
-        allAffineAccesses = false;
+        return;
       }
+    });
+    return WalkResult::skip();
+  });
+  // TODO check that we have converted all load/stores in the block par. We
+  // actually don't need to convert _everything_, we could keep some of the
+  // accesses sync. However, in that case the convert to single thread for
+  // function needs to be smarter and only put the async copies on a single
+  // thread.
+
+  for (auto copy : copies) {
+
+    Location loc = copy.load.getLoc();
+
+    Operation *blockPar = getBlockPar(copy.store);
+    assert(blockPar->getAttr("gpu.par.block"));
+
+    IRRewriter rewriter(copy.storeOp);
+
+    LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
+
+    auto vty = dyn_cast<VectorType>(copy.load.getValue().getType());
+    if (!vty) {
+      LLVM_DEBUG(llvm::dbgs() << "Need a vector load/store\n");
+      continue;
     }
-    LLVM_DEBUG(llvm::dbgs() << "all affine: " << allAffineAccesses << "\n");
-
-    for (auto copy : copies) {
-      assert(shouldConvert(copy.loadOp) && shouldConvert(copy.storeOp));
-
-      Location loc = copy.load.getLoc();
-      MLIRContext *ctx = copy.load.getContext();
-
-      Operation *blockPar = getBlockPar(copy.store);
-      assert(blockPar->getAttr("gpu.par.block"));
-      asyncCopyStmts.insert(blockPar);
-
-      IRRewriter rewriter(copy.storeOp);
-
-      LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
-
-      auto vty = dyn_cast<VectorType>(copy.load.getValue().getType());
-      if (!vty) {
-        LLVM_DEBUG(llvm::dbgs() << "Need a vector load/store\n");
-        continue;
-      }
-      if (vty.getShape().size() != 1) {
-        LLVM_DEBUG(llvm::dbgs() << "Need 1d vector load/store\n");
-        continue;
-      }
-      if (vty.getElementType() != rewriter.getI8Type()) {
-        LLVM_DEBUG(llvm::dbgs() << "Need i8 vector\n");
-        continue;
-      }
-      unsigned copySize = vty.getShape()[0];
-      if (!(copySize == 4 || copySize == 8 || copySize == 16)) {
-        LLVM_DEBUG(llvm::dbgs() << "Need 4/8/16 size\n");
-        continue;
-      }
-
-      // TODO need to align stuff to 4, 8, or 16-byte chunks
-      rewriter.setInsertionPoint(copy.store);
-      SmallVector<Value> storeIdxs = {computeMap<affine::AffineApplyOp>(
-          rewriter, copy.store.getLoc(), copy.store.getAffineMap(),
-          copy.store.getMapOperands())};
-      SmallVector<Value> loadIdxs = {computeMap<affine::AffineApplyOp>(
-          rewriter, copy.load.getLoc(), copy.load.getAffineMap(),
-          copy.load.getMapOperands())};
-      rewriter.create<nvgpu::DeviceAsyncCopyOp>(
-          loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(),
-          loadIdxs, rewriter.getIndexAttr(copySize), nullptr, nullptr);
-      rewriter.eraseOp(copy.store);
-      rewriter.eraseOp(copy.load);
+    if (vty.getShape().size() != 1) {
+      LLVM_DEBUG(llvm::dbgs() << "Need 1d vector load/store\n");
+      continue;
     }
+    if (vty.getElementType() != rewriter.getI8Type()) {
+      LLVM_DEBUG(llvm::dbgs() << "Need i8 vector\n");
+      continue;
+    }
+    unsigned copySize = vty.getShape()[0];
+    if (!(copySize == 4 || copySize == 8 || copySize == 16)) {
+      LLVM_DEBUG(llvm::dbgs() << "Need 4/8/16 size\n");
+      continue;
+    }
+
+    // TODO need to align stuff to 4, 8, or 16-byte chunks
+    rewriter.setInsertionPoint(copy.store);
+    SmallVector<Value> storeIdxs = {computeMap<affine::AffineApplyOp>(
+        rewriter, copy.store.getLoc(), copy.store.getAffineMap(),
+        copy.store.getMapOperands())};
+    SmallVector<Value> loadIdxs = {computeMap<affine::AffineApplyOp>(
+        rewriter, copy.load.getLoc(), copy.load.getAffineMap(),
+        copy.load.getMapOperands())};
+    rewriter.create<nvgpu::DeviceAsyncCopyOp>(
+        loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(), loadIdxs,
+        rewriter.getIndexAttr(copySize), nullptr, nullptr);
+    rewriter.eraseOp(copy.store);
+    rewriter.eraseOp(copy.load);
   }
 
   for (Operation *stmtOp : asyncCopyStmts) {
     if (auto affinePar = dyn_cast<affine::AffineParallelOp>(stmtOp)) {
-      convertToSingleThreadFor(affinePar);
+      IRRewriter rewriter(affinePar);
+      auto [newAffinePar, affineIf] =
+          convertToSingleThreadFor(affinePar, rewriter);
+      rewriter.setInsertionPoint(affineIf.getThenBlock()->getTerminator());
+      rewriter.create<NVVM::CpAsyncCommitGroupOp>(affineIf->getLoc());
     } else {
       llvm_unreachable("scf.for not supported yet");
     }
