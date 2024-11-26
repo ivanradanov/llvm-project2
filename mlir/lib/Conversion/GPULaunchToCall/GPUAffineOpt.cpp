@@ -1235,7 +1235,9 @@ struct GPUAffineOptPass : impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       target.addIllegalDialect<affine::AffineDialect>();
       target.addIllegalDialect<memref::MemRefDialect>();
       target.addIllegalDialect<vector::VectorDialect>();
+      target.addIllegalDialect<nvgpu::NVGPUDialect>();
       target.addLegalDialect<LLVM::LLVMDialect>();
+      target.addLegalDialect<NVVM::NVVMDialect>();
       if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
         signalPassFailure();
         return;

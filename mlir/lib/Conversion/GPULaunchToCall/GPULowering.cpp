@@ -24,6 +24,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -37,6 +38,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 
 #include "GPULowering.h"
 #include "Utils.h"
@@ -298,6 +300,109 @@ static bool isAtAddrMemref(Value v) {
   return v.getDefiningOp<memref::AtAddrOp>();
 }
 
+static llvm::FailureOr<Value>
+getAccessPointer(RewriterBase &rewriter, const LLVMTypeConverter &typeConverter,
+                 Operation *op, TypedValue<MemRefType> baseMemref,
+                 Value basePtr, ValueRange indices) {
+  auto baseMemrefTy = baseMemref.getType();
+  auto isContiguious =
+      mlir::trailingNDimsContiguous(baseMemrefTy, baseMemrefTy.getRank());
+  if (!isContiguious && !isAtAddrMemref(baseMemref))
+    return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
+
+  if (indices.size() != 1)
+    return rewriter.notifyMatchFailure(op, "Only 1-d memrefs for now");
+
+  Type tyForOffset = typeConverter.convertType(baseMemrefTy.getElementType());
+  if (!tyForOffset)
+    return rewriter.notifyMatchFailure(op, "Could not convert el type");
+  basePtr =
+      rewriter.create<LLVM::GEPOp>(op->getLoc(), basePtr.getType(), tyForOffset,
+                                   basePtr, ValueRange{indices[0]});
+  return basePtr;
+}
+
+struct DeviceAsyncCopyOpLowerig
+    : public ConvertOpToLLVMPattern<nvgpu::DeviceAsyncCopyOp> {
+  using ConvertOpToLLVMPattern<
+      nvgpu::DeviceAsyncCopyOp>::ConvertOpToLLVMPattern;
+  LogicalResult
+  matchAndRewrite(nvgpu::DeviceAsyncCopyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    Location loc = op.getLoc();
+    auto dstMemrefType = cast<MemRefType>(op.getDst().getType());
+    auto dstPtrRes =
+        getAccessPointer(rewriter, *getTypeConverter(), op, op.getDst(),
+                         adaptor.getDst(), adaptor.getDstIndices());
+    if (failed(dstPtrRes))
+      return failure();
+    Value dstPtr = *dstPtrRes;
+    FailureOr<unsigned> dstAddressSpace =
+        getTypeConverter()->getMemRefAddressSpace(dstMemrefType);
+    if (failed(dstAddressSpace))
+      return rewriter.notifyMatchFailure(
+          loc, "destination memref address space not convertible to integer");
+
+    auto srcMemrefType = cast<MemRefType>(op.getSrc().getType());
+    FailureOr<unsigned> srcAddressSpace =
+        getTypeConverter()->getMemRefAddressSpace(srcMemrefType);
+    if (failed(srcAddressSpace))
+      return rewriter.notifyMatchFailure(
+          loc, "source memref address space not convertible to integer");
+
+    auto scrPtrRes =
+        getAccessPointer(rewriter, *getTypeConverter(), op, op.getSrc(),
+                         adaptor.getSrc(), adaptor.getSrcIndices());
+    if (failed(scrPtrRes))
+      return failure();
+    Value scrPtr = *scrPtrRes;
+    // Intrinsics takes a global pointer so we need an address space cast.
+    auto srcPointerGlobalType = LLVM::LLVMPointerType::get(
+        op->getContext(), NVVM::NVVMMemorySpace::kGlobalMemorySpace);
+    scrPtr = b.create<LLVM::AddrSpaceCastOp>(srcPointerGlobalType, scrPtr);
+    int64_t dstElements = adaptor.getDstElements().getZExtValue();
+    int64_t sizeInBytes =
+        (dstMemrefType.getElementTypeBitWidth() * dstElements) / 8;
+    // When the optional SrcElements argument is *not* present, the regular
+    // CpAsyncOp is generated. CopyAsyncOp reads bytes from source (global
+    // memory) to fill DstElements number of elements in the destination
+    // (shared memory).
+    Value srcBytes = adaptor.getSrcElements();
+    if (srcBytes) {
+      // When the optional SrcElements argument is present, the source (global
+      // memory) of CpAsyncOp is read only for SrcElements number of elements.
+      // The rest of the DstElements in the destination (shared memory) are
+      // filled with zeros.
+      Value c3I32 =
+          b.create<LLVM::ConstantOp>(b.getI32Type(), b.getI32IntegerAttr(3));
+      Value bitwidth = b.create<LLVM::ConstantOp>(
+          b.getI32Type(),
+          b.getI32IntegerAttr(srcMemrefType.getElementTypeBitWidth()));
+      Value srcElementsI32 = b.create<LLVM::TruncOp>(b.getI32Type(), srcBytes);
+      srcBytes = b.create<LLVM::LShrOp>(
+          b.create<LLVM::MulOp>(bitwidth, srcElementsI32), c3I32);
+    }
+    // Cache global (.cg) for 16 dst bytes, Cache all (.ca) for sizes other than
+    // 16 dst bytes.
+    NVVM::LoadCacheModifierKind cacheModifier =
+        (op.getBypassL1().value_or(false) && sizeInBytes == 16)
+            ? NVVM::LoadCacheModifierKind::CG
+            : NVVM::LoadCacheModifierKind::CA;
+
+    b.create<NVVM::CpAsyncOp>(
+        dstPtr, scrPtr, rewriter.getI32IntegerAttr(sizeInBytes),
+        NVVM::LoadCacheModifierKindAttr::get(op->getContext(), cacheModifier),
+        srcBytes);
+
+    // Drop the result token.
+    Value zero = b.create<LLVM::ConstantOp>(
+        IntegerType::get(op.getContext(), 32), rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOp(op, zero);
+    return success();
+  }
+};
+
 struct VectorLoadLower : public ConvertOpToLLVMPattern<vector::LoadOp> {
   using ConvertOpToLLVMPattern<vector::LoadOp>::ConvertOpToLLVMPattern;
   LogicalResult
@@ -306,31 +411,19 @@ struct VectorLoadLower : public ConvertOpToLLVMPattern<vector::LoadOp> {
     auto tyAttr = cast_or_null<TypeAttr>(op->getAttr("polymer.access.type"));
     if (!tyAttr)
       return rewriter.notifyMatchFailure(op, "Access type attribute missing");
-    auto memref = op.getBase();
-    auto memrefTy = memref.getType();
-    auto isContiguious =
-        mlir::trailingNDimsContiguous(memrefTy, memrefTy.getRank());
-    if (!isContiguious && !isAtAddrMemref(memref))
-      return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
-
     Type tyToAccess = tyAttr.getValue();
-    Value ptr = adaptor.getBase();
 
-    if (adaptor.getIndices().size() != 1)
-      return rewriter.notifyMatchFailure(op, "Only 1-d memrefs for now");
-
-    Type tyForOffset =
-        getTypeConverter()->convertType(memrefTy.getElementType());
-    if (!tyForOffset)
-      return rewriter.notifyMatchFailure(op, "Could not convert el type");
-    ptr =
-        rewriter.create<LLVM::GEPOp>(op->getLoc(), ptr.getType(), tyForOffset,
-                                     ptr, ValueRange{adaptor.getIndices()[0]});
+    auto baseMemref = op.getBase();
+    auto basePtr = adaptor.getBase();
+    auto ptr = getAccessPointer(rewriter, *getTypeConverter(), op, baseMemref,
+                                basePtr, adaptor.getIndices());
+    if (failed(ptr))
+      return failure();
 
     Value newVal = bitcastToVec(
         rewriter, getTypeConverter()->getDataLayoutAnalysis()->getAbove(op),
 
-        rewriter.create<LLVM::LoadOp>(op.getLoc(), tyToAccess, ptr));
+        rewriter.create<LLVM::LoadOp>(op.getLoc(), tyToAccess, *ptr));
 
     rewriter.replaceOp(op, newVal);
 
@@ -346,33 +439,21 @@ struct VectorStoreLower : public ConvertOpToLLVMPattern<vector::StoreOp> {
     auto tyAttr = cast_or_null<TypeAttr>(op->getAttr("polymer.access.type"));
     if (!tyAttr)
       return rewriter.notifyMatchFailure(op, "Access type attribute missing");
-    auto memref = op.getBase();
-    auto memrefTy = memref.getType();
-    auto isContiguious =
-        mlir::trailingNDimsContiguous(memrefTy, memrefTy.getRank());
-    if (!isContiguious && !isAtAddrMemref(memref))
-      return rewriter.notifyMatchFailure(op, "Memref layout is not contiguous");
-
     Type tyToAccess = tyAttr.getValue();
-    Value ptr = adaptor.getBase();
 
-    if (adaptor.getIndices().size() != 1)
-      return rewriter.notifyMatchFailure(op, "Only 1-d memrefs for now");
-
-    Type tyForOffset =
-        getTypeConverter()->convertType(memrefTy.getElementType());
-    if (!tyForOffset)
-      return rewriter.notifyMatchFailure(op, "Could not convert el type");
-    ptr =
-        rewriter.create<LLVM::GEPOp>(op->getLoc(), ptr.getType(), tyForOffset,
-                                     ptr, ValueRange{adaptor.getIndices()[0]});
+    auto baseMemref = op.getBase();
+    auto basePtr = adaptor.getBase();
+    auto ptr = getAccessPointer(rewriter, *getTypeConverter(), op, baseMemref,
+                                basePtr, adaptor.getIndices());
+    if (failed(ptr))
+      return failure();
 
     rewriter.replaceOpWithNewOp<LLVM::StoreOp>(
         op,
         bitcastFromVec(
             rewriter, getTypeConverter()->getDataLayoutAnalysis()->getAbove(op),
             tyToAccess, adaptor.getValueToStore()),
-        ptr);
+        *ptr);
 
     return success();
   }
@@ -456,6 +537,6 @@ void mlir::populateGPULoweringPatterns(RewritePatternSet &patterns,
                                        LLVMTypeConverter &typeConverter) {
   patterns.add<ReinterpretCastOpLowering, AtAddrLower, CLoadOpLowering,
                CStoreOpLowering, VectorStoreLower, VectorLoadLower,
-               CAllocaOpLowering, GlobalOpLowering, GetGlobalOpLowering>(
-      typeConverter);
+               CAllocaOpLowering, GlobalOpLowering, GetGlobalOpLowering,
+               DeviceAsyncCopyOpLowerig>(typeConverter);
 }
