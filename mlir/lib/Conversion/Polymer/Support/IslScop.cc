@@ -1226,7 +1226,11 @@ public:
       }
     }
 
-    b.clone(*origCaller, stmtMapping);
+    Operation *newStmt = b.clone(*origCaller, stmtMapping);
+
+    funcMapping.map(origCaller, newStmt);
+    for (unsigned i = 0, e = origCaller->getNumResults(); i != e; ++i)
+      funcMapping.map(origCaller->getResult(i), newStmt->getResult(i));
 
     isl_ast_expr_free(Expr);
     isl_ast_node_free(User);
@@ -1603,8 +1607,9 @@ void IslScop::cleanup(Operation *func) {
   func->walk([](affine::AffineStoreVar op) { op->erase(); });
 }
 
-Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
-                                  Operation *originalFunc) {
+IslScop::ApplyScheduleRes
+IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
+                       Operation *originalFunc) {
   IRMapping oldToNewMapping;
   OpBuilder moduleBuilder(originalFunc);
   Operation *f =
@@ -1657,7 +1662,7 @@ Operation *IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
   isl_ast_build_free(build);
   isl_schedule_free(newSchedule);
 
-  return f;
+  return IslScop::ApplyScheduleRes{f, oldToNewMapping};
 }
 
 // TODO this takes the union of the write effects in the operations we rescope

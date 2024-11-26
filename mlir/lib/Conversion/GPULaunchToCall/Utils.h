@@ -72,7 +72,7 @@ cloneWithoutResults(mlir::affine::AffineForOp op,
 }
 
 static inline void clearBlock(mlir::Block *block,
-                              mlir::PatternRewriter &rewriter) {
+                              mlir::RewriterBase &rewriter) {
   for (auto &op : llvm::make_early_inc_range(llvm::reverse(*block))) {
     assert(op.use_empty() && "expected 'op' to have no uses");
     rewriter.eraseOp(&op);

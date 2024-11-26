@@ -1449,7 +1449,6 @@ bool gpu_array_can_be_private(ScopArrayInfo &sai) {
 }
 
 void collect_order_dependences(Scop &S, ppcg_scop *scop) {
-  int i;
   isl_space *space;
   isl_union_map *accesses;
   isl_union_map *array_order;

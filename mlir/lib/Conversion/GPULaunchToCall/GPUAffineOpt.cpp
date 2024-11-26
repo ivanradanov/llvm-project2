@@ -35,6 +35,7 @@
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "polly/Support/GICHelper.h"
@@ -181,7 +182,7 @@ void optGlobalSharedMemCopies(Operation *root) {
   });
 
   auto isGlobalMemref = [&](MemrefValue m) {
-    return !nvgpu::NVGPUDialect::isSharedMemoryAddressSpace(
+    return nvgpu::NVGPUDialect::isGlobalMemoryAddressSpace(
                m.getType().getMemorySpace()) &&
            m.getParentRegion()->getParentOp() == root;
   };
@@ -425,7 +426,7 @@ construct_schedule_constraints(struct ppcg_scop *scop, polymer::Scop &S) {
   return sc;
 }
 
-isl::schedule insertGridPar(isl::schedule schedule) {
+static isl::schedule insertGridPar(isl::schedule schedule) {
   auto root = schedule.get_root();
 
   auto nChildren = root.n_children();
@@ -478,7 +479,7 @@ static __isl_give isl_map *tag(__isl_take isl_map *Relation,
   return Relation;
 }
 
-isl::union_map tag(isl::union_map umap, isl::id id) {
+static isl::union_map tag(isl::union_map umap, isl::id id) {
   isl::union_map taggedMap =
       isl::manage(isl_union_map_empty(umap.get_space().release()));
   umap.foreach_map([&](isl::map map) {
@@ -489,8 +490,9 @@ isl::union_map tag(isl::union_map umap, isl::id id) {
   return taggedMap;
 }
 
-isl::stat isl_id_to_id_foreach(isl_id_to_id *id_to_id,
-                               std::function<isl::stat(isl::id, isl::id)> f) {
+static isl::stat
+isl_id_to_id_foreach(isl_id_to_id *id_to_id,
+                     std::function<isl::stat(isl::id, isl::id)> f) {
   struct Data {
     decltype(f) &fn;
   } data{f};
@@ -502,8 +504,8 @@ isl::stat isl_id_to_id_foreach(isl_id_to_id *id_to_id,
   return isl::manage(isl_id_to_id_foreach(id_to_id, lambda2, &data));
 }
 
-isl::schedule_node insertArrayExpansion(isl::schedule_node node,
-                                        PrepScheduleInfo psi) {
+static isl::schedule_node insertArrayExpansion(isl::schedule_node node,
+                                               PrepScheduleInfo psi) {
 
   auto nChildren = unsignedFromIslSize(node.n_children());
 
@@ -622,17 +624,30 @@ isl::schedule_node insertArrayExpansion(isl::schedule_node node,
 
   return node;
 }
-
-isl::schedule insertArrayExpansion(isl::schedule schedule,
-                                   PrepScheduleInfo &psi) {
+static isl::schedule insertArrayExpansion(isl::schedule schedule,
+                                          PrepScheduleInfo &psi) {
   auto root = schedule.get_root();
   return insertArrayExpansion(root, psi).get_schedule();
 }
+
+// static isl::schedule_node insertAsyncCopySynchronisation(isl::schedule_node
+// node,
+//                                                   PrepScheduleInfo &psi) {
+//   auto nChildren = unsignedFromIslSize(node.n_children());
+//   return node;
+// }
+// isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
+//                                              PrepScheduleInfo &psi) {
+//   auto root = schedule.get_root();
+//   return insertAsyncCopySynchronisation(root, psi).get_schedule();
+//   return schedule;
+// }
 
 isl::schedule prepareScheduleForGPU(isl::schedule schedule,
                                     PrepScheduleInfo &psi) {
   schedule = insertGridPar(schedule);
   schedule = insertArrayExpansion(schedule, psi);
+  // schedule = insertAsyncCopySynchronisation(schedule, psi);
   return schedule;
 }
 
@@ -672,6 +687,185 @@ static bool isValidAsyncCopy(Operation *op) {
               }
               return WalkResult::interrupt();
             }).wasInterrupted();
+}
+
+// template <typename ParTy>
+static void convertToSingleThreadFor(affine::AffineParallelOp par) {
+  assert(par->getNumResults() == 0);
+  auto loc = par->getLoc();
+  IRRewriter rewriter(par);
+  auto newPar =
+      cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*par));
+  Block *oldParBody = &par->getRegion(0).front();
+  Block *newParBody = rewriter.createBlock(
+      &newPar->getRegion(0), newPar->getRegion(0).begin(),
+      oldParBody->getArgumentTypes(), oldParBody->getArgumentLocs());
+  clearBlock(newPar.getBody(), rewriter);
+  rewriter.setInsertionPoint(rewriter.create<affine::AffineYieldOp>(loc));
+
+  unsigned dims = par.getNumDims();
+  affine::AffineForOp forOp;
+  for (unsigned i = 0; i < dims; i++) {
+    forOp = rewriter.create<affine::AffineForOp>(
+        loc, par.getLowerBoundsOperands(), par.getLowerBoundMap(i),
+        par.getUpperBoundsOperands(), par.getUpperBoundMap(i),
+        par.getSteps()[i]);
+    Block *forBody = &forOp->getRegion(0).front();
+    clearBlock(forBody, rewriter);
+    rewriter.replaceAllUsesWith(par.getIVs()[i], forOp.getInductionVar());
+    rewriter.setInsertionPoint(rewriter.create<affine::AffineYieldOp>(loc));
+  }
+  rewriter.eraseOp(oldParBody->getTerminator());
+  rewriter.inlineRegionBefore(par.getBodyRegion(), forOp.getBodyRegion(),
+                              forOp.getBodyRegion().begin());
+  rewriter.eraseOp(par);
+}
+
+static void convertToAsync(polymer::IslScop &scop,
+                           polymer::IslScop::ApplyScheduleRes &applied) {
+  Operation *root = applied.newFunc;
+
+  SmallVector<memref::AllocaOp> shmemAllocas;
+  llvm::SmallSetVector<MemrefValue, 4> shmemMemrefs;
+  root->walk([&](memref::AllocaOp alloca) {
+    if (nvgpu::NVGPUDialect::isSharedMemoryAddressSpace(
+            alloca.getType().getMemorySpace())) {
+      shmemAllocas.push_back(alloca);
+      shmemMemrefs.insert(cast<MemrefValue>(alloca.getMemref()));
+    }
+  });
+
+  auto isGlobalMemref = [&](MemrefValue m) {
+    return !nvgpu::NVGPUDialect::isSharedMemoryAddressSpace(
+               m.getType().getMemorySpace()) &&
+           m.getParentRegion()->getParentOp() == root;
+  };
+
+  llvm::SmallSetVector<Operation *, 4> syncsInserted;
+
+  auto getBlockPar = [&](Operation *op) -> Operation * {
+    while ((op = op->getParentOp()))
+      if (isBlockPar(op))
+        return op;
+    return nullptr;
+  };
+  auto shouldConvert = [&](Operation *op) {
+    if (Operation *blockPar = getBlockPar(op))
+      if (op->getAttr("polymer.stmt.async.copy"))
+        return true;
+    return false;
+  };
+
+  DenseSet<Operation *> asyncCopyStmts;
+
+  for (auto alloca : shmemAllocas) {
+    LLVM_DEBUG(llvm::dbgs() << "Handling " << *alloca << ":\n");
+    SmallVector<Copy> copies;
+    bool allAffineAccesses = true;
+    for (auto opInst : alloca.getMemref().getUsers()) {
+      if (auto load = dyn_cast<affine::AffineReadOpInterface>(opInst)) {
+        // These can't be optimized, copy_async only supports global->shared
+        continue;
+      }
+      if (!shouldConvert(opInst))
+        continue;
+      if (auto writeOp = dyn_cast<affine::AffineWriteOpInterface>(opInst)) {
+        if (auto store = dyn_cast<affine::AffineStoreOp>(opInst)) {
+          if (auto vectorStore = isVectorStore(store)) {
+            if (!vectorStore->val.hasOneUse())
+              continue;
+            auto parLoad = dyn_cast_or_null<affine::AffineParallelOp>(
+                vectorStore->val.getDefiningOp());
+            if (!parLoad)
+              continue;
+            auto vectorLoad = isVectorLoad(parLoad);
+            if (!vectorLoad)
+              continue;
+            if (isGlobalMemref(cast<MemrefValue>(vectorLoad->load.getMemRef())))
+              copies.push_back({vectorLoad->load, vectorStore->store,
+                                vectorLoad->par, vectorStore->par});
+          } else {
+            if (!store.getValueToStore().hasOneUse())
+              continue;
+            auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
+                store.getValueToStore().getDefiningOp());
+            if (!load)
+              continue;
+            if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
+              copies.push_back({load, store, load, store});
+          }
+        } else if (auto store = dyn_cast<affine::AffineVectorStoreOp>(opInst)) {
+          if (!store.getValueToStore().hasOneUse())
+            continue;
+          auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
+              store.getValueToStore().getDefiningOp());
+          if (!load)
+            continue;
+          if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
+            copies.push_back({load, store, load, store});
+        }
+      } else {
+        allAffineAccesses = false;
+      }
+    }
+    LLVM_DEBUG(llvm::dbgs() << "all affine: " << allAffineAccesses << "\n");
+
+    for (auto copy : copies) {
+      assert(shouldConvert(copy.loadOp) && shouldConvert(copy.storeOp));
+
+      Location loc = copy.load.getLoc();
+      MLIRContext *ctx = copy.load.getContext();
+
+      Operation *blockPar = getBlockPar(copy.store);
+      assert(blockPar->getAttr("gpu.par.block"));
+      asyncCopyStmts.insert(blockPar);
+
+      IRRewriter rewriter(copy.storeOp);
+
+      LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
+
+      auto vty = dyn_cast<VectorType>(copy.load.getValue().getType());
+      if (!vty) {
+        LLVM_DEBUG(llvm::dbgs() << "Need a vector load/store\n");
+        continue;
+      }
+      if (vty.getShape().size() != 1) {
+        LLVM_DEBUG(llvm::dbgs() << "Need 1d vector load/store\n");
+        continue;
+      }
+      if (vty.getElementType() != rewriter.getI8Type()) {
+        LLVM_DEBUG(llvm::dbgs() << "Need i8 vector\n");
+        continue;
+      }
+      unsigned copySize = vty.getShape()[0];
+      if (!(copySize == 4 || copySize == 8 || copySize == 16)) {
+        LLVM_DEBUG(llvm::dbgs() << "Need 4/8/16 size\n");
+        continue;
+      }
+
+      // TODO need to align stuff to 4, 8, or 16-byte chunks
+      rewriter.setInsertionPoint(copy.store);
+      SmallVector<Value> storeIdxs = {computeMap<affine::AffineApplyOp>(
+          rewriter, copy.store.getLoc(), copy.store.getAffineMap(),
+          copy.store.getMapOperands())};
+      SmallVector<Value> loadIdxs = {computeMap<affine::AffineApplyOp>(
+          rewriter, copy.load.getLoc(), copy.load.getAffineMap(),
+          copy.load.getMapOperands())};
+      rewriter.create<nvgpu::DeviceAsyncCopyOp>(
+          loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(),
+          loadIdxs, rewriter.getIndexAttr(copySize), nullptr, nullptr);
+      rewriter.eraseOp(copy.store);
+      rewriter.eraseOp(copy.load);
+    }
+  }
+
+  for (Operation *stmtOp : asyncCopyStmts) {
+    if (auto affinePar = dyn_cast<affine::AffineParallelOp>(stmtOp)) {
+      convertToSingleThreadFor(affinePar);
+    } else {
+      llvm_unreachable("scf.for not supported yet");
+    }
+  }
 }
 
 void transform(LLVM::LLVMFuncOp f) {
@@ -757,7 +951,17 @@ void transform(LLVM::LLVMFuncOp f) {
   });
   isl_schedule_constraints_free(sc);
 
-  auto g = cast<LLVM::LLVMFuncOp>(scop->applySchedule(newSchedule.copy(), f));
+  auto applied = scop->applySchedule(newSchedule.copy(), f);
+  auto g = cast<LLVM::LLVMFuncOp>(applied.newFunc);
+  LLVM_DEBUG({
+    llvm::dbgs() << "New func:\n";
+    llvm::dbgs() << *g << "\n";
+  });
+  convertToAsync(*scop, applied);
+  LLVM_DEBUG({
+    llvm::dbgs() << "Converted to async:\n";
+    llvm::dbgs() << *g << "\n";
+  });
 
   scop->cleanup(g);
 
@@ -768,11 +972,6 @@ void transform(LLVM::LLVMFuncOp f) {
     f.getRegion().getBlocks().splice(f.getRegion().getBlocks().begin(),
                                      g.getRegion().getBlocks());
     g->erase();
-
-    LLVM_DEBUG({
-      llvm::dbgs() << "New func:\n";
-      llvm::dbgs() << *f << "\n";
-    });
   }
 
   isl_ast_build_free(build);

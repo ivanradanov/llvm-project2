@@ -12,6 +12,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LLVM.h"
 #include "polly/ScopInfo.h"
 #include "polly/Support/ScopHelper.h"
@@ -286,7 +287,11 @@ public:
     return isl::manage(isl_schedule_copy(schedule));
   }
   isl::union_map getSchedule() const { return getScheduleTree().get_map(); }
-  mlir::Operation *applySchedule(__isl_take isl_schedule *newSchedule,
+  struct ApplyScheduleRes {
+    mlir::Operation *newFunc;
+    mlir::IRMapping oldToNew;
+  };
+  ApplyScheduleRes applySchedule(__isl_take isl_schedule *newSchedule,
                                  mlir::Operation *f);
   void cleanup(mlir::Operation *);
 
