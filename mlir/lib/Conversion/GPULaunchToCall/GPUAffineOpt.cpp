@@ -964,7 +964,8 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << "New func:\n";
     llvm::dbgs() << *g << "\n";
   });
-  convertToAsync(*scop, applied);
+  if (!getenv("GPU_AFFINE_OPT_DISABLE_CONVERT_TO_ASYNC"))
+      convertToAsync(*scop, applied);
   LLVM_DEBUG({
     llvm::dbgs() << "Converted to async:\n";
     llvm::dbgs() << *g << "\n";
