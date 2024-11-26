@@ -465,6 +465,7 @@ struct PrepScheduleInfo {
   isl::union_set unallocatedArrays;
   isl::union_set allocatedArrays;
   isl::union_map lrs;
+  isl::union_map asyncDeps;
 };
 
 /// Tag the @p Relation domain with @p TagId
@@ -606,7 +607,6 @@ static isl::schedule_node insertArrayExpansion(isl::schedule_node node,
   }
   LLVM_DEBUG(llvm::dbgs() << "ToExpand "; dumpIslObj(toExpand));
 
-  std::vector<isl::schedule_node> children;
   for (unsigned i = 0; i < (unsigned)nChildren; i++) {
     auto child = node.child(i);
     auto newChild = insertArrayExpansion(child, psi);
@@ -630,24 +630,49 @@ static isl::schedule insertArrayExpansion(isl::schedule schedule,
   return insertArrayExpansion(root, psi).get_schedule();
 }
 
-// static isl::schedule_node insertAsyncCopySynchronisation(isl::schedule_node
-// node,
-//                                                   PrepScheduleInfo &psi) {
-//   auto nChildren = unsignedFromIslSize(node.n_children());
-//   return node;
-// }
-// isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
-//                                              PrepScheduleInfo &psi) {
-//   auto root = schedule.get_root();
-//   return insertAsyncCopySynchronisation(root, psi).get_schedule();
-//   return schedule;
-// }
+static isl::schedule_node
+insertAsyncCopySynchronisation(isl::schedule_node node, PrepScheduleInfo &psi) {
+  auto nChildren = unsignedFromIslSize(node.n_children());
+
+  for (unsigned i = 0; i < (unsigned)nChildren; i++) {
+    auto child = node.child(i);
+    auto newChild = insertAsyncCopySynchronisation(child, psi);
+    node = newChild.parent();
+  }
+
+  // TODO need to figure out if we will _always_ have a single-set domain at
+  // some point and there will be no filter with two statements as a leaf for
+  // example. I think that is the case because a schedule should give a complete
+  // ordering of the statements in its domain but still.
+
+  auto domain = node.get_domain();
+  LLVM_DEBUG(llvm::dbgs() << "Domain "; dumpIslObj(domain));
+  if (!domain.isa_set())
+    return node;
+  auto set = domain.as_set();
+
+  // TODO this is just for testing things out and is dumb
+  if (psi.asyncDeps.range().universe().contains(set.space())) {
+    // TODO add free function
+    polymer::AsyncWaitGroupInfo *awg = new polymer::AsyncWaitGroupInfo{20};
+    isl::id waitGroupMark =
+        isl::id::alloc(node.ctx(), polymer::asyncWaitGroupMark, (void *)awg);
+    node = node.insert_mark(waitGroupMark);
+  }
+  return node;
+}
+isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
+                                             PrepScheduleInfo &psi) {
+  auto root = schedule.get_root();
+  return insertAsyncCopySynchronisation(root, psi).get_schedule();
+  return schedule;
+}
 
 isl::schedule prepareScheduleForGPU(isl::schedule schedule,
                                     PrepScheduleInfo &psi) {
   schedule = insertGridPar(schedule);
   schedule = insertArrayExpansion(schedule, psi);
-  // schedule = insertAsyncCopySynchronisation(schedule, psi);
+  schedule = insertAsyncCopySynchronisation(schedule, psi);
   return schedule;
 }
 
@@ -704,9 +729,9 @@ convertToSingleThreadFor(affine::AffineParallelOp par, RewriterBase &rewriter) {
   auto newPar =
       cast<affine::AffineParallelOp>(rewriter.cloneWithoutRegions(*par));
   Block *oldParBody = &par->getRegion(0).front();
-  Block *newParBody = rewriter.createBlock(
-      &newPar->getRegion(0), newPar->getRegion(0).begin(),
-      oldParBody->getArgumentTypes(), oldParBody->getArgumentLocs());
+  rewriter.createBlock(&newPar->getRegion(0), newPar->getRegion(0).begin(),
+                       oldParBody->getArgumentTypes(),
+                       oldParBody->getArgumentLocs());
   clearBlock(newPar.getBody(), rewriter);
   rewriter.setInsertionPoint(rewriter.create<affine::AffineYieldOp>(loc));
 
@@ -873,6 +898,24 @@ static void convertToAsync(polymer::IslScop &scop,
       llvm_unreachable("scf.for not supported yet");
     }
   }
+
+  // TODO temporary hack - maybe we shuold have a custom codegen callback at the
+  // points because it would be nice to keep the polyhedral logic (IslScop.cc)
+  // separate from the GPU intrinsic specifics. Currently IslScop puts a
+  // NVVM::CpAsyncWaitGroupOp at the place we instructed it to which is outside
+  // the block parallel statements. Those have memory effects so unditribute
+  // loops fails as it doesnt know what to do with them.
+  SmallVector<NVVM::CpAsyncWaitGroupOp> waitOps;
+  root->walk(
+      [&](NVVM::CpAsyncWaitGroupOp waitOp) { waitOps.push_back(waitOp); });
+  for (auto waitOp : waitOps) {
+    affine::AffineParallelOp par;
+    Operation *op = waitOp->getNextNode();
+    while (op && !(par = isAffineBlockPar(op)))
+      op = op->getNextNode();
+    assert(par);
+    waitOp->moveBefore(&par.getBody()->front());
+  }
 }
 
 void transform(LLVM::LLVMFuncOp f) {
@@ -940,6 +983,8 @@ void transform(LLVM::LLVMFuncOp f) {
   psi.allocatedArrays =
       isl::manage(isl_union_set_empty(psi.allArrays.get_space().release()));
   psi.lrs = isl::manage(isl_schedule_constraints_get_live_range_span(sc));
+  psi.asyncDeps = isl::manage_copy(ps->dep_async);
+
   newSchedule = prepareScheduleForGPU(newSchedule, psi);
 
   LLVM_DEBUG({

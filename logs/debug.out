@@ -754,19 +754,19 @@ Tagged prefix schedule [P0, P1, P2, P3] -> {  }
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_4@0x3d85c650
+Array A_memref_alloca_res_4@0x2f6c8e70
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> {  }
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> {  }
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[]; A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> {  }
@@ -803,19 +803,19 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] ->
 Applied schedule [P0, P1, P2, P3] -> { [] -> [] : (P0 > 0 and P1 > 0 and P2 > 0) or (P0 > 0 and P1 > 0 and P2 <= 0) or (P0 > 0 and P1 > 0 and P2 >= 17) or (P0 > 0 and P1 > 0 and P2 > 0) }
 Deltas [P0, P1, P2, P3] -> { [] : (P0 > 0 and P1 > 0 and P2 > 0) or (P0 > 0 and P1 > 0 and P2 <= 0) or (P0 > 0 and P1 > 0 and P2 >= 17) or (P0 > 0 and P1 > 0 and P2 > 0) }
 Deltas map [P0, P1, P2, P3] -> { [[] -> []] -> [] : (P0 > 0 and P1 > 0 and P2 > 0) or (P0 > 0 and P1 > 0 and P2 <= 0) or (P0 > 0 and P1 > 0 and P2 >= 17) or (P0 > 0 and P1 > 0 and P2 > 0) }
-Array A_memref_alloca_res_4@0x3d85c650
+Array A_memref_alloca_res_4@0x2f6c8e70
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> []; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> []; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> []; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [] }
 Applied schedule [P0, P1, P2, P3] -> { [] -> [] : P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [] : P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[] -> []] -> [] : P0 > 0 and P1 > 0 and P2 > 0 }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> []; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> []; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> []; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [] }
 Applied schedule [P0, P1, P2, P3] -> { [] -> [] : P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [] : P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[] -> []] -> [] : P0 > 0 and P1 > 0 and P2 > 0 }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[]; A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> {  }
@@ -852,19 +852,19 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : (o0 = i0 and o1 = i1 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (o0 = i0 and o1 = i1 and P2 <= 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (o0 = i0 and o1 = i1 and P2 >= 17 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (o0 = i0 and o1 = i1 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) }
 Deltas [P0, P1, P2, P3] -> { [i0, i1] : (i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 > 0) or (i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 <= 0) or (i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 >= 17) or (i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 > 0) }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1] -> [i2, i3]] -> [o0, o1] : (i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and P2 <= 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and P2 >= 17 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) }
-Array A_memref_alloca_res_4@0x3d85c650
+Array A_memref_alloca_res_4@0x2f6c8e70
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1] -> [i2, i3]] -> [o0, o1] : i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1] -> [i2, i3]] -> [o0, o1] : i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[]; A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> {  }
@@ -901,19 +901,19 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : (i2 = 1 and o0 = i0 and o1 = i1 and o2 = 1 and P2 >= 17 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 1 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = 1 and o0 = i0 and o1 = i1 and o2 = 1 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = 0 and o0 = i0 and o1 = i1 and o2 = 1 and P2 <= 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) }
 Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : (i0 = 0 and i1 = 0 and i2 = 0 and P0 > 0 and P1 > 0 and P2 >= 17) or (i0 = 0 and i1 = 0 and i2 = 1 and P0 > 0 and P1 > 0 and P2 > 0) or (i0 = 0 and i1 = 0 and i2 = 0 and P0 > 0 and P1 > 0 and P2 > 0) or (i0 = 0 and i1 = 0 and i2 = 1 and P0 > 0 and P1 > 0 and P2 <= 0) }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1, i2] -> [i3, i4, i5]] -> [o0, o1, o2] : (i2 = 1 and i3 = i0 and i4 = i1 and i5 = 1 and o0 = 0 and o1 = 0 and o2 = 0 and P2 >= 17 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = 0 and i3 = i0 and i4 = i1 and i5 = 1 and o0 = 0 and o1 = 0 and o2 = 1 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = 1 and i3 = i0 and i4 = i1 and i5 = 1 and o0 = 0 and o1 = 0 and o2 = 0 and P2 > 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) or (i2 = 0 and i3 = i0 and i4 = i1 and i5 = 1 and o0 = 0 and o1 = 0 and o2 = 1 and P2 <= 0 and i0 >= 0 and i0 < P0 and i1 >= 0 and i1 < P1) }
-Array A_memref_alloca_res_4@0x3d85c650
+Array A_memref_alloca_res_4@0x2f6c8e70
  coincidence: 0
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1 }
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : i2 = 1 and o0 = i0 and o1 = i1 and o2 = 1 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 0 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1, i2] -> [i3, i4, i5]] -> [o0, o1, o2] : i2 = 1 and i3 = i0 and i4 = i1 and i5 = 1 and o0 = 0 and o1 = 0 and o2 = 0 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 1 }
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : i2 = 1 and o0 = i0 and o1 = i1 and o2 = 1 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 0 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1, i2] -> [i3, i4, i5]] -> [o0, o1, o2] : i2 = 1 and i3 = i0 and i4 = i1 and i5 = 1 and o0 = 0 and o1 = 0 and o2 = 0 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[] }
@@ -950,13 +950,13 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] ->
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[] }
@@ -995,13 +995,13 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] ->
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
 Applied schedule [P0, P1, P2, P3] -> {  }
 Deltas [P0, P1, P2, P3] -> {  }
 Deltas map [P0, P1, P2, P3] -> {  }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[] }
@@ -1038,13 +1038,13 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1] -> [i2, i3]] -> [o0, o1] : i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 1
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1] : o0 = i1 and o1 = i0 }
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1] -> [o0, o1] : o0 = i0 and o1 = i1 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
 Deltas [P0, P1, P2, P3] -> { [i0, i1] : i0 = 0 and i1 = 0 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1] -> [i2, i3]] -> [o0, o1] : i2 = i0 and i3 = i1 and o0 = 0 and o1 = 0 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and P2 > 0 }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 1
 Unallocated [P0, P1, P2, P3] -> { A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 Allocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[] }
@@ -1081,13 +1081,13 @@ Tagged prefix schedule [P0, P1, P2, P3] -> { [RS2_affine_parallel[i0, i1, i2, i3
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : exists (e0 = floor((i2)/16): o0 = i0 and o1 = i1 and o2 = 21 + i2 and 16e0 = i2 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and i2 >= 0 and i2 < P2) }
 Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1, i2] -> [i3, i4, i5]] -> [o0, o1, o2] : exists (e0 = floor((i2)/16): i3 = i0 and i4 = i1 and i5 = 21 + i2 and o0 = 0 and o1 = 0 and o2 = 21 and 16e0 = i2 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and i2 >= 0 and i2 < P2) }
-Array A_memref_alloca_res_10@0x3d81f2b0
+Array A_memref_alloca_res_10@0x2f689dc0
  coincidence: 0
 Tagged prefix schedule [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 20 + P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0, o1, o2] : o0 = i1 and o1 = i0 and o2 = 21 + 16i3 }
 Applied schedule [P0, P1, P2, P3] -> { [i0, i1, i2] -> [o0, o1, o2] : exists (e0 = floor((i2)/16): o0 = i0 and o1 = i1 and o2 = 21 + i2 and 16e0 = i2 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and i2 >= 0 and i2 < P2) }
 Deltas [P0, P1, P2, P3] -> { [i0, i1, i2] : i0 = 0 and i1 = 0 and i2 = 21 and P0 > 0 and P1 > 0 and P2 > 0 }
 Deltas map [P0, P1, P2, P3] -> { [[i0, i1, i2] -> [i3, i4, i5]] -> [o0, o1, o2] : exists (e0 = floor((i2)/16): i3 = i0 and i4 = i1 and i5 = 21 + i2 and o0 = 0 and o1 = 0 and o2 = 21 and 16e0 = i2 and i1 >= 0 and i1 < P1 and i0 >= 0 and i0 < P0 and i2 >= 0 and i2 < P2) }
-Array A_memref_alloca_res_7@0x3d860200
+Array A_memref_alloca_res_7@0x2f6cd8d0
  coincidence: 0
 Unallocated [P0, P1, P2, P3] -> {  }
 Allocated [P0, P1, P2, P3] -> { A_memref_alloca_res_7[]; A_memref_alloca_res_10[]; A_memref_alloca_res_4[] }
@@ -1377,6 +1377,25 @@ child:
 Unallocated [P0, P1, P2, P3] -> {  }
 Allocated [P0, P1, P2, P3] -> { A_memref_alloca_res_4[]; A_memref_alloca_res_10[]; A_memref_alloca_res_7[] }
 ToExpand [P0, P1, P2, P3] -> {  }
+Domain [P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
+Domain [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; RS2_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS1_affine_parallel[i0, i1, i2, i3] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, i2] : i2 = 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 }
+Domain [P0, P1, P2, P3] -> {  }
 New Schedule Prepared for GPU:
 domain: "[P0, P1, P2, P3] -> { RS0_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0; RS2_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS1_affine_parallel[i0, i1, 0, i3] : 0 <= i0 < P1 and 0 <= i1 < P0 and i3 >= 0 and 16i3 < P2; RS3_affine_parallel[i0, i1, 0] : 0 <= i0 < P1 and 0 <= i1 < P0 }"
 child:
@@ -1405,67 +1424,69 @@ child:
                   child:
                     sequence:
                     - filter: "[P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] }"
+                      child:
+                        mark: "async_wait_group"
                     - filter: "[P0, P1, P2, P3] -> { RS3_affine_parallel[i0, i1, i2] }"
                 - filter: "[P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] }"
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_10[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[o0, o1, o2] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and P2 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and 16i3 >= -16 + P2 and 16i3 < P2 and i3 >= 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[o0, o1, o2] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and P2 <= 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = 1 + i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = 0 and P2 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_7[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
 [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_10[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[o0, o1, o2] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and P2 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and 16i3 >= -16 + P2 and 16i3 < P2 and i3 >= 0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [RS3_affine_parallel[o0, o1, o2] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and P2 <= 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = 1 + i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 <= -17 + P2; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_4[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = 0 and P2 > 0 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0; [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_7[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
 [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + 16i3)]; RS3_affine_parallel[i0, i1, i2] -> [(20 + P2)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(16i3)] }
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = 20 + P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = 21 + 16i3 }
-RS2_affine_parallel@0x3d839170
+RS2_affine_parallel@0x2f6a6a10
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_10[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
 [P0, P1, P2, P3] -> { [i0] -> [o0] : exists (e0 = floor((i0)/16): o0 = 21 + i0 and 16e0 = i0 and P0 > 0 and P1 > 0 and i0 >= 0 and i0 < P2) }
 [P0, P1, P2, P3] -> { [i0] : i0 = 21 and P0 > 0 and P1 > 0 and P2 > 0 }
-RS1_affine_parallel@0x3d8218e0
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_10[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
 [P0, P1, P2, P3] -> { [i0] -> [o0] : exists (e0 = floor((i0)/16): o0 = 21 + i0 and 16e0 = i0 and P0 > 0 and P1 > 0 and i0 >= 0 and i0 < P2) }
 [P0, P1, P2, P3] -> { [i0] : i0 = 21 and P0 > 0 and P1 > 0 and P2 > 0 }
-RS3_affine_parallel@0x3d83a8a0
+RS3_affine_parallel@0x2f6a7cc0
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = 20 + P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = 21 + 16i3 }
-RS2_affine_parallel@0x3d839170
+RS2_affine_parallel@0x2f6a6a10
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_7[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
 [P0, P1, P2, P3] -> { [i0] -> [o0] : exists (e0 = floor((i0)/16): o0 = 21 + i0 and 16e0 = i0 and P0 > 0 and P1 > 0 and i0 >= 0 and i0 < P2) }
 [P0, P1, P2, P3] -> { [i0] : i0 = 21 and P0 > 0 and P1 > 0 and P2 > 0 }
-RS1_affine_parallel@0x3d8218e0
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [RS2_affine_parallel[o0, o1, o2, o3] -> A_memref_alloca_res_7[]] : i2 = 0 and o0 = i0 and o1 = i1 and o2 = 0 and o3 = i3 and i0 >= 0 and i0 < P1 and i1 >= 0 and i1 < P0 and i3 >= 0 and 16i3 < P2 }
 [P0, P1, P2, P3] -> { [i0] -> [o0] : exists (e0 = floor((i0)/16): o0 = 21 + i0 and 16e0 = i0 and P0 > 0 and P1 > 0 and i0 >= 0 and i0 < P2) }
 [P0, P1, P2, P3] -> { [i0] : i0 = 21 and P0 > 0 and P1 > 0 and P2 > 0 }
-RS3_affine_parallel@0x3d83a8a0
+RS3_affine_parallel@0x2f6a7cc0
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = 16i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = 21 + 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = 20 + P2 }
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
-RS3_affine_parallel@0x3d83a8a0
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
+RS3_affine_parallel@0x2f6a7cc0
 New AST:
 mark: grid_parallel@0x2
 node:
@@ -1477,7 +1498,7 @@ node:
     op: lt
     args:
     - id: c0
-    - id: P0@0x3d825aa0
+    - id: P0@0x2f690eb0
   inc:
     val: 1
   body:
@@ -1489,49 +1510,49 @@ node:
       op: lt
       args:
       - id: c1
-      - id: P1@0x3d825b90
+      - id: P1@0x2f690fa0
     inc:
       val: 1
     body:
-      mark: allocate_array@0x3d945910
+      mark: allocate_array@0x2f898550
       node:
       - user:
           op: call
           args:
-          - id: RS0_affine_parallel@0x3d6d2590
+          - id: RS0_affine_parallel@0x2f6c4400
           - id: c1
           - id: c0
           - val: 0
           - op: call
             args:
-            - id: A_memref_alloca_res_4@0x3d85c650
+            - id: A_memref_alloca_res_4@0x2f6c8e70
             - val: 0
             - val: 0
-      - mark: allocate_array@0x3da45d40
+      - mark: allocate_array@0x2f7854c0
         node:
         - guard:
             op: ge
             args:
-            - id: P2@0x3d865630
+            - id: P2@0x2f6d2cd0
             - val: 1
           then:
             user:
               op: call
               args:
-              - id: RS1_affine_parallel@0x3d8218e0
+              - id: RS1_affine_parallel@0x2f68d170
               - id: c1
               - id: c0
               - val: 0
               - val: 0
               - op: call
                 args:
-                - id: A_memref_alloca_res_10@0x3d81f2b0
+                - id: A_memref_alloca_res_10@0x2f689dc0
                 - val: 0
                 - val: 0
                 - val: 21
               - op: call
                 args:
-                - id: A_memref_alloca_res_7@0x3d860200
+                - id: A_memref_alloca_res_7@0x2f6cd8d0
                 - val: 0
                 - val: 0
                 - val: 21
@@ -1546,7 +1567,7 @@ node:
               - id: c2
               - op: add
                 args:
-                - id: P2@0x3d865630
+                - id: P2@0x2f6d2cd0
                 - val: 15
             inc:
               val: 16
@@ -1554,7 +1575,7 @@ node:
             - guard:
                 op: ge
                 args:
-                - id: P2@0x3d865630
+                - id: P2@0x2f6d2cd0
                 - op: add
                   args:
                   - id: c2
@@ -1563,7 +1584,7 @@ node:
                 user:
                   op: call
                   args:
-                  - id: RS1_affine_parallel@0x3d8218e0
+                  - id: RS1_affine_parallel@0x2f68d170
                   - id: c1
                   - id: c0
                   - val: 0
@@ -1573,7 +1594,7 @@ node:
                     - val: 16
                   - op: call
                     args:
-                    - id: A_memref_alloca_res_10@0x3d81f2b0
+                    - id: A_memref_alloca_res_10@0x2f689dc0
                     - val: 0
                     - val: 0
                     - op: pdiv_r
@@ -1585,7 +1606,7 @@ node:
                       - val: 22
                   - op: call
                     args:
-                    - id: A_memref_alloca_res_7@0x3d860200
+                    - id: A_memref_alloca_res_7@0x2f6cd8d0
                     - val: 0
                     - val: 0
                     - op: pdiv_r
@@ -1595,108 +1616,110 @@ node:
                         - id: c2
                         - val: 1
                       - val: 22
-            - user:
-                op: call
-                args:
-                - id: RS2_affine_parallel@0x3d839170
-                - id: c1
-                - id: c0
-                - val: 0
-                - op: sub
+            - mark: async_wait_group@0x2f89ca40
+              node:
+                user:
+                  op: call
                   args:
-                  - op: div
-                    args:
-                    - id: c2
-                    - val: 16
-                  - val: 1
-                - op: call
-                  args:
-                  - id: A_memref_alloca_res_10@0x3d81f2b0
+                  - id: RS2_affine_parallel@0x2f6a6a10
+                  - id: c1
+                  - id: c0
                   - val: 0
-                  - val: 0
-                  - op: pdiv_r
+                  - op: sub
                     args:
-                    - op: add
+                    - op: div
                       args:
                       - id: c2
-                      - val: 4
-                    - val: 22
-                - op: call
-                  args:
-                  - id: A_memref_alloca_res_4@0x3d85c650
-                  - val: 0
-                  - val: 0
-                  - val: 0
-                - op: call
-                  args:
-                  - id: A_memref_alloca_res_7@0x3d860200
-                  - val: 0
-                  - val: 0
-                  - op: pdiv_r
+                      - val: 16
+                    - val: 1
+                  - op: call
                     args:
-                    - op: add
+                    - id: A_memref_alloca_res_10@0x2f689dc0
+                    - val: 0
+                    - val: 0
+                    - op: pdiv_r
                       args:
-                      - id: c2
-                      - val: 4
-                    - val: 22
+                      - op: add
+                        args:
+                        - id: c2
+                        - val: 4
+                      - val: 22
+                  - op: call
+                    args:
+                    - id: A_memref_alloca_res_4@0x2f6c8e70
+                    - val: 0
+                    - val: 0
+                    - val: 0
+                  - op: call
+                    args:
+                    - id: A_memref_alloca_res_7@0x2f6cd8d0
+                    - val: 0
+                    - val: 0
+                    - op: pdiv_r
+                      args:
+                      - op: add
+                        args:
+                        - id: c2
+                        - val: 4
+                      - val: 22
           - user:
               op: call
               args:
-              - id: RS3_affine_parallel@0x3d83a8a0
+              - id: RS3_affine_parallel@0x2f6a7cc0
               - id: c1
               - id: c0
               - val: 0
               - op: call
                 args:
-                - id: A_memref_alloca_res_4@0x3d85c650
+                - id: A_memref_alloca_res_4@0x2f6c8e70
                 - val: 0
                 - val: 0
                 - val: 0
 [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i1)]; RS3_affine_parallel[i0, i1, i2] -> [(i1)]; RS0_affine_parallel[i0, i1, i2] -> [(i1)] }
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i1 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i1 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i1 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { RS1_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS2_affine_parallel[i0, i1, i2, i3] -> [(i0)]; RS3_affine_parallel[i0, i1, i2] -> [(i0)]; RS0_affine_parallel[i0, i1, i2] -> [(i0)] }
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = i0 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = i0 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0; [RS0_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = i0 }
-RS3_affine_parallel@0x3d83a8a0
-RS0_affine_parallel@0x3d6d2590
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
+RS3_affine_parallel@0x2f6a7cc0
+RS0_affine_parallel@0x2f6c4400
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
 [P0, P1, P2, P3] -> { RS2_affine_parallel[i0, i1, i2, i3] -> [(21 + 16i3)]; RS3_affine_parallel[i0, i1, i2] -> [(20 + P2)]; RS1_affine_parallel[i0, i1, i2, i3] -> [(16i3)] }
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_10[]] -> [o0] : o0 = 20 + P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_10[]] -> [o0] : o0 = 21 + 16i3 }
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
-RS3_affine_parallel@0x3d83a8a0
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
+RS3_affine_parallel@0x2f6a7cc0
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_7[]] -> [o0] : o0 = 20 + P2; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_7[]] -> [o0] : o0 = 21 + 16i3 }
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
-RS3_affine_parallel@0x3d83a8a0
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
+RS3_affine_parallel@0x2f6a7cc0
 [P0, P1, P2, P3] -> { [RS1_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = 16i3; [RS2_affine_parallel[i0, i1, i2, i3] -> A_memref_alloca_res_4[]] -> [o0] : o0 = 21 + 16i3; [RS3_affine_parallel[i0, i1, i2] -> A_memref_alloca_res_4[]] -> [o0] : o0 = 20 + P2 }
-RS2_affine_parallel@0x3d839170
-RS1_affine_parallel@0x3d8218e0
-RS3_affine_parallel@0x3d83a8a0
+RS2_affine_parallel@0x2f6a6a10
+RS1_affine_parallel@0x2f68d170
+RS3_affine_parallel@0x2f6a7cc0
 New func:
 "llvm.func"() <{CConv = #llvm.cconv<ccc>, arg_attrs = [{}, {}, {}, {}, {}, {}, {}, {llvm.nocapture, llvm.noundef, llvm.writeonly}, {llvm.nocapture, llvm.noundef, llvm.readonly}, {llvm.nocapture, llvm.noundef, llvm.readonly}, {llvm.noundef}, {llvm.noundef}], comdat = @__llvm_global_comdat::@_Z13MatrixMulCUDAILi16EEvPfS0_S0_ii, function_type = !llvm.func<void (i64, i64, i64, i64, i64, i64, i32, ptr, ptr, ptr, i32, i32)>, linkage = #llvm.linkage<private>, sym_name = "__mlir.par.kernel._Z13MatrixMulCUDAILi16EEvPfS0_S0_ii_32764", sym_visibility = "private", unnamed_addr = 1 : i64, visibility_ = 0 : i64}> ({
 ^bb0(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: i32, %arg7: !llvm.ptr, %arg8: !llvm.ptr, %arg9: !llvm.ptr, %arg10: i32, %arg11: i32):
@@ -1776,6 +1799,7 @@ New func:
       %110 = "arith.constant"() <{value = 0 : i64}> : () -> i64
       %111 = "arith.cmpi"(%109, %110) <{predicate = 0 : i64}> : (i64, i64) -> i1
       "scf.if"(%111) ({
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %135 = "arith.constant"() <{value = 0 : i64}> : () -> i64
         %136 = "arith.constant"() <{value = 21 : i64}> : () -> i64
         %137 = "arith.subi"(%arg22, %136) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
@@ -1857,6 +1881,7 @@ New func:
     %49 = "arith.cmpi"(%47, %48) <{predicate = 0 : i64}> : (i64, i64) -> i1
     %50 = "arith.andi"(%42, %49) : (i1, i1) -> i1
     "scf.if"(%50) ({
+      "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
       %54 = "arith.constant"() <{value = 0 : i64}> : () -> i64
       %55 = "arith.constant"() <{value = 1 : i64}> : () -> i64
       %56 = "arith.index_cast"(%5) : (index) -> i64
@@ -2050,6 +2075,7 @@ Converted to async:
         %151 = "memref.subview"(%22, %150) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
         "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
         ^bb0(%arg29: index, %arg30: index, %arg31: index):
+          "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
           %152 = "affine.load"(%20, %arg29, %arg30, %arg31) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
           "affine.store_var"(%152, %153) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
           %153 = "affine.for"(%152) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
@@ -2181,6 +2207,7 @@ Converted to async:
       %97 = "memref.subview"(%22, %96) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
       ^bb0(%arg17: index, %arg18: index, %arg19: index):
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %98 = "affine.load"(%20, %arg17, %arg18, %arg19) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
         "affine.store_var"(%98, %99) <{type = "for.iv.init"}> {polymer.stmt.name = "S19_affine_store_var"} : (f32, f32) -> ()
         %99 = "affine.for"(%98) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
@@ -2325,6 +2352,7 @@ gpu-affine-opt: After opt:
         %151 = "memref.subview"(%22, %150) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
         "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
         ^bb0(%arg29: index, %arg30: index, %arg31: index):
+          "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
           %152 = "affine.load"(%20, %arg29, %arg30, %arg31) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
           %153 = "affine.for"(%152) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
           ^bb0(%arg32: index, %arg33: f32):
@@ -2455,6 +2483,7 @@ gpu-affine-opt: After opt:
       %97 = "memref.subview"(%22, %96) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
       ^bb0(%arg17: index, %arg18: index, %arg19: index):
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %98 = "affine.load"(%20, %arg17, %arg18, %arg19) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
         %99 = "affine.for"(%98) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg20: index, %arg21: f32):
@@ -2577,6 +2606,7 @@ gpu-affine-opt: After shmem to alloca:
         %103 = "memref.subview"(%23, %102) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
         "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
         ^bb0(%arg29: index, %arg30: index, %arg31: index):
+          "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
           %104 = "affine.load"(%22, %arg29, %arg30, %arg31) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
           %105 = "affine.for"(%104) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
           ^bb0(%arg32: index, %arg33: f32):
@@ -2678,6 +2708,7 @@ gpu-affine-opt: After shmem to alloca:
       %66 = "memref.subview"(%23, %65) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
       "affine.parallel"() <{lowerBoundsGroups = dense<1> : tensor<3xi32>, lowerBoundsMap = affine_map<() -> (0, 0, 0)>, reductions = [], steps = [1, 1, 1], upperBoundsGroups = dense<1> : tensor<3xi32>, upperBoundsMap = affine_map<() -> (16, 16, 1)>}> ({
       ^bb0(%arg17: index, %arg18: index, %arg19: index):
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %67 = "affine.load"(%22, %arg17, %arg18, %arg19) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
         %68 = "affine.for"(%67) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg20: index, %arg21: f32):
@@ -2800,6 +2831,7 @@ gpu-affine-opt: After gpuify:
           %133 = "arith.remui"(%arg19, %2) : (i64, i64) -> i64
           %134 = "arith.index_cast"(%133) : (i64) -> index
           %135 = "memref.subview"(%33, %134) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
+          "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
           %136 = "affine.load"(%22, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
           %137 = "affine.for"(%136) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
           ^bb0(%arg23: index, %arg24: f32):
@@ -2905,6 +2937,7 @@ gpu-affine-opt: After gpuify:
         %96 = "arith.addi"(%95, %7) <{overflowFlags = #arith.overflow<none>}> : (i64, i64) -> i64
         %97 = "arith.index_cast"(%96) : (i64) -> index
         %98 = "memref.subview"(%43, %97) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808, 0>, static_sizes = array<i64: 1, 1024>, static_strides = array<i64: 1, 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %99 = "affine.load"(%22, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
         %100 = "affine.for"(%99) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg17: index, %arg18: f32):
@@ -3040,6 +3073,7 @@ gpu-affine-opt: After expand subview:
           %111 = "arith.index_cast"(%110) : (i64) -> index
           %112 = "affine.apply"(%111) <{map = affine_map<()[s0] -> (s0 * 1024)>}> : (index) -> index
           %113 = "memref.reinterpret_cast"(%29, %112) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 1024>, static_strides = array<i64: 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
+          "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
           %114 = "affine.load"(%22, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
           %115 = "affine.for"(%114) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
           ^bb0(%arg23: index, %arg24: f32):
@@ -3141,6 +3175,7 @@ gpu-affine-opt: After expand subview:
         %70 = "arith.index_cast"(%69) : (i64) -> index
         %71 = "affine.apply"(%70) <{map = affine_map<()[s0] -> (s0 * 1024)>}> : (index) -> index
         %72 = "memref.reinterpret_cast"(%34, %71) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 1024>, static_strides = array<i64: 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %73 = "affine.load"(%22, %arg14, %arg15, %arg16) <{map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {polymer.stmt.name = "S18_affine_load"} : (memref<16x16x1xf32, 16>, index, index, index) -> f32
         %74 = "affine.for"(%73) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg17: index, %arg18: f32):
@@ -3260,6 +3295,7 @@ gpu-affine-opt: After rar:
           %111 = "arith.index_cast"(%110) : (i64) -> index
           %112 = "affine.apply"(%111) <{map = affine_map<()[s0] -> (s0 * 1024)>}> : (index) -> index
           %113 = "memref.reinterpret_cast"(%29, %112) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 1024>, static_strides = array<i64: 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
+          "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
           %114 = "memref.load"(%22) <{nontemporal = false}> : (memref<f32>) -> f32
           %115 = "affine.for"(%114) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
           ^bb0(%arg23: index, %arg24: f32):
@@ -3361,6 +3397,7 @@ gpu-affine-opt: After rar:
         %70 = "arith.index_cast"(%69) : (i64) -> index
         %71 = "affine.apply"(%70) <{map = affine_map<()[s0] -> (s0 * 1024)>}> : (index) -> index
         %72 = "memref.reinterpret_cast"(%34, %71) <{operandSegmentSizes = array<i32: 1, 1, 0, 0>, static_offsets = array<i64: -9223372036854775808>, static_sizes = array<i64: 1024>, static_strides = array<i64: 1>}> : (memref<22x1024xi8, 3>, index) -> memref<1024xi8, strided<[1], offset: ?>, 3>
+        "nvvm.cp.async.wait.group"() <{n = 20 : i32}> : () -> ()
         %73 = "memref.load"(%22) <{nontemporal = false}> : (memref<f32>) -> f32
         %74 = "affine.for"(%73) <{lowerBoundMap = affine_map<() -> (0)>, operandSegmentSizes = array<i32: 0, 0, 1>, step = 1 : index, upperBoundMap = affine_map<() -> (16)>}> ({
         ^bb0(%arg17: index, %arg18: f32):
@@ -3530,6 +3567,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
           %c1024_11 = arith.constant 1024 : index
           %52 = arith.muli %51, %c1024_11 : index
           %reinterpret_cast_12 = memref.reinterpret_cast %18 to offset: [%52], sizes: [1024], strides: [1] : memref<22x1024xi8, 3> to memref<1024xi8, strided<[1], offset: ?>, 3>
+          nvvm.cp.async.wait.group 20
           %53 = memref.load %alloca[] : memref<f32>
           %c0_13 = arith.constant 0 : index
           %c16_14 = arith.constant 16 : index
@@ -3685,6 +3723,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
         %c1024_11 = arith.constant 1024 : index
         %69 = arith.muli %68, %c1024_11 : index
         %reinterpret_cast_12 = memref.reinterpret_cast %23 to offset: [%69], sizes: [1024], strides: [1] : memref<22x1024xi8, 3> to memref<1024xi8, strided<[1], offset: ?>, 3>
+        nvvm.cp.async.wait.group 20
         %70 = memref.load %alloca[] : memref<f32>
         %c0_13 = arith.constant 0 : index
         %c16_14 = arith.constant 16 : index
@@ -3901,6 +3940,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
           %85 = llvm.mlir.constant(1024 : i64) : i64
           %86 = llvm.mul %84, %85 : i64
           %87 = llvm.getelementptr %47[%86] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+          nvvm.cp.async.wait.group 20
           %88 = llvm.load %41 : !llvm.ptr -> f32
           %89 = llvm.mlir.constant(0 : i64) : i64
           %90 = builtin.unrealized_conversion_cast %89 : i64 to index
@@ -4071,6 +4111,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
         %98 = llvm.mlir.constant(1024 : i64) : i64
         %99 = llvm.mul %97, %98 : i64
         %100 = llvm.getelementptr %51[%99] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+        nvvm.cp.async.wait.group 20
         %101 = llvm.load %41 : !llvm.ptr -> f32
         %102 = llvm.mlir.constant(0 : i64) : i64
         %103 = builtin.unrealized_conversion_cast %102 : i64 to index
@@ -4231,6 +4272,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
           %52 = llvm.mul %51, %2 : i64
           %53 = llvm.getelementptr %3[%52] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
           %54 = llvm.getelementptr %4[%52] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+          nvvm.cp.async.wait.group 20
           %55 = llvm.load %26 : !llvm.ptr -> f32
           %56 = scf.for %arg18 = %17 to %22 step %16 iter_args(%arg19 = %55) -> (f32) {
             %57 = builtin.unrealized_conversion_cast %arg18 : index to i64
@@ -4328,6 +4370,7 @@ llvm.func private local_unnamed_addr @__mlir.par.kernel._Z13MatrixMulCUDAILi16EE
         %57 = llvm.mul %56, %2 : i64
         %58 = llvm.getelementptr %3[%57] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
         %59 = llvm.getelementptr %4[%57] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+        nvvm.cp.async.wait.group 20
         %60 = llvm.load %26 : !llvm.ptr -> f32
         %61 = scf.for %arg17 = %17 to %22 step %16 iter_args(%arg18 = %60) -> (f32) {
           %62 = builtin.unrealized_conversion_cast %arg17 : index to i64
@@ -4483,6 +4526,7 @@ gpu-affine-opt: After gpu module lower accesses:gpu.module @__mlir_gpu_module [#
             %52 = llvm.mul %51, %2 : i64
             %53 = llvm.getelementptr %3[%52] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
             %54 = llvm.getelementptr %4[%52] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+            nvvm.cp.async.wait.group 20
             %55 = llvm.load %26 : !llvm.ptr -> f32
             %56 = scf.for %arg18 = %17 to %22 step %16 iter_args(%arg19 = %55) -> (f32) {
               %57 = builtin.unrealized_conversion_cast %arg18 : index to i64
@@ -4580,6 +4624,7 @@ gpu-affine-opt: After gpu module lower accesses:gpu.module @__mlir_gpu_module [#
           %57 = llvm.mul %56, %2 : i64
           %58 = llvm.getelementptr %3[%57] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
           %59 = llvm.getelementptr %4[%57] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+          nvvm.cp.async.wait.group 20
           %60 = llvm.load %26 : !llvm.ptr -> f32
           %61 = scf.for %arg17 = %17 to %22 step %16 iter_args(%arg18 = %60) -> (f32) {
             %62 = builtin.unrealized_conversion_cast %arg17 : index to i64
@@ -4737,6 +4782,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<f80 = dense<128> : vector<2xi64>
               %52 = llvm.mul %51, %2 : i64
               %53 = llvm.getelementptr %3[%52] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
               %54 = llvm.getelementptr %4[%52] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+              nvvm.cp.async.wait.group 20
               %55 = llvm.load %26 : !llvm.ptr -> f32
               %56 = scf.for %arg18 = %17 to %22 step %16 iter_args(%arg19 = %55) -> (f32) {
                 %57 = builtin.unrealized_conversion_cast %arg18 : index to i64
@@ -4834,6 +4880,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<f80 = dense<128> : vector<2xi64>
             %57 = llvm.mul %56, %2 : i64
             %58 = llvm.getelementptr %3[%57] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
             %59 = llvm.getelementptr %4[%57] : (!llvm.ptr<3>, i64) -> !llvm.ptr<3>, i8
+            nvvm.cp.async.wait.group 20
             %60 = llvm.load %26 : !llvm.ptr -> f32
             %61 = scf.for %arg17 = %17 to %22 step %16 iter_args(%arg18 = %60) -> (f32) {
               %62 = builtin.unrealized_conversion_cast %arg17 : index to i64

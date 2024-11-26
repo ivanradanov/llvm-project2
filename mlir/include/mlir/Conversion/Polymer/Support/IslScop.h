@@ -73,10 +73,15 @@ class ScopArrayInfo;
 
 static constexpr char gridParallelMark[] = "grid_parallel";
 static constexpr char allocateArrayMark[] = "allocate_array";
+static constexpr char asyncWaitGroupMark[] = "async_wait_group";
 
 struct AllocateArrayMarkInfo {
   isl::union_set allocate;
   std::map<isl_id *, std::vector<unsigned>> expand;
+};
+
+struct AsyncWaitGroupInfo {
+  unsigned num;
 };
 
 class MemoryAccess {

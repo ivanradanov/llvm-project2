@@ -5,29 +5,29 @@
 #include "mlir/Conversion/Polymer/Support/ScatteringUtils.h"
 #include "mlir/Conversion/Polymer/Support/ScopStmt.h"
 #include "mlir/Conversion/Polymer/Target/ISL.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Visitors.h"
-#include "mlir/Support/LLVM.h"
-
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineStructures.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
 #include "llvm/ADT/APInt.h"
@@ -1299,6 +1299,15 @@ public:
       });
       if (r.is_error())
         llvm_unreachable("error?");
+      create(Child);
+    } else if (isMark(Id, asyncWaitGroupMark)) {
+      // TODO maybe implemnet this as a generic callback so that we don't need
+      // to put gpu/nvidia/etc intrinsic specific stuff here
+      if (!getenv("GPU_AFFINE_OPT_DISABLE_CONVERT_TO_ASYNC")) {
+        AsyncWaitGroupInfo *info =
+            (AsyncWaitGroupInfo *)isl::manage_copy(Id).get_user();
+        b.create<NVVM::CpAsyncWaitGroupOp>(b.getUnknownLoc(), info->num);
+      }
       create(Child);
     } else {
       llvm_unreachable("Unknown mark");
