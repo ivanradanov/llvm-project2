@@ -957,7 +957,10 @@ void transform(LLVM::LLVMFuncOp f) {
   // not properly convey the arrays and live ranges etc information when
   // creating new clusters and when we merge them together. Once we implemnet
   // that this can be turned off.
-  auto r = isl_options_set_schedule_whole_component(scop->getIslCtx(), 1);
+  isl_stat r;
+  r = isl_options_set_schedule_whole_component(scop->getIslCtx(), 1);
+  assert(r == isl_stat_ok);
+  r = isl_options_set_schedule_serialize_sccs(scop->getIslCtx(), 1);
   assert(r == isl_stat_ok);
 
   isl::schedule newSchedule =
