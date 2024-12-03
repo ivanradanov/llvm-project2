@@ -8,6 +8,12 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+[[maybe_unused]]
+static mlir::Block *getSingleBlock(mlir::Operation *op) {
+  assert(op->getNumRegions() == 1 && op->getRegion(0).getBlocks().size() == 1);
+  return &op->getRegion(0).front();
+}
+
 static inline mlir::scf::IfOp cloneWithResults(mlir::scf::IfOp op,
                                                mlir::OpBuilder &rewriter,
                                                mlir::IRMapping mapping = {}) {

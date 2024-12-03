@@ -170,146 +170,6 @@ static Value computeMap(RewriterBase &rewriter, Location loc, AffineMap map,
     llvm_unreachable("map with 0 results");
 }
 
-void optGlobalSharedMemCopies(Operation *root) {
-  SmallVector<memref::AllocaOp> shmemAllocas;
-  llvm::SmallSetVector<MemrefValue, 4> shmemMemrefs;
-  root->walk([&](memref::AllocaOp alloca) {
-    if (nvgpu::NVGPUDialect::isSharedMemoryAddressSpace(
-            alloca.getType().getMemorySpace())) {
-      shmemAllocas.push_back(alloca);
-      shmemMemrefs.insert(cast<MemrefValue>(alloca.getMemref()));
-    }
-  });
-
-  auto isGlobalMemref = [&](MemrefValue m) {
-    return nvgpu::NVGPUDialect::isGlobalMemoryAddressSpace(
-               m.getType().getMemorySpace()) &&
-           m.getParentRegion()->getParentOp() == root;
-  };
-
-  affine::AffineParallelOp gridPar = nullptr;
-  SmallVector<affine::AffineParallelOp> gridPars;
-  root->walk([&](affine::AffineParallelOp par) {
-    if (par->hasAttr("gpu.par.grid")) {
-      assert(!gridPar);
-      gridPar = par;
-    }
-  });
-
-  llvm::SmallSetVector<Operation *, 4> syncsInserted;
-
-  for (auto alloca : shmemAllocas) {
-    LLVM_DEBUG(llvm::dbgs() << "Handling " << *alloca << ":\n");
-    SmallVector<Copy> copies;
-    bool allAffineAccesses = true;
-    for (auto opInst : alloca.getMemref().getUsers()) {
-      if (auto load = dyn_cast<affine::AffineReadOpInterface>(opInst)) {
-        // These can't be optimized, copy_async only supports global->shared
-        continue;
-      }
-      if (auto writeOp = dyn_cast<affine::AffineWriteOpInterface>(opInst)) {
-        if (auto store = dyn_cast<affine::AffineStoreOp>(opInst)) {
-          if (auto vectorStore = isVectorStore(store)) {
-            if (!vectorStore->val.hasOneUse())
-              continue;
-            auto parLoad = dyn_cast_or_null<affine::AffineParallelOp>(
-                vectorStore->val.getDefiningOp());
-            if (!parLoad)
-              continue;
-            auto vectorLoad = isVectorLoad(parLoad);
-            if (!vectorLoad)
-              continue;
-            if (isGlobalMemref(cast<MemrefValue>(vectorLoad->load.getMemRef())))
-              copies.push_back({vectorLoad->load, vectorStore->store,
-                                vectorLoad->par, vectorStore->par});
-          } else {
-            if (!store.getValueToStore().hasOneUse())
-              continue;
-            auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
-                store.getValueToStore().getDefiningOp());
-            if (!load)
-              continue;
-            if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
-              copies.push_back({load, store, load, store});
-          }
-        } else if (auto store = dyn_cast<affine::AffineVectorStoreOp>(opInst)) {
-          if (!store.getValueToStore().hasOneUse())
-            continue;
-          auto load = dyn_cast_or_null<affine::AffineReadOpInterface>(
-              store.getValueToStore().getDefiningOp());
-          if (!load)
-            continue;
-          if (isGlobalMemref(cast<MemrefValue>(load.getMemRef())))
-            copies.push_back({load, store, load, store});
-        }
-      } else {
-        allAffineAccesses = false;
-      }
-    }
-    LLVM_DEBUG(llvm::dbgs() << "all affine: " << allAffineAccesses << "\n");
-
-    for (auto copy : copies) {
-      Location loc = copy.load.getLoc();
-      MLIRContext *ctx = copy.load.getContext();
-
-      auto blockPar = copy.store->getParentOfType<affine::AffineParallelOp>();
-      assert(blockPar->getAttr("gpu.par.block"));
-
-      IRRewriter rewriter(copy.storeOp);
-
-      LLVM_DEBUG(llvm::dbgs() << "Found copy\n");
-
-      auto vty = dyn_cast<VectorType>(copy.load.getValue().getType());
-      if (!vty) {
-        LLVM_DEBUG(llvm::dbgs() << "Need a vector load/store\n");
-        continue;
-      }
-      if (vty.getShape().size() != 1) {
-        LLVM_DEBUG(llvm::dbgs() << "Need 1d vector load/store\n");
-        continue;
-      }
-      if (vty.getElementType() != rewriter.getI8Type()) {
-        LLVM_DEBUG(llvm::dbgs() << "Need i8 vector\n");
-        continue;
-      }
-      unsigned copySize = vty.getShape()[0];
-      if (!(copySize == 4 || copySize == 8 || copySize == 16)) {
-        LLVM_DEBUG(llvm::dbgs() << "Need 4/8/16 size\n");
-        continue;
-      }
-
-      // TODO need to align stuff to 4, 8, or 16-byte chunks
-      rewriter.setInsertionPoint(copy.store);
-      SmallVector<Value> storeIdxs = {computeMap<affine::AffineApplyOp>(
-          rewriter, copy.store.getLoc(), copy.store.getAffineMap(),
-          copy.store.getMapOperands())};
-      SmallVector<Value> loadIdxs = {computeMap<affine::AffineApplyOp>(
-          rewriter, copy.load.getLoc(), copy.load.getAffineMap(),
-          copy.load.getMapOperands())};
-      rewriter.create<nvgpu::DeviceAsyncCopyOp>(
-          loc, copy.store.getMemRef(), storeIdxs, copy.load.getMemRef(),
-          loadIdxs, rewriter.getIndexAttr(copySize), nullptr, nullptr);
-      rewriter.eraseOp(copy.store);
-      rewriter.eraseOp(copy.load);
-
-      // TODO Needs revisiting, will break very easily, need to insert the
-      // synchronisation before the next use of the shared mem
-      Operation *synchronisationPt = blockPar->getNextNode();
-      while (!(synchronisationPt == blockPar->getBlock()->getTerminator() ||
-               synchronisationPt->getAttr("gpu.par.block")))
-        synchronisationPt = synchronisationPt->getNextNode();
-
-      if (!syncsInserted.contains(synchronisationPt)) {
-        rewriter.setInsertionPoint(synchronisationPt);
-        auto token = rewriter.create<nvgpu::DeviceAsyncCreateGroupOp>(
-            loc, nvgpu::DeviceAsyncTokenType::get(ctx), ValueRange());
-        rewriter.create<nvgpu::DeviceAsyncWaitOp>(loc, token, nullptr);
-        syncsInserted.insert(synchronisationPt);
-      }
-    }
-  }
-}
-
 static inline void islAssert(const isl_size &size) {
   assert(size != isl_size_error);
 }
@@ -654,7 +514,7 @@ insertAsyncCopySynchronisation(isl::schedule_node node, PrepScheduleInfo &psi) {
   // TODO this is just for testing things out and is dumb
   if (psi.asyncDeps.range().universe().contains(set.space())) {
     // TODO add free function
-    polymer::AsyncWaitGroupInfo *awg = new polymer::AsyncWaitGroupInfo{20};
+    polymer::AsyncWaitGroupInfo *awg = new polymer::AsyncWaitGroupInfo{3};
     isl::id waitGroupMark =
         isl::id::alloc(node.ctx(), polymer::asyncWaitGroupMark, (void *)awg);
     node = node.insert_mark(waitGroupMark);
@@ -774,6 +634,7 @@ convertToSingleThreadFor(affine::AffineParallelOp par, RewriterBase &rewriter) {
   return {newPar, affineIfOp};
 }
 
+template <bool UseSingleThreadCopy = false>
 static void convertToAsync(polymer::IslScop &scop,
                            polymer::IslScop::ApplyScheduleRes &applied) {
   Operation *root = applied.newFunc;
@@ -887,24 +748,29 @@ static void convertToAsync(polymer::IslScop &scop,
     rewriter.eraseOp(copy.load);
   }
 
+  IRRewriter rewriter(root->getContext());
   for (Operation *stmtOp : asyncCopyStmts) {
-    if (auto affinePar = dyn_cast<affine::AffineParallelOp>(stmtOp)) {
-      IRRewriter rewriter(affinePar);
-      auto [newAffinePar, affineIf] =
-          convertToSingleThreadFor(affinePar, rewriter);
-      rewriter.setInsertionPoint(affineIf.getThenBlock()->getTerminator());
-      rewriter.create<NVVM::CpAsyncCommitGroupOp>(affineIf->getLoc());
+    if constexpr (UseSingleThreadCopy) {
+      if (auto affinePar = dyn_cast<affine::AffineParallelOp>(stmtOp)) {
+        auto [newAffinePar, affineIf] =
+            convertToSingleThreadFor(affinePar, rewriter);
+        rewriter.setInsertionPoint(affineIf.getThenBlock()->getTerminator());
+        rewriter.create<NVVM::CpAsyncCommitGroupOp>(affineIf->getLoc());
+      } else {
+        llvm_unreachable("scf.for not supported yet");
+      }
     } else {
-      llvm_unreachable("scf.for not supported yet");
+      rewriter.setInsertionPoint(getSingleBlock(stmtOp)->getTerminator());
+      rewriter.create<NVVM::CpAsyncCommitGroupOp>(stmtOp->getLoc());
     }
   }
 
-  // TODO temporary hack - maybe we shuold have a custom codegen callback at the
-  // points because it would be nice to keep the polyhedral logic (IslScop.cc)
-  // separate from the GPU intrinsic specifics. Currently IslScop puts a
-  // NVVM::CpAsyncWaitGroupOp at the place we instructed it to which is outside
-  // the block parallel statements. Those have memory effects so unditribute
-  // loops fails as it doesnt know what to do with them.
+  // TODO temporary hack - maybe we should have a custom codegen callback at
+  // the points because it would be nice to keep the polyhedral logic
+  // (IslScop.cc) separate from the GPU intrinsic specifics. Currently IslScop
+  // puts a NVVM::CpAsyncWaitGroupOp at the place we instructed it to which is
+  // outside the block parallel statements. Those have memory effects so
+  // unditribute loops fails as it doesnt know what to do with them.
   SmallVector<NVVM::CpAsyncWaitGroupOp> waitOps;
   root->walk(
       [&](NVVM::CpAsyncWaitGroupOp waitOp) { waitOps.push_back(waitOp); });
@@ -1156,7 +1022,7 @@ namespace mlir {
 void populateRemoveIVPatterns(RewritePatternSet &patterns);
 }
 
-// TODO we shuold not loop distribute non-affine ops, as we cannot reason about
+// TODO we should not loop distribute non-affine ops, as we cannot reason about
 // them.
 //
 // e.g.
@@ -1316,11 +1182,9 @@ struct GPUAffineOptPass : impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           LLVM_DEBUG(DBGS << "Distributed:\n" << func << "\n");
           canonicalize(func);
           LLVM_DEBUG(DBGS << "Canonicalized:\n" << func << "\n");
-          //(void)mlir::gpu::affine_opt::optGlobalSharedMemCopies(func);
           if (!getenv("GPU_AFFINE_OPT_ROUNDTRIP"))
             mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
-          // Generates global so run on module
           sharedMemrefAllocaToGlobal(func);
           LLVM_DEBUG(DBGS << "After shmem to alloca:\n" << func << "\n");
           (void)gpuify(func);
