@@ -9,6 +9,8 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -109,9 +111,26 @@ void __inputrun_use(VoidPtrTy Ptr, uint32_t Size) { useValue(Ptr, Size); }
 void __inputgen_override_free(void *P) {}
 }
 
+struct InputRecordObjectTracker {
+  std::vector<std::unique_ptr<ObjectTy>> Objects;
+
+  // TODO deduplicate logic with InputRecordRTTy
+  std::optional<std::pair<ObjectTy *, VoidPtrTy>>
+  globalPtrToObjAndLocalPtr(VoidPtrTy GlobalPtr) {
+    // FIXME do we need to walk backwards so that we get the _last_ (currently
+    // active) allocation?
+    for (auto &Obj : Objects)
+      if (Obj->isGlobalPtrInObject(GlobalPtr))
+        return std::make_pair(&*Obj, Obj->getLocalPtr(GlobalPtr));
+    return {};
+  }
+
+  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
+    return Objects[ObjIdx]->getGlobalPtr(PtrInObj);
+  }
+};
+
 int main(int argc, char **argv) {
-  VERBOSE = (bool)getenv("VERBOSE");
-  TIMING = (bool)getenv("TIMING");
 
   if (argc != 4 && argc != 5 && argc != 2) {
     std::cerr << "Wrong usage." << std::endl;
@@ -157,12 +176,21 @@ int main(int argc, char **argv) {
                            << (Mode == InputMode_Record ? "Record" : "Generate")
                            << std::endl);
 
-  auto OASize = readV<uintptr_t>(Input);
-  InputGenObjectAddressing OA;
-  OA.setSize(OASize);
-
-  auto ObjIdxOffset = readV<uintptr_t>(Input);
-
+  ObjectAddressing *_OA;
+  InputGenObjectAddressing IGOA;
+  InputRecordObjectTracker IROT;
+  InputRecordObjectAddressing<InputRecordObjectTracker> IROA(IROT);
+  if (Mode == InputMode_Generate) {
+    auto OASize = readV<uintptr_t>(Input);
+    IGOA.setSize(OASize);
+    auto ObjIdxOffset = readV<uintptr_t>(Input);
+    IGOA.setObjIdxOffset(ObjIdxOffset);
+    _OA = &IGOA;
+  } else {
+    abort();
+    // TODO
+  }
+  ObjectAddressing &OA = *_OA;
   auto Seed = readV<uint32_t>(Input);
   Gen.seed(Seed);
 
@@ -238,8 +266,7 @@ int main(int argc, char **argv) {
       return;
     }
     VoidPtrTy LocalPtr = OA.globalPtrToLocalPtr(GlobalPtr);
-    ReplayObjectTy Obj =
-        Objects[OA.globalPtrToObjIdx(GlobalPtr) - ObjIdxOffset];
+    ReplayObjectTy Obj = Objects[OA.globalPtrToObjIdx(GlobalPtr)];
     intptr_t Offset = OA.getOffsetFromObjBasePtr(LocalPtr);
     VoidPtrTy RealPtr = Obj.Start - Obj.OutputOffset + Offset;
     *PtrLoc = RealPtr;

@@ -94,6 +94,8 @@ template <typename T> static void writeV(std::ofstream &Output, T El) {
 }
 
 struct ObjectAddressing {
+  virtual size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const = 0;
+  virtual VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
   virtual VoidPtrTy getObjBasePtr() const = 0;
   intptr_t getOffsetFromObjBasePtr(VoidPtrTy Ptr) const {
     return Ptr - getObjBasePtr();
@@ -103,15 +105,42 @@ struct ObjectAddressing {
   virtual ~ObjectAddressing(){};
 };
 
-struct InputGenObjectAddressing : public ObjectAddressing {
-  ~InputGenObjectAddressing(){};
-  size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const {
-    size_t Idx =
-        (reinterpret_cast<intptr_t>(GlobalPtr) & ObjIdxMask) / MaxObjectSize;
-    return Idx;
+template <typename RTTy>
+struct InputRecordObjectAddressing : public ObjectAddressing {
+  VoidPtrTy getObjBasePtr() const override { return nullptr; }
+  VoidPtrTy getLowestObjPtr() const override { abort(); }
+  uintptr_t getMaxObjectSize() const override { abort(); }
+
+  RTTy &RT;
+  InputRecordObjectAddressing(RTTy &RT) : RT(RT) {}
+
+  VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const override {
+    auto Res = RT.globalPtrToObjAndLocalPtr(GlobalPtr);
+    assert(Res);
+    return Res->second;
+  }
+  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
+    return RT.localPtrToGlobalPtr(ObjIdx, PtrInObj);
   }
 
-  VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const {
+  size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const override {
+    auto Res = RT.globalPtrToObjAndLocalPtr(GlobalPtr);
+    assert(Res);
+    return Res->first->getIdx();
+  }
+
+  uintptr_t getSize() { abort(); };
+};
+
+struct InputGenObjectAddressing : public ObjectAddressing {
+  ~InputGenObjectAddressing(){};
+  size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const override {
+    size_t Idx =
+        (reinterpret_cast<intptr_t>(GlobalPtr) & ObjIdxMask) / MaxObjectSize;
+    return Idx - ObjIdxOffset;
+  }
+
+  VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const override {
     return reinterpret_cast<VoidPtrTy>(reinterpret_cast<intptr_t>(GlobalPtr) &
                                        PtrInObjMask);
   }
@@ -121,24 +150,18 @@ struct InputGenObjectAddressing : public ObjectAddressing {
   }
 
   VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
-    return reinterpret_cast<VoidPtrTy>((ObjIdx * MaxObjectSize) |
-                                       reinterpret_cast<intptr_t>(PtrInObj));
+    return reinterpret_cast<VoidPtrTy>(
+        ((ObjIdxOffset + ObjIdx) * MaxObjectSize) |
+        reinterpret_cast<intptr_t>(PtrInObj));
   }
 
   uintptr_t getMaxObjectSize() const override { return MaxObjectSize; }
-
   VoidPtrTy getLowestObjPtr() const override { return nullptr; }
-
   uintptr_t getSize() { return Size; };
+  uintptr_t getMaxObjectNum() { return MaxObjectNum; }
+  uintptr_t getMaxObjectSize() { return MaxObjectSize; }
 
-  intptr_t PtrInObjMask;
-  intptr_t ObjIdxMask;
-  uintptr_t MaxObjectSize;
-  uintptr_t MaxObjectNum;
-
-  uintptr_t Size;
-
-  unsigned int highestOne(uint64_t X) { return 63 ^ __builtin_clzll(X); }
+  void setObjIdxOffset(uintptr_t Offset) { ObjIdxOffset = Offset; }
 
   void setSize(uintptr_t Size) {
     this->Size = Size;
@@ -154,6 +177,17 @@ struct InputGenObjectAddressing : public ObjectAddressing {
                              << " bits for in-object addressing and "
                              << BitsForObjIndexing << " for object indexing\n");
   }
+
+private:
+  intptr_t PtrInObjMask;
+  intptr_t ObjIdxMask;
+  uintptr_t MaxObjectSize;
+  uintptr_t MaxObjectNum;
+
+  uintptr_t ObjIdxOffset = 0;
+  uintptr_t Size = 0;
+
+  unsigned int highestOne(uint64_t X) { return 63 ^ __builtin_clzll(X); }
 };
 
 static std::string getFunctionNameFromFile(std::string FileName,

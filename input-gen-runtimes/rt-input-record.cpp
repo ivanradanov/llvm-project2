@@ -97,26 +97,7 @@ struct InputRecordConfTy {
 
 struct InputRecordRTTy {
 
-  struct InputRecordObjectAddressing : public ObjectAddressing {
-    VoidPtrTy getObjBasePtr() const override { return nullptr; }
-    VoidPtrTy getLowestObjPtr() const override { abort(); }
-    uintptr_t getMaxObjectSize() const override { abort(); }
-
-    InputRecordRTTy &RT;
-    InputRecordObjectAddressing(InputRecordRTTy &RT) : RT(RT) {}
-
-    VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const {
-      auto Res = RT.globalPtrToObjAndLocalPtr(GlobalPtr);
-      assert(Res);
-      return Res->second;
-    }
-    VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
-      return RT.Objects[ObjIdx]->getGlobalPtr(PtrInObj);
-    }
-
-    uintptr_t getSize() { return std::numeric_limits<uintptr_t>::max(); };
-  };
-  friend struct InputRecordObjectAddressing;
+  friend struct InputRecordObjectAddressing<InputRecordRTTy>;
 
   InputRecordRTTy(InputRecordConfTy Conf) : Conf(Conf), OA(*this) {
     OutputObjIdxOffset = 0;
@@ -131,7 +112,7 @@ struct InputRecordRTTy {
   IRString OutputDir;
   std::filesystem::path ExecPath;
   std::mt19937 Gen;
-  InputRecordObjectAddressing OA;
+  InputRecordObjectAddressing<InputRecordRTTy> OA;
 
   struct GlobalTy {
     VoidPtrTy Ptr;
@@ -174,10 +155,15 @@ struct InputRecordRTTy {
   }
   std::optional<std::pair<ObjectTy *, VoidPtrTy>>
   globalPtrToObjAndLocalPtr(VoidPtrTy GlobalPtr) {
+    // FIXME do we need to walk backwards so that we get the _last_ (currently
+    // active) allocation?
     for (auto &Obj : Objects)
       if (Obj->isGlobalPtrInObject(GlobalPtr))
         return std::make_pair(&*Obj, Obj->getLocalPtr(GlobalPtr));
     return {};
+  }
+  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
+    return Objects[ObjIdx]->getGlobalPtr(PtrInObj);
   }
 
   template <typename T> T generateNewArg(BranchHint *BHs, int32_t BHSize) {
@@ -251,16 +237,30 @@ struct InputRecordRTTy {
   // the _same_ location is allocated (with different size for example) Also do
   // we need a hijacked fake `free` function in the replay so that we dont crash
   // when trying to free a non-freeable object?
-  void atFree(VoidPtrTy Ptr) {
-    INPUTGEN_DEBUG(std::cerr << "Free " << toVoidPtr(Ptr) << std::endl);
+  bool atFree(VoidPtrTy Ptr) {
+    if (Recording) {
+      INPUTGEN_DEBUG(std::cerr << "Free " << toVoidPtr(Ptr)
+                               << " ignored because currently recording"
+                               << std::endl);
+      return false;
+    } else {
+      INPUTGEN_DEBUG(std::cerr << "Free " << toVoidPtr(Ptr) << std::endl);
+      return true;
+    }
   }
 
   void atMalloc(VoidPtrTy Ptr, size_t Size) {
-    size_t Idx = Objects.size();
-    INPUTGEN_DEBUG(std::cerr << "Malloc " << toVoidPtr(Ptr) << " Size " << Size
-                             << " -> Obj #" << Idx << std::endl);
-    Objects.push_back(
-        IRMakeUnique<ObjectTy>(RealMalloc, RealFree, Idx, OA, Ptr, Size));
+    INPUTGEN_DEBUG(std::cerr << "Malloc " << toVoidPtr(Ptr) << " Size "
+                             << Size);
+    if (Recording) {
+      INPUTGEN_DEBUG(std::cerr << " ignored because currently recording"
+                               << std::endl);
+    } else {
+      size_t Idx = Objects.size();
+      INPUTGEN_DEBUG(std::cerr << " -> Obj #" << Idx << std::endl);
+      Objects.push_back(
+          IRMakeUnique<ObjectTy>(RealMalloc, RealFree, Idx, OA, Ptr, Size));
+    }
   }
 
   void registerGlobal(VoidPtrTy, VoidPtrTy *ReplGlobal, int32_t GlobalSize) {
@@ -365,9 +365,12 @@ void free(void *Ptr) {
     RealFree = reinterpret_cast<decltype(RealFree)>(dlsym(RTLD_NEXT, "free"));
     return RealFree;
   }();
-  if (isRTInitialized())
-    getInputRecordRT().atFree(reinterpret_cast<VoidPtrTy>(Ptr));
-  LRealFree(Ptr);
+  if (isRTInitialized()) {
+    if (getInputRecordRT().atFree(reinterpret_cast<VoidPtrTy>(Ptr)))
+      LRealFree(Ptr);
+  } else {
+    LRealFree(Ptr);
+  }
 }
 
 // We need to run this before all other code that may use malloc or free, so

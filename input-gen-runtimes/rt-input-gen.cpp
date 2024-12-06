@@ -128,11 +128,13 @@ struct InputGenRTTy {
     do {
       Size = Size / 2;
       OA.setSize(Size);
-    } while (!OutputMem.allocate(Size, OA.MaxObjectSize));
+    } while (!OutputMem.allocate(Size, OA.getMaxObjectSize()));
     INPUTGEN_DEBUG(printf("Max obj size: 0x%lx, max obj num: %lu\n",
-                          OA.MaxObjectSize, OA.MaxObjectNum));
+                          OA.getMaxObjectSize(), OA.getMaxObjectNum()));
 
+    OA.setObjIdxOffset(0);
     OutputObjIdxOffset = OA.globalPtrToObjIdx(OutputMem.AlignedMemory);
+    OA.setObjIdxOffset(OutputObjIdxOffset);
     DefaultIntDistrib = std::uniform_int_distribution<>(0, 32);
     DefaultFloatDistrib = std::uniform_real_distribution<>(0, 10);
 
@@ -226,8 +228,7 @@ struct InputGenRTTy {
         if (ObjCmpOffset->IdxOther == Idx) {
           // An offset of this object will be compared to ObjCmp.IdxOriginal at
           // offset ObjCmp.Offset. Make sure that comparison will succeed
-          VoidPtrTy Ptr = OA.localPtrToGlobalPtr(ObjCmpOffset->IdxOriginal +
-                                                     OutputObjIdxOffset,
+          VoidPtrTy Ptr = OA.localPtrToGlobalPtr(ObjCmpOffset->IdxOriginal,
                                                  OA.getObjBasePtr()) +
                           ObjCmpOffset->Offset;
           INPUTGEN_DEBUG(printf("Pointer to existing obj #%lu at %p\n",
@@ -248,11 +249,10 @@ struct InputGenRTTy {
         abort();
       }
     }
-    Objects.push_back(std::make_unique<ObjectTy>(malloc, free, Idx, OA,
-                                                 OutputMem.AlignedMemory +
-                                                     Idx * OA.MaxObjectSize));
-    VoidPtrTy OutputPtr =
-        OA.localPtrToGlobalPtr(Idx + OutputObjIdxOffset, OA.getObjBasePtr());
+    Objects.push_back(std::make_unique<ObjectTy>(
+        malloc, free, Idx, OA,
+        OutputMem.AlignedMemory + Idx * OA.getMaxObjectSize()));
+    VoidPtrTy OutputPtr = OA.localPtrToGlobalPtr(Idx, OA.getObjBasePtr());
     INPUTGEN_DEBUG(
         printf("New Obj #%lu at output ptr %p\n", Idx, (void *)OutputPtr));
     return {Idx, OutputPtr};
@@ -264,23 +264,23 @@ struct InputGenRTTy {
       auto &Obj = Objects[GlobalBundleIdx];
       if (VoidPtrTy LocalPtr = Obj->addKnownSizeObject(Size))
         return {GlobalBundleIdx,
-                OA.localPtrToGlobalPtr(GlobalBundleIdx + OutputObjIdxOffset,
-                                       LocalPtr)};
+                OA.localPtrToGlobalPtr(GlobalBundleIdx, LocalPtr)};
     }
     size_t Idx = Objects.size();
     Objects.push_back(std::make_unique<ObjectTy>(
-        malloc, free, Idx, OA, OutputMem.AlignedMemory + Idx * OA.MaxObjectSize,
+        malloc, free, Idx, OA,
+        OutputMem.AlignedMemory + Idx * OA.getMaxObjectSize(),
         /*KnownSizeObjBundle=*/true));
     VoidPtrTy LocalPtr = Objects.back()->addKnownSizeObject(Size);
     GlobalBundleObjects.push_back(Idx);
-    return {Idx, OA.localPtrToGlobalPtr(Idx + OutputObjIdxOffset, LocalPtr)};
+    return {Idx, OA.localPtrToGlobalPtr(Idx, LocalPtr)};
   }
 
   size_t getObjIdx(VoidPtrTy GlobalPtr, bool AllowNull = false) {
     assert(AllowNull || GlobalPtr);
     if (GlobalPtr == nullptr)
       return NullPtrIdx;
-    size_t Idx = OA.globalPtrToObjIdx(GlobalPtr) - OutputObjIdxOffset;
+    size_t Idx = OA.globalPtrToObjIdx(GlobalPtr);
     return Idx;
   }
 
@@ -289,7 +289,8 @@ struct InputGenRTTy {
   ObjectTy *globalPtrToObj(VoidPtrTy GlobalPtr, bool AllowNull = false) {
     size_t Idx = getObjIdx(GlobalPtr, AllowNull);
     bool IsExistingObj = Idx >= 0 && Idx < Objects.size();
-    [[maybe_unused]] bool IsOutsideObjMemory = Idx > OA.MaxObjectNum || Idx < 0;
+    [[maybe_unused]] bool IsOutsideObjMemory =
+        Idx > OA.getMaxObjectNum() || Idx < 0;
     assert(IsExistingObj || IsOutsideObjMemory);
     if (IsExistingObj) {
       INPUTGEN_DEBUG(std::cerr << "Access: " << (void *)GlobalPtr << " Obj #"

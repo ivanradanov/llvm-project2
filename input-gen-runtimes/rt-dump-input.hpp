@@ -69,8 +69,8 @@ static void dumpInput(std::ofstream &InputOut, RTTy &RT) {
     auto InputMem =
         RT.Objects[RT.Globals[I].ObjIdx]->getKnownSizeObjectInputMemory(
             RT.OA.globalPtrToLocalPtr(RT.Globals[I].Ptr), RT.Globals[I].Size);
-    VoidPtrTy InputStart = RT.OA.localPtrToGlobalPtr(
-        RT.Globals[I].ObjIdx + RT.OutputObjIdxOffset, InputMem.Start);
+    VoidPtrTy InputStart =
+        RT.OA.localPtrToGlobalPtr(RT.Globals[I].ObjIdx, InputMem.Start);
     writeV<VoidPtrTy>(InputOut, RT.Globals[I].Ptr);
     writeV<VoidPtrTy>(InputOut, InputStart);
     writeV<uintptr_t>(InputOut, InputMem.Size);
