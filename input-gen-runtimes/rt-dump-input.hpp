@@ -15,8 +15,21 @@ static void dumpInput(std::ofstream &InputOut, RTTy &RT) {
 
   writeV<decltype(InputGenMagicNumber)>(InputOut, InputGenMagicNumber);
   writeV<uint32_t>(InputOut, Mode);
-  writeV<uintptr_t>(InputOut, RT.OA.getSize());
-  writeV<uintptr_t>(InputOut, RT.OutputObjIdxOffset);
+  if constexpr (Mode == InputMode_Generate) {
+    writeV<uintptr_t>(InputOut, RT.OA.getSize());
+    writeV<uintptr_t>(InputOut, RT.OutputObjIdxOffset);
+  } else if constexpr (Mode == InputMode_Record) {
+    uint32_t NumObjects = RT.Objects.size();
+    writeV<uint32_t>(InputOut, NumObjects);
+    for (auto &Obj : RT.Objects) {
+      const ObjectTy::MemoryTy ObjMem = Obj->getOutputMemory();
+      assert(ObjMem.AllocationOffset == 0);
+      writeV<VoidPtrTy>(InputOut, ObjMem.Memory);
+      writeV<uintptr_t>(InputOut, ObjMem.AllocationSize);
+    }
+  } else {
+    static_assert(false);
+  }
   int32_t SeedStub = 0;
   writeV<uint32_t>(InputOut, SeedStub);
 

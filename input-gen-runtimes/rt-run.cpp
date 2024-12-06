@@ -187,8 +187,14 @@ int main(int argc, char **argv) {
     IGOA.setObjIdxOffset(ObjIdxOffset);
     _OA = &IGOA;
   } else {
-    abort();
-    // TODO
+    auto NumObjects = readV<uint32_t>(Input);
+    for (uint32_t I = 0; I < NumObjects; I++) {
+      auto Ptr = readV<VoidPtrTy>(Input);
+      auto Size = readV<uintptr_t>(Input);
+      IROT.Objects.push_back(
+          std::make_unique<ObjectTy>(nullptr, nullptr, I, IROA, Ptr, Size));
+    }
+    _OA = &IROA;
   }
   ObjectAddressing &OA = *_OA;
   auto Seed = readV<uint32_t>(Input);

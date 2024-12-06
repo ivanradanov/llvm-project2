@@ -301,6 +301,8 @@ struct ObjectTy {
 
   size_t getIdx() { return Idx; }
 
+  const auto &getOutputMemory() { return Output; }
+
   VoidPtrTy getBasePtr() { return Output.Memory - Output.AllocationOffset; }
 
   // FIXME maybe this logic should be in ObjectAddressing
