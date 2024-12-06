@@ -147,8 +147,8 @@ int main(int argc, char **argv) {
 
   std::ifstream Input(InputName, std::ios::in | std::ios::binary);
 
-  auto Magic = readV<decltype(INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER)>(Input);
-  if (Magic != INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER) {
+  auto Magic = readV<decltype(InputGenMagicNumber)>(Input);
+  if (Magic != InputGenMagicNumber) {
     std::cerr << "Unknown file type" << std::endl;
     abort();
   }

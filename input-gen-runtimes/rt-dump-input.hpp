@@ -13,8 +13,7 @@ static void dumpInput(std::ofstream &InputOut, RTTy &RT) {
     fprintf(stderr, "Objects (%zu total)\n", RT.Objects.size());
   });
 
-  writeV<decltype(INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER)>(
-      InputOut, INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER);
+  writeV<decltype(InputGenMagicNumber)>(InputOut, InputGenMagicNumber);
   writeV<uint32_t>(InputOut, Mode);
   writeV<uintptr_t>(InputOut, RT.OA.getSize());
   writeV<uintptr_t>(InputOut, RT.OutputObjIdxOffset);
