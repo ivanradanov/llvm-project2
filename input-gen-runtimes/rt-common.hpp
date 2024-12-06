@@ -26,7 +26,7 @@ struct InitGlobalsTy {
 } InitGlobals;
 } // namespace
 
-static uint64_t InputGenMagicNumber = 0x494e50555447454e; // "INPUTGEN"
+static uint64_t InputGenMagicNumber = 0x4e45475455504e49; // "INPUTGEN"
 
 enum InputMode {
   InputMode_Record = 0,
