@@ -147,6 +147,16 @@ int main(int argc, char **argv) {
 
   std::ifstream Input(InputName, std::ios::in | std::ios::binary);
 
+  auto Magic = readV<decltype(INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER)>(Input);
+  if (Magic != INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER) {
+    std::cerr << "Unknown file type" << std::endl;
+    abort();
+  }
+  auto Mode = readV<int32_t>(Input);
+  INPUTGEN_DEBUG(std::cerr << "Input mode "
+                           << (Mode == InputMode_Record ? "Record" : "Generate")
+                           << std::endl);
+
   auto OASize = readV<uintptr_t>(Input);
   InputGenObjectAddressing OA;
   OA.setSize(OASize);

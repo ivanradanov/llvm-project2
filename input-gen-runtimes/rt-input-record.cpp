@@ -69,6 +69,9 @@ template <typename T> using IRVector = std::vector<T, IRAllocator<T>>;
 using IRString =
     std::basic_string<char, std::char_traits<char>, IRAllocator<char>>;
 
+// For some reason we get a template error if we try to template the IRVector
+// type. That's why the implementation is in a different file and we define it
+// before the include.
 #include "rt-dump-input.hpp"
 
 using BranchHint = llvm::inputgen::BranchHint;
@@ -280,7 +283,7 @@ struct InputRecordRTTy {
   void report() {
     std::ofstream InputOutStream(Conf.InputOutName.c_str(),
                                  std::ios::out | std::ios::binary);
-    dumpInput<InputRecordRTTy>(InputOutStream, *this);
+    dumpInput<InputRecordRTTy, InputMode_Record>(InputOutStream, *this);
   }
 
   bool Recording = false;
@@ -323,25 +326,26 @@ static InputRecordRTTy &getInputRecordRT() { return *InputRecordRT.IRRT; }
 static bool &isRTInitialized() { return InputRecordRT.Initialized; }
 
 template <typename T>
-void ObjectTy::read(VoidPtrTy Ptr, uint32_t Size, BranchHint *BHs,
-                    int32_t BHSize) {
+T ObjectTy::read(VoidPtrTy Ptr, uint32_t Size, BranchHint *BHs,
+                 int32_t BHSize) {
   intptr_t Offset = OA.getOffsetFromObjBasePtr(Ptr);
   assert(Output.isAllocated(Offset, Size));
   Used.ensureAllocation(Offset, Size);
   Input.ensureAllocation(Offset, Size);
 
-  if (allUsed(Offset, Size))
-    return;
-
   T *OutputLoc = reinterpret_cast<T *>(
       advance(Output.Memory, -Output.AllocationOffset + Offset));
   T Val = *OutputLoc;
+  if (allUsed(Offset, Size))
+    return Val;
+
   // FIXME redundant store - we use the function to mark the correct memory as
   // used, etc
   storeInputValue(Val, Offset, Size);
 
   if constexpr (std::is_pointer<T>::value)
     Ptrs.insert(Offset);
+  return Val;
 }
 
 void *malloc(size_t Size) {

@@ -1,7 +1,9 @@
 #ifndef _INPUT_GEN_RUNTIMES_RT_DUMP_INPUT_H_
 #define _INPUT_GEN_RUNTIMES_RT_DUMP_INPUT_H_
 
-template <typename RTTy>
+#include "rt-common.hpp"
+
+template <typename RTTy, enum InputMode Mode>
 static void dumpInput(std::ofstream &InputOut, RTTy &RT) {
   INPUTGEN_DEBUG({
     fprintf(stderr, "Args (%u total)\n", RT.NumArgs);
@@ -11,6 +13,9 @@ static void dumpInput(std::ofstream &InputOut, RTTy &RT) {
     fprintf(stderr, "Objects (%zu total)\n", RT.Objects.size());
   });
 
+  writeV<decltype(INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER)>(
+      InputOut, INPUTGEN_BINARY_FORMAT_MAGIC_NUMBER);
+  writeV<uint32_t>(InputOut, Mode);
   writeV<uintptr_t>(InputOut, RT.OA.getSize());
   writeV<uintptr_t>(InputOut, RT.OutputObjIdxOffset);
   int32_t SeedStub = 0;
@@ -111,14 +116,16 @@ static void dumpInput(std::ofstream &InputOut, RTTy &RT) {
   writeV<uint32_t>(InputOut, RT.NumArgs);
   I = 0;
   for (auto &GenVal : RT.GenVals) {
-    INPUTGEN_DEBUG(fprintf(stderr, "GenVal #%ld isPtr %d\n", I, GenVal.IsPtr));
-    INPUTGEN_DEBUG(fprintf(stderr, "Content "));
-    std::ios_base::fmtflags FF(std::cerr.flags());
-    std::cerr << std::hex << std::setfill('0') << std::setw(2);
-    for (unsigned J = 0; J < sizeof(GenVal.Content); J++)
-      std::cerr << std::setw(2) << (int)GenVal.Content[J] << " ";
-    std::cerr.flags(FF);
-    INPUTGEN_DEBUG(fprintf(stderr, "\n"));
+    INPUTGEN_DEBUG({
+      fprintf(stderr, "GenVal #%ld isPtr %d\n", I, GenVal.IsPtr);
+      fprintf(stderr, "Content ");
+      std::ios_base::fmtflags FF(std::cerr.flags());
+      std::cerr << std::hex << std::setfill('0') << std::setw(2);
+      for (unsigned J = 0; J < sizeof(GenVal.Content); J++)
+        std::cerr << std::setw(2) << (int)GenVal.Content[J] << " ";
+      std::cerr.flags(FF);
+      INPUTGEN_DEBUG(fprintf(stderr, "\n"));
+    });
     static_assert(sizeof(GenVal.Content) == MaxPrimitiveTypeSize);
     InputOut.write(ccast(GenVal.Content), MaxPrimitiveTypeSize);
     writeV<int32_t>(InputOut, GenVal.IsPtr);
