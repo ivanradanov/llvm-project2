@@ -264,19 +264,22 @@ using FreeFuncTy = void (*)(void *);
 
 struct ObjectTy {
   const ObjectAddressing &OA;
-  ObjectTy(MallocFuncTy Malloc, FreeFuncTy Free, size_t Idx,
-           const ObjectAddressing &OA, VoidPtrTy Output, size_t Size)
-      : OA(OA), KnownSizeObjBundle(false), Idx(Idx), Output(Malloc, Free),
-        Input(Malloc, Free), Used(Malloc, Free) {
+  struct ObjectAllocatorTy {
+    MallocFuncTy Malloc;
+    FreeFuncTy Free;
+  };
+  ObjectTy(ObjectAllocatorTy &Allocator, size_t Idx, const ObjectAddressing &OA,
+           VoidPtrTy Output, size_t Size)
+      : OA(OA), KnownSizeObjBundle(false), Idx(Idx), Output(Allocator),
+        Input(Allocator), Used(Allocator) {
     this->Output.Memory = Output;
     this->Output.AllocationSize = Size;
     this->Output.AllocationOffset = 0;
   }
-  ObjectTy(MallocFuncTy Malloc, FreeFuncTy Free, size_t Idx,
-           const ObjectAddressing &OA, VoidPtrTy Output,
-           bool KnownSizeObjBundle = false)
+  ObjectTy(ObjectAllocatorTy &Allocator, size_t Idx, const ObjectAddressing &OA,
+           VoidPtrTy Output, bool KnownSizeObjBundle = false)
       : OA(OA), KnownSizeObjBundle(KnownSizeObjBundle), Idx(Idx),
-        Output(Malloc, Free), Input(Malloc, Free), Used(Malloc, Free) {
+        Output(Allocator), Input(Allocator), Used(Allocator) {
     this->Output.Memory = Output;
     this->Output.AllocationSize = OA.getMaxObjectSize();
     this->Output.AllocationOffset = OA.getOffsetFromObjBasePtr(nullptr);
@@ -407,10 +410,8 @@ struct ObjectTy {
 
 public:
   struct MemoryTy {
-    MallocFuncTy Malloc;
-    FreeFuncTy Free;
-    MemoryTy(MallocFuncTy Malloc, FreeFuncTy Free)
-        : Malloc(Malloc), Free(Free) {}
+    ObjectAllocatorTy &Allocator;
+    MemoryTy(ObjectAllocatorTy &Allocator) : Allocator(Allocator) {}
     VoidPtrTy Memory = nullptr;
     intptr_t AllocationSize = 0;
     intptr_t AllocationOffset = 0;
@@ -433,11 +434,11 @@ public:
     template <typename T>
     void extendMemory(T *&OldMemory, intptr_t NewAllocationSize,
                       intptr_t NewAllocationOffset) {
-      T *NewMemory = reinterpret_cast<T *>(Malloc(NewAllocationSize));
+      T *NewMemory = reinterpret_cast<T *>(Allocator.Malloc(NewAllocationSize));
       memset(NewMemory, 0, NewAllocationSize);
       memcpy(advance(NewMemory, AllocationOffset - NewAllocationOffset),
              OldMemory, AllocationSize);
-      Free(OldMemory);
+      Allocator.Free(OldMemory);
       OldMemory = NewMemory;
     };
 

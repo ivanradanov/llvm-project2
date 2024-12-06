@@ -99,8 +99,11 @@ struct InputRecordRTTy {
 
   friend struct InputRecordObjectAddressing<InputRecordRTTy>;
 
+  ObjectTy::ObjectAllocatorTy ObjectAllocator;
   InputRecordRTTy(InputRecordConfTy Conf) : Conf(Conf), OA(*this) {
     OutputObjIdxOffset = 0;
+    ObjectAllocator.Malloc = RealMalloc;
+    ObjectAllocator.Free = RealFree;
   }
   ~InputRecordRTTy() {}
 
@@ -259,7 +262,7 @@ struct InputRecordRTTy {
       size_t Idx = Objects.size();
       INPUTGEN_DEBUG(std::cerr << " -> Obj #" << Idx << std::endl);
       Objects.push_back(
-          IRMakeUnique<ObjectTy>(RealMalloc, RealFree, Idx, OA, Ptr, Size));
+          IRMakeUnique<ObjectTy>(ObjectAllocator, Idx, OA, Ptr, Size));
     }
   }
 

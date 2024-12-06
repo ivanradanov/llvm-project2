@@ -104,6 +104,7 @@ template <typename T> using IRVector = std::vector<T>;
 #include "rt-dump-input.hpp"
 
 struct InputGenRTTy {
+  ObjectTy::ObjectAllocatorTy ObjectAllocator;
   InputGenRTTy(const char *ExecPath, const char *OutputDir,
                const char *FuncIdent, VoidPtrTy StackPtr, int Seed,
                InputRecordConfTy InputGenConf,
@@ -145,6 +146,9 @@ struct InputGenRTTy {
       for (auto const &Info : RetryInfos)
         Info->dump(std::cerr);
     });
+
+    ObjectAllocator.Malloc = malloc;
+    ObjectAllocator.Free = free;
   }
   ~InputGenRTTy() {}
 
@@ -250,7 +254,7 @@ struct InputGenRTTy {
       }
     }
     Objects.push_back(std::make_unique<ObjectTy>(
-        malloc, free, Idx, OA,
+        ObjectAllocator, Idx, OA,
         OutputMem.AlignedMemory + Idx * OA.getMaxObjectSize()));
     VoidPtrTy OutputPtr = OA.localPtrToGlobalPtr(Idx, OA.getObjBasePtr());
     INPUTGEN_DEBUG(
@@ -268,7 +272,7 @@ struct InputGenRTTy {
     }
     size_t Idx = Objects.size();
     Objects.push_back(std::make_unique<ObjectTy>(
-        malloc, free, Idx, OA,
+        ObjectAllocator, Idx, OA,
         OutputMem.AlignedMemory + Idx * OA.getMaxObjectSize(),
         /*KnownSizeObjBundle=*/true));
     VoidPtrTy LocalPtr = Objects.back()->addKnownSizeObject(Size);

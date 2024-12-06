@@ -178,6 +178,7 @@ int main(int argc, char **argv) {
 
   ObjectAddressing *_OA;
   InputGenObjectAddressing IGOA;
+  ObjectTy::ObjectAllocatorTy ObjectAllocator;
   InputRecordObjectTracker IROT;
   InputRecordObjectAddressing<InputRecordObjectTracker> IROA(IROT);
   if (Mode == InputMode_Generate) {
@@ -192,7 +193,7 @@ int main(int argc, char **argv) {
       auto Ptr = readV<VoidPtrTy>(Input);
       auto Size = readV<uintptr_t>(Input);
       IROT.Objects.push_back(
-          std::make_unique<ObjectTy>(nullptr, nullptr, I, IROA, Ptr, Size));
+          std::make_unique<ObjectTy>(ObjectAllocator, I, IROA, Ptr, Size));
     }
     _OA = &IROA;
   }
