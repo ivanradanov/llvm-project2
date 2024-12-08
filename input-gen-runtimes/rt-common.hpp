@@ -4,12 +4,14 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <set>
 #include <unordered_map>
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include "../llvm/include/llvm/Transforms/IPO/InputGenerationTypes.h"
 
@@ -93,6 +95,8 @@ template <typename T> static void writeV(std::ofstream &Output, T El) {
   Output.write(ccast(&El), sizeof(El));
 }
 
+class ObjectTy;
+
 struct ObjectAddressing {
   virtual size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const = 0;
   virtual VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
@@ -103,6 +107,65 @@ struct ObjectAddressing {
   virtual VoidPtrTy getLowestObjPtr() const = 0;
   virtual uintptr_t getMaxObjectSize() const = 0;
   virtual ~ObjectAddressing(){};
+};
+
+struct InputRecordPageObjectAddressing : public ObjectAddressing {
+
+  template <unsigned TopBit> struct Leaf {
+    std::unique_ptr<ObjectTy> Object;
+
+    ObjectTy *getObject(VoidPtrTy Ptr, std::vector<uint8_t> &NodeStorage) {
+      return Object.get();
+    }
+  };
+
+  template <unsigned NumBits, template <unsigned TopBit> typename ChildTy,
+            unsigned TopBit>
+  struct Node {
+    static constexpr unsigned NumChildren = 1 << NumBits;
+    static constexpr unsigned NextBit = TopBit - NumBits;
+    using SpecializedChildTy = ChildTy<NextBit>;
+    std::array<SpecializedChildTy *, NumChildren> Children;
+
+    Node() {
+      for (auto &Child : Children)
+        Child = nullptr;
+    }
+
+    ObjectTy *getObject(VoidPtrTy Ptr, std::vector<uint8_t> &NodeStorage) {
+      // If NumBIts = 3
+      // Mask = 0000111
+      uintptr_t Mask = (static_cast<uintptr_t>(1) << NumBits) - 1;
+      uintptr_t ShiftedPtr =
+          reinterpret_cast<uintptr_t>(Ptr) >> (TopBit - NumBits);
+      unsigned Index = ShiftedPtr | Mask;
+      if (!Children[Index]) {
+        unsigned AllocSize = sizeof(SpecializedChildTy);
+        VoidPtrTy CurPtr = NodeStorage.data() + NodeStorage.size();
+        NodeStorage.reserve(NodeStorage.size() + AllocSize);
+        NodeStorage.insert(NodeStorage.end(), AllocSize, 0);
+        Children[Index] = &CurPtr;
+        new (CurPtr) SpecializedChildTy();
+      }
+      return Children[Index]->getChild();
+    }
+  };
+  template <unsigned NumBits, template <unsigned> typename ChildTy>
+  struct Apply {
+    template <unsigned TopBit> struct SNode : Node<NumBits, ChildTy, TopBit> {};
+  };
+  // clang-format off
+  Node<2,
+  Apply<2,
+  Apply<2,
+  Apply<2,
+  Leaf
+  >::SNode
+  >::SNode
+  >::SNode
+  , 63> Tree;
+  // clang-format on
+  InputRecordPageObjectAddressing() {}
 };
 
 template <typename RTTy>
