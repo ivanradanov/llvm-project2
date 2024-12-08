@@ -119,46 +119,107 @@ struct InputRecordPageObjectAddressing : public ObjectAddressing {
     }
   };
 
-  template <unsigned NumBits, template <unsigned TopBit> typename ChildTy,
-            unsigned TopBit>
+  enum NodeTypeTy {
+    NodeType_Array,
+    NodeType_LinkedList,
+  };
+  template <enum NodeTypeTy NodeTy, unsigned NumBits,
+            template <unsigned TopBit> typename ChildTy, unsigned TopBit>
   struct Node {
     static constexpr unsigned NumChildren = 1 << NumBits;
     static constexpr unsigned NextBit = TopBit - NumBits;
+    static constexpr unsigned RemainingBits = sizeof(uintptr_t) * 8 - NumBits;
     using SpecializedChildTy = ChildTy<NextBit>;
+
+#if NodeTy == NodeType_Array
     std::array<SpecializedChildTy *, NumChildren> Children;
+#elif NodeTy == NodeTYpe_LinkedList
+    // Need to think about alignment
+    struct LLNode {
+      unsigned PtrMatch:NumBits;
+      unsigned NextIndex:RemainingBits;
+      unsigned :0; // new byte
+      // TODO this can be a bit field too if we index the NodeStorage to get `Next` instead of storing a pointer
+      uint8_t ChildData[sizeof(SpecializedChildTy)];
+    } Head;
+#else
+    static_assert(false);
+#endif
 
-    Node() {
-      for (auto &Child : Children)
-        Child = nullptr;
-    }
-
-    ObjectTy *getObject(VoidPtrTy Ptr, std::vector<uint8_t> &NodeStorage) {
+    constexpr uintptr_t extractMaskedPart(VoidPtrTy Ptr) {
       // If NumBIts = 3
       // Mask = 0000111
       uintptr_t Mask = (static_cast<uintptr_t>(1) << NumBits) - 1;
       uintptr_t ShiftedPtr =
           reinterpret_cast<uintptr_t>(Ptr) >> (TopBit - NumBits);
-      unsigned Index = ShiftedPtr | Mask;
-      if (!Children[Index]) {
+      unsigned Masked = ShiftedPtr & Mask;
+      return Masked;
+    }
+
+#if NodeTy == NodeType_Array
+    Node(VoidPtrTy Ptr = nullptr) {
+      for (auto &Child : Children)
+        Child = nullptr;
+    }
+#elif NodeTy == NodeTYpe_LinkedList
+    Node(VoidPtrTy Ptr) {
+      constructNode(Head, Ptr);
+    }
+    void constructNode(LLNode &Node, VoidPtrTy Ptr) {
+      assert(Ptr != nullptr);
+      unsigned Masked = extractMaskedPart(Ptr);
+      Node.PtrMatch = Masked;
+      Node.NextIndex = 0;
+      new (Node.ChildData) SpecializedChildTy(Ptr);
+    }
+#endif
+
+    SpecializedChildTy *insertNewChild(VoidPtrTy Ptr, unsigned Masked, std::vector<uint8_t> &NodeStorage) {
         unsigned AllocSize = sizeof(SpecializedChildTy);
         VoidPtrTy CurPtr = NodeStorage.data() + NodeStorage.size();
         NodeStorage.reserve(NodeStorage.size() + AllocSize);
         NodeStorage.insert(NodeStorage.end(), AllocSize, 0);
-        Children[Index] = &CurPtr;
-        new (CurPtr) SpecializedChildTy();
+        new (CurPtr) SpecializedChildTy(Ptr);
+        return CurPtr;
+    }
+
+    ObjectTy *getObject(VoidPtrTy Ptr, std::vector<uint8_t> &NodeStorage) {
+      unsigned Masked = extractMaskedPart(Ptr);
+
+#if NodeTy == NodeType_Array
+      SpecializedChildTy *ChildPtr = Children[Masked];
+      if (!ChildPtr) {
+        ChildPtr = insertNewChild(Ptr, Masked, NodeStorage);
+        Children[Masked] = ChildPtr;
       }
-      return Children[Index]->getChild();
+      return ChildPtr->getChild();
+
+#elif NodeTy == NodeTYpe_LinkedList
+      SpecializedChildTy *ChildPtr;
+      LLNode *Node = &Head;
+      while (Node->PtrMatch != Masked || Node->NextIndex == 0)
+        Node = &NodeStorage[NextIndex];
+      if (Node->NextIndex == 0) {
+        ChildPtr = insertNewChild(Ptr, Masked, NodeStorage);
+      } else {
+        ChildPtr = Node->ChildData;
+      }
+      return ChildPtr->getChild();
+
+#endif
     }
   };
-  template <unsigned NumBits, template <unsigned> typename ChildTy>
-  struct Apply {
-    template <unsigned TopBit> struct SNode : Node<NumBits, ChildTy, TopBit> {};
+  template <enum NodeTypeTy NodeTy, unsigned NumBits,
+            template <unsigned> typename ChildTy>
+  struct ANode {
+    template <unsigned TopBit>
+    struct SNode : Node<NodeTy, NumBits, ChildTy, TopBit> {};
   };
   // clang-format off
-  Node<2,
-  Apply<2,
-  Apply<2,
-  Apply<2,
+  Node<NodeType_Array, 1,
+  ANode<NodeType_LinkedList, 2,
+  ANode<NodeType_LinkedList, 2,
+  ANode<NodeType_LinkedList, 2,
   Leaf
   >::SNode
   >::SNode
