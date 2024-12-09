@@ -85,6 +85,10 @@ template <typename T> static void *toVoidPtr(T Ptr) {
   return static_cast<void *>(Ptr);
 }
 
+template <typename T> static std::bitset<sizeof(T) * 8> toBits(T Ptr) {
+  return std::bitset<sizeof(T) * 8>((uintptr_t)Ptr);
+}
+
 template <typename T> static T readV(std::ifstream &Input) {
   T El;
   Input.read(ccast(&El), sizeof(El));

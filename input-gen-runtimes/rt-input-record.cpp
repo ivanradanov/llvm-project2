@@ -117,7 +117,7 @@ struct InputRecordPageObjectAddressing {
       uintptr_t Mask = (static_cast<uintptr_t>(1) << NumBits) - 1;
       uintptr_t ShiftedPtr =
           reinterpret_cast<uintptr_t>(Ptr) >> (TopBit - NumBits);
-      unsigned Masked = ShiftedPtr & Mask;
+      uintptr_t Masked = ShiftedPtr & Mask;
       return Masked;
     }
     template <typename T>
@@ -133,11 +133,17 @@ struct InputRecordPageObjectAddressing {
   template <unsigned TopBit> struct Leaf {
     using Node = Node<TopBit, Leaf, TopBit>;
 
+    static_assert(Node::NextBit == 0);
+
     std::unique_ptr<ObjectTy> Object;
 
     Leaf(ObjectTy::ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
       Object = IRMakeUnique<ObjectTy>(ObjectAllocator, Ptr, Node::NumChildren,
                                       0, true, false);
+      INPUTGEN_DEBUG(std::cerr << "Created Leaf Node for Ptr" << toVoidPtr(Ptr)
+                               << "\n");
+      INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
+                               << Node::NumChildren << "\n");
     }
 
     ObjectTy *getObject(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
@@ -161,11 +167,18 @@ struct InputRecordPageObjectAddressing {
               VoidPtrTy Ptr = nullptr) {
       for (auto &Child : Children)
         Child = nullptr;
+      INPUTGEN_DEBUG(std::cerr << "Created Array Node for Ptr " << toBits(Ptr)
+                               << "\n");
+      INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
+                               << Node::NumChildren << " NumBits " << NumBits
+                               << " NextBit " << Node::NextBit << "\n");
     }
 
     ObjectTy *getObject(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
                         VoidPtrTy Ptr, IRVector<uint8_t> &NodeStorage) {
-      unsigned Masked = Node::extractMaskedPart(Ptr);
+      uintptr_t Masked = Node::extractMaskedPart(Ptr);
+      INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
+                               << " Masked " << toBits(Masked) << "\n");
       SpecializedChildTy *ChildPtr = Children[Masked];
       if (!ChildPtr) {
         ChildPtr = Node::template allocateNew<SpecializedChildTy>(NodeStorage);
@@ -191,6 +204,7 @@ struct InputRecordPageObjectAddressing {
     // Need to think about alignment
     struct LLNodeTy {
       uintptr_t PtrMatch : NumBits;
+      // FIXME this is _not_ enough memory always
       uintptr_t NextIndex : Node::RemainingBits;
       unsigned : 0; // new byte
       // TODO this can be a bit field too if we index the NodeStorage to get
@@ -201,12 +215,17 @@ struct InputRecordPageObjectAddressing {
     LinkedListNode(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
                    VoidPtrTy Ptr) {
       constructNode(ObjectAllocator, Head, Ptr);
+      INPUTGEN_DEBUG(std::cerr << "Created Linked List Node for Ptr "
+                               << toBits(Ptr) << "\n");
+      INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
+                               << Node::NumChildren << " NumBits " << NumBits
+                               << " NextBit " << Node::NextBit << "\n");
     }
 
     void constructNode(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
                        LLNodeTy &LLNode, VoidPtrTy Ptr) {
       assert(Ptr != nullptr);
-      unsigned Masked = Node::extractMaskedPart(Ptr);
+      uintptr_t Masked = Node::extractMaskedPart(Ptr);
       LLNode.PtrMatch = Masked;
       LLNode.NextIndex = 0;
       new (LLNode.ChildData) SpecializedChildTy(ObjectAllocator, Ptr);
@@ -214,22 +233,19 @@ struct InputRecordPageObjectAddressing {
 
     ObjectTy *getObject(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
                         VoidPtrTy Ptr, IRVector<uint8_t> &NodeStorage) {
-      unsigned Masked = Node::extractMaskedPart(Ptr);
+      uintptr_t Masked = Node::extractMaskedPart(Ptr);
+      INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
+                               << " Masked " << toBits(Masked) << "\n");
       SpecializedChildTy *ChildPtr;
       LLNodeTy *LLNode = &Head;
       while (LLNode->PtrMatch != Masked && LLNode->NextIndex != 0)
         LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
       if (LLNode->NextIndex == 0) {
         LLNodeTy *NewLLNode = Node::template allocateNew<LLNodeTy>(NodeStorage);
-        NewLLNode->PtrMatch = Masked;
-        NewLLNode->NextIndex = 0;
-        ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
-            LLNode->ChildData);
-        new (ChildPtr) typename Node::SpecializedChildTy(ObjectAllocator, Ptr);
-      } else {
-        ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
-            LLNode->ChildData);
+        constructNode(ObjectAllocator, *NewLLNode, Ptr);
       }
+      ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
+          LLNode->ChildData);
       return ChildPtr->getObject(ObjectAllocator, Ptr, NodeStorage);
     }
     void getObjects(IRVector<ObjectTy *> Objects) {
@@ -257,7 +273,7 @@ struct InputRecordPageObjectAddressing {
     };
   };
   // clang-format off
-  ArrayNode<1,
+  ArrayNode<0,
   ALinkedListNode<52,
   ALinkedListNode<2,
   AArrayNode<4,
