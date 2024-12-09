@@ -5,12 +5,13 @@
 
 template <typename RTTy, enum InputMode Mode>
 static void dumpInput(std::ofstream &File, RTTy &RT) {
+  auto Objects = RT.getObjects();
   INPUTGEN_DEBUG({
     fprintf(stderr, "Args (%u total)\n", RT.NumArgs);
     for (size_t I = 0; I < RT.NumArgs; ++I)
       fprintf(stderr, "Arg %zu: %p\n", I, (void *)RT.GenVals[I].Content);
     fprintf(stderr, "Num new values: %lu\n", RT.NumNewValues);
-    fprintf(stderr, "Objects (%zu total)\n", RT.Objects.size());
+    fprintf(stderr, "Objects (%zu total)\n", Objects.size());
   });
 
   writeV<decltype(InputGenMagicNumber)>(File, InputGenMagicNumber);
@@ -19,9 +20,9 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
     writeV<uintptr_t>(File, RT.OA.getSize());
     writeV<uintptr_t>(File, RT.OutputObjIdxOffset);
   } else if constexpr (Mode == InputMode_Record) {
-    uint32_t NumObjects = RT.Objects.size();
+    uint32_t NumObjects = Objects.size();
     writeV<uint32_t>(File, NumObjects);
-    for (auto &Obj : RT.Objects) {
+    for (auto &Obj : Objects) {
       const ObjectTy::MemoryTy ObjMem = Obj->getOutputMemory();
       assert(ObjMem.AllocationOffset == 0);
       writeV<VoidPtrTy>(File, ObjMem.Memory);
@@ -37,19 +38,19 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   uint64_t TotalSize = 0;
   writeV(File, TotalSize);
 
-  uint32_t NumObjects = RT.Objects.size();
+  uint32_t NumObjects = Objects.size();
   writeV(File, NumObjects);
   INPUTGEN_DEBUG(fprintf(stderr, "Num Obj %u\n", NumObjects));
 
   IRVector<ObjectTy::AlignedMemoryChunk> MemoryChunks;
   uintptr_t I = 0;
-  for (auto &Obj : RT.Objects) {
+  for (auto &Obj : Objects) {
     auto MemoryChunk = Obj->getAlignedInputMemory();
     INPUTGEN_DEBUG(fprintf(
         stderr,
-        "Obj #%zu aligned memory chunk at %p, input size %lu "
+        "Obj #%p aligned memory chunk at %p, input size %lu "
         "offset %ld, output size %lu offset %ld, cmp size %lu offset %ld\n",
-        Obj->Idx, (void *)MemoryChunk.Ptr, MemoryChunk.InputSize,
+        &Obj, (void *)MemoryChunk.Ptr, MemoryChunk.InputSize,
         MemoryChunk.InputOffset, MemoryChunk.OutputSize,
         MemoryChunk.OutputOffset, MemoryChunk.CmpSize, MemoryChunk.CmpOffset));
     writeV<intptr_t>(File, I);
@@ -64,7 +65,7 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
     TotalSize += MemoryChunk.OutputSize;
     MemoryChunks.push_back(MemoryChunk);
 
-    assert(Obj->Idx == I);
+    // assert(Obj->Idx == I);
     I++;
   }
 
@@ -78,9 +79,10 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   writeV(File, NumGlobals);
   INPUTGEN_DEBUG(fprintf(stderr, "Num Glob %u\n", NumGlobals));
 
+#if 0
   for (uint32_t I = 0; I < NumGlobals; ++I) {
     auto InputMem =
-        RT.Objects[RT.Globals[I].ObjIdx]->getKnownSizeObjectInputMemory(
+        Objects[RT.Globals[I].ObjIdx]->getKnownSizeObjectInputMemory(
             RT.OA.globalPtrToLocalPtr(RT.Globals[I].Ptr), RT.Globals[I].Size);
     VoidPtrTy InputStart =
         RT.OA.localPtrToGlobalPtr(RT.Globals[I].ObjIdx, InputMem.Start);
@@ -92,24 +94,25 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
                            I, (void *)RT.Globals[I].Ptr, RT.Globals[I].ObjIdx,
                            (void *)InputStart, InputMem.Size));
   }
+#else
+  assert(NumGlobals == 0);
+#endif
 
   I = 0;
-  for (auto &Obj : RT.Objects) {
-    writeV<intptr_t>(File, Obj->Idx);
+  for (auto &Obj : Objects) {
+    writeV<intptr_t>(File, I);
     writeV<uintptr_t>(File, Obj->Ptrs.size());
-    INPUTGEN_DEBUG(
-        fprintf(stderr, "O #%ld NP %ld\n", Obj->Idx, Obj->Ptrs.size()));
+    INPUTGEN_DEBUG(fprintf(stderr, "O #%p NP %ld\n", &Obj, Obj->Ptrs.size()));
     for (auto Ptr : Obj->Ptrs) {
       writeV<intptr_t>(File, Ptr);
-      INPUTGEN_DEBUG(fprintf(stderr, "P at %ld : %p\n", Ptr,
-                             *reinterpret_cast<void **>(
-                                 MemoryChunks[Obj->Idx].Ptr +
-                                 MemoryChunks[Obj->Idx].InputOffset + Ptr)));
+      INPUTGEN_DEBUG(fprintf(
+          stderr, "P at %ld : %p\n", Ptr,
+          *reinterpret_cast<void **>(MemoryChunks[I].Ptr +
+                                     MemoryChunks[I].InputOffset + Ptr)));
     }
 
     writeV<uintptr_t>(File, Obj->FPtrs.size());
-    INPUTGEN_DEBUG(
-        fprintf(stderr, "O #%ld NFP %ld\n", Obj->Idx, Obj->FPtrs.size()));
+    INPUTGEN_DEBUG(fprintf(stderr, "O #%p NFP %ld\n", &Obj, Obj->FPtrs.size()));
     for (auto Ptr : Obj->FPtrs) {
       writeV<intptr_t>(File, Ptr.first);
       writeV<uint32_t>(File, Ptr.second);
@@ -117,7 +120,7 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
           fprintf(stderr, "FP at %ld : %u\n", Ptr.first, Ptr.second));
     }
 
-    assert(Obj->Idx == I);
+    // assert(Obj->Idx == I);
     I++;
   }
 

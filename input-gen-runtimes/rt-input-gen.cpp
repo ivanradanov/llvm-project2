@@ -309,10 +309,10 @@ struct InputGenRTTy {
   void cmpPtr(VoidPtrTy A, VoidPtrTy B, int32_t Predicate) {
     ObjectTy *ObjA = globalPtrToObj(A, /*AllowNull=*/true);
     if (ObjA)
-      ObjA->comparedAt(OA.globalPtrToLocalPtr(A));
+      ObjA->comparedAt(A);
     ObjectTy *ObjB = globalPtrToObj(B, /*AllowNull=*/true);
     if (ObjB)
-      ObjB->comparedAt(OA.globalPtrToLocalPtr(B));
+      ObjB->comparedAt(A);
 
     if (!InputGenConf.EnablePtrCmpRetry)
       return;

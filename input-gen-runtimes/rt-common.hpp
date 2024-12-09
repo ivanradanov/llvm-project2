@@ -96,142 +96,24 @@ template <typename T> static void writeV(std::ofstream &Output, T El) {
 }
 
 class ObjectTy;
+using OffsetTy = intptr_t;
+using SizeTy = uintptr_t;
 
 struct ObjectAddressing {
   virtual size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const = 0;
   virtual VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
-  virtual VoidPtrTy getObjBasePtr() const = 0;
-  intptr_t getOffsetFromObjBasePtr(VoidPtrTy Ptr) const {
-    return Ptr - getObjBasePtr();
+  virtual OffsetTy getObjBaseOffset() const = 0;
+  OffsetTy getOffsetFromObjBasePtr(OffsetTy Ptr) const {
+    return Ptr - getObjBaseOffset();
   }
   virtual VoidPtrTy getLowestObjPtr() const = 0;
   virtual uintptr_t getMaxObjectSize() const = 0;
   virtual ~ObjectAddressing(){};
 };
 
-struct InputRecordPageObjectAddressing : public ObjectAddressing {
-
-  template <unsigned TopBit> struct Leaf {
-    std::unique_ptr<ObjectTy> Object;
-
-    ObjectTy *getObject(VoidPtrTy Ptr, std::vector<uint8_t> &NodeStorage) {
-      return Object.get();
-    }
-  };
-
-  enum NodeTypeTy {
-    NodeType_Array,
-    NodeType_LinkedList,
-  };
-  template <enum NodeTypeTy NodeTy, unsigned NumBits,
-            template <unsigned TopBit> typename ChildTy, unsigned TopBit>
-  struct Node {
-    static constexpr unsigned NumChildren = 1 << NumBits;
-    static constexpr unsigned NextBit = TopBit - NumBits;
-    static constexpr unsigned RemainingBits = sizeof(uintptr_t) * 8 - NumBits;
-    using SpecializedChildTy = ChildTy<NextBit>;
-
-#if NodeTy == NodeType_Array
-    std::array<SpecializedChildTy *, NumChildren> Children;
-#elif NodeTy == NodeTYpe_LinkedList
-    // Need to think about alignment
-    struct LLNode {
-      unsigned PtrMatch:NumBits;
-      unsigned NextIndex:RemainingBits;
-      unsigned :0; // new byte
-      // TODO this can be a bit field too if we index the NodeStorage to get `Next` instead of storing a pointer
-      uint8_t ChildData[sizeof(SpecializedChildTy)];
-    } Head;
-#else
-    static_assert(false);
-#endif
-
-    constexpr uintptr_t extractMaskedPart(VoidPtrTy Ptr) {
-      // If NumBIts = 3
-      // Mask = 0000111
-      uintptr_t Mask = (static_cast<uintptr_t>(1) << NumBits) - 1;
-      uintptr_t ShiftedPtr =
-          reinterpret_cast<uintptr_t>(Ptr) >> (TopBit - NumBits);
-      unsigned Masked = ShiftedPtr & Mask;
-      return Masked;
-    }
-
-#if NodeTy == NodeType_Array
-    Node(VoidPtrTy Ptr = nullptr) {
-      for (auto &Child : Children)
-        Child = nullptr;
-    }
-#elif NodeTy == NodeTYpe_LinkedList
-    Node(VoidPtrTy Ptr) {
-      constructNode(Head, Ptr);
-    }
-    void constructNode(LLNode &Node, VoidPtrTy Ptr) {
-      assert(Ptr != nullptr);
-      unsigned Masked = extractMaskedPart(Ptr);
-      Node.PtrMatch = Masked;
-      Node.NextIndex = 0;
-      new (Node.ChildData) SpecializedChildTy(Ptr);
-    }
-#endif
-
-    SpecializedChildTy *insertNewChild(VoidPtrTy Ptr, unsigned Masked, std::vector<uint8_t> &NodeStorage) {
-        unsigned AllocSize = sizeof(SpecializedChildTy);
-        VoidPtrTy CurPtr = NodeStorage.data() + NodeStorage.size();
-        NodeStorage.reserve(NodeStorage.size() + AllocSize);
-        NodeStorage.insert(NodeStorage.end(), AllocSize, 0);
-        new (CurPtr) SpecializedChildTy(Ptr);
-        return CurPtr;
-    }
-
-    ObjectTy *getObject(VoidPtrTy Ptr, std::vector<uint8_t> &NodeStorage) {
-      unsigned Masked = extractMaskedPart(Ptr);
-
-#if NodeTy == NodeType_Array
-      SpecializedChildTy *ChildPtr = Children[Masked];
-      if (!ChildPtr) {
-        ChildPtr = insertNewChild(Ptr, Masked, NodeStorage);
-        Children[Masked] = ChildPtr;
-      }
-      return ChildPtr->getChild();
-
-#elif NodeTy == NodeTYpe_LinkedList
-      SpecializedChildTy *ChildPtr;
-      LLNode *Node = &Head;
-      while (Node->PtrMatch != Masked || Node->NextIndex == 0)
-        Node = &NodeStorage[NextIndex];
-      if (Node->NextIndex == 0) {
-        ChildPtr = insertNewChild(Ptr, Masked, NodeStorage);
-      } else {
-        ChildPtr = Node->ChildData;
-      }
-      return ChildPtr->getChild();
-
-#endif
-    }
-  };
-  template <enum NodeTypeTy NodeTy, unsigned NumBits,
-            template <unsigned> typename ChildTy>
-  struct ANode {
-    template <unsigned TopBit>
-    struct SNode : Node<NodeTy, NumBits, ChildTy, TopBit> {};
-  };
-  // clang-format off
-  Node<NodeType_Array, 1,
-  ANode<NodeType_LinkedList, 2,
-  ANode<NodeType_LinkedList, 2,
-  ANode<NodeType_LinkedList, 2,
-  Leaf
-  >::SNode
-  >::SNode
-  >::SNode
-  , 63> Tree;
-  // clang-format on
-  InputRecordPageObjectAddressing() {}
-};
-
 template <typename RTTy>
 struct InputRecordObjectAddressing : public ObjectAddressing {
-  VoidPtrTy getObjBasePtr() const override { return nullptr; }
+  OffsetTy getObjBaseOffset() const override { return 0; }
   VoidPtrTy getLowestObjPtr() const override { abort(); }
   uintptr_t getMaxObjectSize() const override { abort(); }
 
@@ -269,9 +151,7 @@ struct InputGenObjectAddressing : public ObjectAddressing {
                                        PtrInObjMask);
   }
 
-  VoidPtrTy getObjBasePtr() const override {
-    return reinterpret_cast<VoidPtrTy>(MaxObjectSize / 2);
-  }
+  OffsetTy getObjBaseOffset() const override { return MaxObjectSize / 2; }
 
   VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
     return reinterpret_cast<VoidPtrTy>(
@@ -387,29 +267,29 @@ using MallocFuncTy = void *(*)(size_t);
 using FreeFuncTy = void (*)(void *);
 
 struct ObjectTy {
-  const ObjectAddressing &OA;
   struct ObjectAllocatorTy {
     MallocFuncTy Malloc;
     FreeFuncTy Free;
   };
-  ObjectTy(ObjectAllocatorTy &Allocator, size_t Idx, const ObjectAddressing &OA,
-           VoidPtrTy Output, size_t Size)
-      : OA(OA), KnownSizeObjBundle(false), Idx(Idx), Output(Allocator),
-        Input(Allocator), Used(Allocator) {
+  ObjectTy(ObjectAllocatorTy &Allocator, VoidPtrTy Output, size_t Size,
+           OffsetTy Offset, bool AllocateInputUsed,
+           bool KnownSizeObjBundle = false)
+      : KnownSizeObjBundle(false), Output(Allocator), Input(Allocator),
+        Used(Allocator) {
+    INPUTGEN_DEBUG(std::cerr << "Creating Object at #" << this
+                             << " with memory " << (void *)Output << " size "
+                             << Size << " offset " << Offset << "\n");
     this->Output.Memory = Output;
     this->Output.AllocationSize = Size;
-    this->Output.AllocationOffset = 0;
-  }
-  ObjectTy(ObjectAllocatorTy &Allocator, size_t Idx, const ObjectAddressing &OA,
-           VoidPtrTy Output, bool KnownSizeObjBundle = false)
-      : OA(OA), KnownSizeObjBundle(KnownSizeObjBundle), Idx(Idx),
-        Output(Allocator), Input(Allocator), Used(Allocator) {
-    this->Output.Memory = Output;
-    this->Output.AllocationSize = OA.getMaxObjectSize();
-    this->Output.AllocationOffset = OA.getOffsetFromObjBasePtr(nullptr);
+    this->Output.AllocationOffset = Offset;
 
-    if (KnownSizeObjBundle)
-      CurrentStaticObjEnd = OA.getObjBasePtr();
+    if (AllocateInputUsed) {
+      this->Input.ensureAllocation(0, Size);
+      this->Used.ensureAllocation(0, Size);
+    }
+    if (KnownSizeObjBundle) {
+      CurrentStaticObjEnd = Offset;
+    }
   }
   ~ObjectTy() {}
 
@@ -424,28 +304,26 @@ struct ObjectTy {
   };
 
   bool KnownSizeObjBundle;
-  VoidPtrTy CurrentStaticObjEnd;
-
-  size_t getIdx() { return Idx; }
+  OffsetTy CurrentStaticObjEnd;
 
   const auto &getOutputMemory() { return Output; }
 
   VoidPtrTy getBasePtr() { return Output.Memory - Output.AllocationOffset; }
 
-  // FIXME maybe this logic should be in ObjectAddressing
-  VoidPtrTy getLocalPtr(VoidPtrTy GlobalPtr) {
-    return GlobalPtr - reinterpret_cast<uintptr_t>(getBasePtr());
-  }
+  OffsetTy getLocalPtr(VoidPtrTy GlobalPtr) { return GlobalPtr - getBasePtr(); }
 
-  VoidPtrTy getGlobalPtr(VoidPtrTy LocalPtr) {
-    return getBasePtr() + reinterpret_cast<uintptr_t>(LocalPtr);
-  }
+  VoidPtrTy getGlobalPtr(OffsetTy LocalPtr) { return getBasePtr() + LocalPtr; }
 
   bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
     VoidPtrTy BasePtr = getBasePtr();
     return BasePtr <= GlobalPtr && BasePtr + Output.AllocationSize > GlobalPtr;
   }
 
+  OffsetTy getOffsetFromObjMemory(OffsetTy Ptr) {
+    return Ptr - Output.AllocationOffset;
+  }
+
+#if 0
   VoidPtrTy addKnownSizeObject(uintptr_t Size) {
     assert(KnownSizeObjBundle);
     // Make sure zero-sized objects have their own address
@@ -469,19 +347,20 @@ struct ObjectTy {
     KnownSizeObjInputMem Mem;
     Mem.Start = std::min(
         LocalPtr + Size,
-        std::max(LocalPtr, OA.getObjBasePtr() + InputLimits.LowestOffset));
+        std::max(LocalPtr, OA.getObjBaseOffset() + InputLimits.LowestOffset));
     VoidPtrTy End = std::max(
         LocalPtr, std::min(LocalPtr + Size,
-                           OA.getObjBasePtr() + InputLimits.HighestOffset));
+                           OA.getObjBaseOffset() + InputLimits.HighestOffset));
     Mem.Size = End - Mem.Start;
     assert(Mem.Start <= End);
     return Mem;
   }
 
-  void comparedAt(VoidPtrTy Ptr) {
-    intptr_t Offset = OA.getOffsetFromObjBasePtr(Ptr);
+  void comparedAt(VoidPtrTy GlobalPtr) {
+    OffsetTy Offset = getLocalPtr(GlobalPtr);
     CmpLimits.update(Offset, 1);
   }
+#endif
 
   AlignedMemoryChunk getAlignedInputMemory() {
     // If we compare the pointer at some offset we need to make sure the output
@@ -511,24 +390,32 @@ struct ObjectTy {
   }
 
   template <typename T>
-  T read(VoidPtrTy Ptr, uint32_t Size, BranchHint *BHs, int32_t BHSize);
+  T read(OffsetTy Ptr, uint32_t Size, BranchHint *BHs, int32_t BHSize);
+  template <typename T>
+  T readFromGlobalPtr(VoidPtrTy Ptr, uint32_t Size, BranchHint *BHs,
+                      int32_t BHSize) {
+    return read<T>(getLocalPtr(Ptr), Size, BHs, BHSize);
+  }
 
-  template <typename T> void write(T Val, VoidPtrTy Ptr, uint32_t Size) {
-    intptr_t Offset = OA.getOffsetFromObjBasePtr(Ptr);
+  template <typename T> void write(T Val, OffsetTy Ptr, uint32_t Size) {
+    intptr_t Offset = getOffsetFromObjMemory(Ptr);
     assert(Output.isAllocated(Offset, Size));
     Used.ensureAllocation(Offset, Size);
     markUsed(Offset, Size);
     OutputLimits.update(Offset, Size);
   }
+  template <typename T>
+  void writeToGlobalPtr(T Val, VoidPtrTy Ptr, uint32_t Size) {
+    write<T>(Val, getLocalPtr(Ptr), Size);
+  }
 
-  void setFunctionPtrIdx(VoidPtrTy Ptr, uint32_t Size, VoidPtrTy FPtr,
+  void setFunctionPtrIdx(OffsetTy Ptr, uint32_t Size, VoidPtrTy FPtr,
                          uint32_t FIdx) {
-    intptr_t Offset = OA.getOffsetFromObjBasePtr(Ptr);
+    intptr_t Offset = getOffsetFromObjMemory(Ptr);
     storeInputValue(FPtr, Offset, Size);
     FPtrs.insert({Offset, FIdx});
   }
 
-  const size_t Idx;
   std::set<intptr_t> Ptrs;
   std::unordered_map<intptr_t, uint32_t> FPtrs;
 
@@ -538,7 +425,7 @@ public:
     MemoryTy(ObjectAllocatorTy &Allocator) : Allocator(Allocator) {}
     VoidPtrTy Memory = nullptr;
     intptr_t AllocationSize = 0;
-    intptr_t AllocationOffset = 0;
+    OffsetTy AllocationOffset = 0;
     bool isAllocated(intptr_t Offset, uint32_t Size) {
       intptr_t AllocatedMemoryStartOffset = AllocationOffset;
       intptr_t AllocatedMemoryEndOffset =
@@ -559,6 +446,7 @@ public:
     void extendMemory(T *&OldMemory, intptr_t NewAllocationSize,
                       intptr_t NewAllocationOffset) {
       T *NewMemory = reinterpret_cast<T *>(Allocator.Malloc(NewAllocationSize));
+      assert(NewMemory && "Malloc failed");
       memset(NewMemory, 0, NewAllocationSize);
       memcpy(advance(NewMemory, AllocationOffset - NewAllocationOffset),
              OldMemory, AllocationSize);
