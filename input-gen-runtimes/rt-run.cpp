@@ -50,6 +50,8 @@ static size_t CurGlobal = 0;
 static std::vector<intptr_t> FunctionPtrs;
 static size_t CurFunctionPtr = 0;
 
+static enum InputMode GLOBALMode;
+
 template <typename T> T getNewValue() {
   static_assert(sizeof(T) <= MaxPrimitiveTypeSize);
   assert(CurStub < NumStubs);
@@ -70,6 +72,8 @@ void __inputrun_unreachable(int32_t No, const char *Name) {
 
 void __inputrun_global(int32_t NumGlobals, VoidPtrTy Global, void **ReplGlobal,
                        int32_t GlobalSize) {
+  if (GLOBALMode != InputMode_Generate)
+    return;
   assert(Globals.size() > CurGlobal);
   auto G = Globals[CurGlobal];
   assert(G.Ptr <= G.InputStart &&
@@ -177,6 +181,7 @@ int main(int argc, char **argv) {
     abort();
   }
   InputMode Mode = (InputMode)readV<int32_t>(Input);
+  GLOBALMode = Mode;
   INPUTGEN_DEBUG(std::cerr << "Input mode " << inputModeToStr(Mode)
                            << std::endl);
 

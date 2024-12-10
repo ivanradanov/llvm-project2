@@ -187,12 +187,22 @@ struct InputRecordPageObjectAddressing {
       uintptr_t Masked = ShiftedPtr & Mask;
       return Masked;
     }
-    template <typename T>
-    static std::pair<size_t, T *> allocateNew(IRVector<uint8_t> &NodeStorage) {
+    // This function may move the NodeStorage, so all pointers users have may be
+    // invalid after the call. This is why it provides a way to set the Idx
+    // before the reallocation happens.
+    template <typename T, bool Store = false>
+    static std::pair<size_t, T *> allocateNew(IRVector<uint8_t> &NodeStorage,
+                                              size_t *IdxStorage = nullptr) {
       unsigned AllocSize = sizeof(T);
+      size_t Idx = NodeStorage.size();
+      if constexpr (Store) {
+        assert(IdxStorage);
+        *IdxStorage = Idx;
+      } else {
+        assert(!IdxStorage);
+      }
       NodeStorage.reserve(NodeStorage.size() + AllocSize);
       NodeStorage.insert(NodeStorage.end(), AllocSize, 0);
-      size_t Idx = NodeStorage.size() - AllocSize;
       VoidPtrTy AllocPtr = NodeStorage.data() + Idx;
       return {Idx, reinterpret_cast<T *>(AllocPtr)};
     }
@@ -288,14 +298,20 @@ struct InputRecordPageObjectAddressing {
   struct LinkedListNode {
     using Node = Node<NumBits, ChildTy, TopBit>;
     using SpecializedChildTy = ChildTy<Node::NextBit>;
-    static constexpr uintptr_t InvalidChildIdx = 0;
+    static constexpr uintptr_t InvalidChildIdx = (1 << Node::RemainingBits) - 1;
 
     // Need to think about alignment
-    struct LLNodeTy {
+    struct LLNodeTyBitfield {
       uintptr_t PtrMatch : NumBits;
       // FIXME this is _not_ enough memory always
       uintptr_t NextIndex : Node::RemainingBits;
       unsigned : 0; // new byte
+      uint8_t ChildData[sizeof(typename Node::SpecializedChildTy)];
+    };
+
+    struct LLNodeTy {
+      uintptr_t PtrMatch;
+      size_t NextIndex;
       uint8_t ChildData[sizeof(typename Node::SpecializedChildTy)];
 
       SpecializedChildTy *getChild() {
@@ -335,10 +351,9 @@ struct InputRecordPageObjectAddressing {
           LLNode =
               reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
         } else {
-          auto [Idx, NewLLNode] =
-              Node::template allocateNew<LLNodeTy>(NodeStorage);
+          auto [Idx, NewLLNode] = Node::template allocateNew<LLNodeTy, true>(
+              NodeStorage, &LLNode->NextIndex);
           constructNode(ObjectAllocator, *NewLLNode, Ptr);
-          LLNode->NextIndex = Idx;
           LLNode = NewLLNode;
           break;
         }
