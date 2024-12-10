@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 #include <sys/mman.h>
@@ -173,16 +174,15 @@ int main(int argc, char **argv) {
     abort();
   }
   InputMode Mode = (InputMode)readV<int32_t>(Input);
-  INPUTGEN_DEBUG(
-      std::cerr << "Input mode "
-                << (Mode == InputMode_Record_ ? "Record" : "Generate")
-                << std::endl);
+  INPUTGEN_DEBUG(std::cerr << "Input mode " << inputModeToStr(Mode)
+                           << std::endl);
 
   ObjectAddressing *_OA;
   InputGenObjectAddressing IGOA;
   ObjectTy::ObjectAllocatorTy ObjectAllocator;
   InputRecordObjectTracker IROT;
   InputRecordObjectAddressing<InputRecordObjectTracker> IROA(IROT);
+  InputRecordPageObjectAddressing IRPOA;
   if (Mode == InputMode_Generate) {
     auto OASize = readV<uintptr_t>(Input);
     IGOA.setSize(OASize);

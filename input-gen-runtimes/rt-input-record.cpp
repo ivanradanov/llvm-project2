@@ -525,7 +525,7 @@ struct InputRecordRTTy {
   void report() {
     std::ofstream InputOutStream(Conf.InputOutName.c_str(),
                                  std::ios::out | std::ios::binary);
-    dumpInput<InputRecordRTTy, InputMode_Record>(InputOutStream, *this);
+    dumpInput<InputRecordRTTy, InputMode_Record_v1>(InputOutStream, *this);
   }
 
   bool Recording = false;
