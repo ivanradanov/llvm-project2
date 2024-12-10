@@ -7,6 +7,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -16,6 +17,8 @@
 #include <vector>
 
 #include <sys/mman.h>
+
+template <typename T> using IRVector = std::vector<T>;
 
 #include "rt-common.hpp"
 
@@ -179,17 +182,21 @@ int main(int argc, char **argv) {
 
   ObjectAddressing *_OA;
   InputGenObjectAddressing IGOA;
-  ObjectTy::ObjectAllocatorTy ObjectAllocator;
+  ObjectAllocatorTy ObjectAllocator = {nullptr, nullptr};
   InputRecordObjectTracker IROT;
   InputRecordObjectAddressing<InputRecordObjectTracker> IROA(IROT);
-  InputRecordPageObjectAddressing IRPOA;
+  InputRecordPageObjectAddressing IRPOA(ObjectAllocator);
+  std::function<size_t(VoidPtrTy)> GlobalPtrToObjIdx;
   if (Mode == InputMode_Generate) {
     auto OASize = readV<uintptr_t>(Input);
     IGOA.setSize(OASize);
     auto ObjIdxOffset = readV<uintptr_t>(Input);
     IGOA.setObjIdxOffset(ObjIdxOffset);
     _OA = &IGOA;
-  } else if (Mode == InputMode_Record_v1) {
+    GlobalPtrToObjIdx = [_OA](VoidPtrTy GlobalPtr) -> size_t {
+      return _OA->globalPtrToObjIdx(GlobalPtr);
+    };
+  } else if (Mode == InputMode_Record_v1 || Mode == InputMode_Record_v2) {
     auto NumObjects = readV<uint32_t>(Input);
     for (uint32_t I = 0; I < NumObjects; I++) {
       auto Ptr = readV<VoidPtrTy>(Input);
@@ -198,7 +205,20 @@ int main(int argc, char **argv) {
                                                         Size, 0, false, false));
     }
     _OA = &IROA;
-  } else if (Mode == InputMode_Record_v2) {
+    GlobalPtrToObjIdx = [&IROT](VoidPtrTy GlobalPtr) -> size_t {
+      // TODO this is currently very bad performance - we need to reuse the
+      // ObjectAddressing struct from the RT to have better performance here but
+      // it maybe it does not matter too much for replay
+      size_t I = 0;
+      for (auto &Obj : IROT.Objects) {
+        if (Obj->isGlobalPtrInObject(GlobalPtr))
+          return I;
+        I++;
+      }
+      std::cerr << "Object for pointer " << GlobalPtr << " not found"
+                << std::endl;
+      abort();
+    };
   } else {
     std::cerr << "Unknown input mode" << std::endl;
     abort();

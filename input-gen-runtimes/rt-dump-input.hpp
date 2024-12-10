@@ -3,6 +3,8 @@
 
 #include "rt-common.hpp"
 
+#include <cstdint>
+
 template <typename RTTy, enum InputMode Mode>
 static void dumpInput(std::ofstream &File, RTTy &RT) {
   auto Objects = RT.getObjects();
@@ -20,7 +22,8 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   if constexpr (Mode == InputMode_Generate) {
     writeV<uintptr_t>(File, RT.OA.getSize());
     writeV<uintptr_t>(File, RT.OutputObjIdxOffset);
-  } else if constexpr (Mode == InputMode_Record) {
+  } else if constexpr (Mode == InputMode_Record_v1 ||
+                       Mode == InputMode_Record_v2) {
     uint32_t NumObjects = Objects.size();
     writeV<uint32_t>(File, NumObjects);
     for (auto &Obj : Objects) {
