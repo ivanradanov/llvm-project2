@@ -122,12 +122,13 @@ struct InputRecordPageObjectAddressing {
       return Masked;
     }
     template <typename T>
-    static T *allocateNew(IRVector<uint8_t> &NodeStorage) {
+    static std::pair<size_t, T *> allocateNew(IRVector<uint8_t> &NodeStorage) {
       unsigned AllocSize = sizeof(T);
       NodeStorage.reserve(NodeStorage.size() + AllocSize);
       NodeStorage.insert(NodeStorage.end(), AllocSize, 0);
-      VoidPtrTy AllocPtr = NodeStorage.data() + NodeStorage.size() - AllocSize;
-      return reinterpret_cast<T *>(AllocPtr);
+      size_t Idx = NodeStorage.size() - AllocSize;
+      VoidPtrTy AllocPtr = NodeStorage.data() + Idx;
+      return {Idx, reinterpret_cast<T *>(AllocPtr)};
     }
   };
 
@@ -157,7 +158,8 @@ struct InputRecordPageObjectAddressing {
       assert(Object);
       return Object.get();
     }
-    void getObjects(IRVector<ObjectTy *> Objects) {
+    void getObjects(IRVector<ObjectTy *> Objects,
+                    IRVector<uint8_t> &NodeStorage) {
       assert(Object);
       Objects.push_back(Object.get());
     }
@@ -169,12 +171,12 @@ struct InputRecordPageObjectAddressing {
     using Node = Node<NumBits, ChildTy, TopBit>;
     using SpecializedChildTy = ChildTy<Node::NextBit>;
 
-    std::array<SpecializedChildTy *, Node::NumChildren> Children;
+    std::array<size_t, Node::NumChildren> Children;
 
     ArrayNode(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
               VoidPtrTy Ptr = nullptr) {
-      for (auto &Child : Children)
-        Child = nullptr;
+      for (auto &ChildIdx : Children)
+        ChildIdx = 0;
       INPUTGEN_DEBUG(std::cerr << "Created Array Node for Ptr " << toBits(Ptr)
                                << "\n");
       INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
@@ -187,18 +189,24 @@ struct InputRecordPageObjectAddressing {
       uintptr_t Masked = Node::extractMaskedPart(Ptr);
       INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
                                << " Masked " << toBits(Masked) << "\n");
-      SpecializedChildTy *ChildPtr = Children[Masked];
+      SpecializedChildTy *ChildPtr = reinterpret_cast<SpecializedChildTy *>(
+          &NodeStorage[Children[Masked]]);
       if (!ChildPtr) {
-        ChildPtr = Node::template allocateNew<SpecializedChildTy>(NodeStorage);
+        size_t Idx;
+        std::tie(Idx, ChildPtr) =
+            Node::template allocateNew<SpecializedChildTy>(NodeStorage);
         new (ChildPtr) SpecializedChildTy(ObjectAllocator, Ptr);
-        Children[Masked] = ChildPtr;
+        Children[Masked] = Idx;
       }
       return ChildPtr->getObject(ObjectAllocator, Ptr, NodeStorage);
     }
-    void getObjects(IRVector<ObjectTy *> Objects) {
-      for (auto &Child : Children) {
-        if (Child)
-          Child->getObjects(Objects);
+    void getObjects(IRVector<ObjectTy *> Objects,
+                    IRVector<uint8_t> &NodeStorage) {
+      for (auto &ChildIdx : Children) {
+        if (ChildIdx)
+          reinterpret_cast<SpecializedChildTy *>(
+              &NodeStorage[Children[ChildIdx]])
+              ->getObjects(Objects, NodeStorage);
       }
     }
   };
@@ -246,22 +254,29 @@ struct InputRecordPageObjectAddressing {
                                << " Masked " << toBits(Masked) << "\n");
       SpecializedChildTy *ChildPtr;
       LLNodeTy *LLNode = &Head;
-      while (LLNode->PtrMatch != Masked && LLNode->NextIndex != 0)
-        LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
-      if (LLNode->NextIndex == 0) {
-        LLNodeTy *NewLLNode = Node::template allocateNew<LLNodeTy>(NodeStorage);
-        constructNode(ObjectAllocator, *NewLLNode, Ptr);
+      while (LLNode->PtrMatch != Masked) {
+        if (LLNode->NextIndex != 0) {
+          LLNode =
+              reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
+        } else {
+          auto [Idx, NewLLNode] =
+              Node::template allocateNew<LLNodeTy>(NodeStorage);
+          constructNode(ObjectAllocator, *NewLLNode, Ptr);
+          LLNode = NewLLNode;
+          break;
+        }
       }
       ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
           LLNode->ChildData);
       return ChildPtr->getObject(ObjectAllocator, Ptr, NodeStorage);
     }
-    void getObjects(IRVector<ObjectTy *> Objects) {
+    void getObjects(IRVector<ObjectTy *> Objects,
+                    IRVector<uint8_t> &NodeStorage) {
       LLNodeTy *LLNode = &Head;
       do {
         auto ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
             LLNode->ChildData);
-        ChildPtr->getObjects(Objects);
+        ChildPtr->getObjects(Objects, NodeStorage);
       } while (LLNode->NextIndex == 0);
     }
   };
@@ -291,7 +306,7 @@ struct InputRecordPageObjectAddressing {
     return Tree.getObject(ObjectAllocator, Ptr, NodeStorage);
   }
   void getObjects(IRVector<ObjectTy *> &Objects) {
-    Tree.getObjects(Objects);
+    Tree.getObjects(Objects, NodeStorage);
   }
   // clang-format on
   InputRecordPageObjectAddressing(ObjectTy::ObjectAllocatorTy &ObjectAllocator)
@@ -416,9 +431,9 @@ struct InputRecordRTTy {
   }
 
   template <typename T> void write(VoidPtrTy Ptr, T Val, uint32_t Size) {
-#if defined(IR_MALLOC_TRACKING)
     if (!Recording)
       return;
+#if defined(IR_MALLOC_TRACKING)
     assert(Ptr);
     auto Res = globalPtrToObjAndLocalPtr(Ptr);
     // FIXME need globals and stack handling
@@ -439,9 +454,9 @@ struct InputRecordRTTy {
   template <typename T>
   void read(VoidPtrTy Ptr, VoidPtrTy Base, uint32_t Size, BranchHint *BHs,
             int32_t BHSize) {
-#if defined(IR_MALLOC_TRACKING)
     if (!Recording)
       return;
+#if defined(IR_MALLOC_TRACKING)
     assert(Ptr);
     auto Res = globalPtrToObjAndLocalPtr(Ptr);
     // FIXME need globals and stack handling

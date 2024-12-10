@@ -270,6 +270,8 @@ static VoidPtrTy advance(VoidPtrTy Ptr, uint64_t Bytes) {
 using MallocFuncTy = void *(*)(size_t);
 using FreeFuncTy = void (*)(void *);
 
+// TODO There should also be a template argument to the class which says whether
+// the Input and Used should expand dynamically
 struct ObjectTy {
   struct ObjectAllocatorTy {
     MallocFuncTy Malloc;
