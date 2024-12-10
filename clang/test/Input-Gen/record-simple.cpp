@@ -18,6 +18,7 @@ extern "C" int foo(int *a, int *b, int *c, int n) {
     c[i] = a[i] + b[i] * n;
     sum += c[i];
   }
+  printf("Sum: %d\n", sum);
   return sum;
 }
 

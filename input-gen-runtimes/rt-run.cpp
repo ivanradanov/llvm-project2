@@ -185,16 +185,18 @@ int main(int argc, char **argv) {
   ObjectAllocatorTy ObjectAllocator = {nullptr, nullptr};
   InputRecordObjectTracker IROT;
   InputRecordObjectAddressing<InputRecordObjectTracker> IROA(IROT);
-  InputRecordPageObjectAddressing IRPOA(ObjectAllocator);
-  std::function<size_t(VoidPtrTy)> GlobalPtrToObjIdx;
+  std::function<std::pair<OffsetTy, size_t>(VoidPtrTy)>
+      GlobalPtrToLocalPtrAndObjIdx;
   if (Mode == InputMode_Generate) {
     auto OASize = readV<uintptr_t>(Input);
     IGOA.setSize(OASize);
     auto ObjIdxOffset = readV<uintptr_t>(Input);
     IGOA.setObjIdxOffset(ObjIdxOffset);
     _OA = &IGOA;
-    GlobalPtrToObjIdx = [_OA](VoidPtrTy GlobalPtr) -> size_t {
-      return _OA->globalPtrToObjIdx(GlobalPtr);
+    GlobalPtrToLocalPtrAndObjIdx =
+        [_OA](VoidPtrTy GlobalPtr) -> std::pair<OffsetTy, size_t> {
+      return {_OA->globalPtrToLocalPtr(GlobalPtr),
+              _OA->globalPtrToObjIdx(GlobalPtr)};
     };
   } else if (Mode == InputMode_Record_v1 || Mode == InputMode_Record_v2) {
     auto NumObjects = readV<uint32_t>(Input);
@@ -205,17 +207,18 @@ int main(int argc, char **argv) {
                                                         Size, 0, false, false));
     }
     _OA = &IROA;
-    GlobalPtrToObjIdx = [&IROT](VoidPtrTy GlobalPtr) -> size_t {
+    GlobalPtrToLocalPtrAndObjIdx =
+        [&IROT](VoidPtrTy GlobalPtr) -> std::pair<OffsetTy, size_t> {
       // TODO this is currently very bad performance - we need to reuse the
       // ObjectAddressing struct from the RT to have better performance here but
       // it maybe it does not matter too much for replay
       size_t I = 0;
       for (auto &Obj : IROT.Objects) {
         if (Obj->isGlobalPtrInObject(GlobalPtr))
-          return I;
+          return {Obj->getLocalPtr(GlobalPtr), I};
         I++;
       }
-      std::cerr << "Object for pointer " << GlobalPtr << " not found"
+      std::cerr << "Object for pointer " << toVoidPtr(GlobalPtr) << " not found"
                 << std::endl;
       abort();
     };
@@ -296,8 +299,8 @@ int main(int argc, char **argv) {
              (void *)nullptr);
       return;
     }
-    OffsetTy LocalPtr = OA.globalPtrToLocalPtr(GlobalPtr);
-    ReplayObjectTy Obj = Objects[OA.globalPtrToObjIdx(GlobalPtr)];
+    auto [LocalPtr, ObjIdx] = GlobalPtrToLocalPtrAndObjIdx(GlobalPtr);
+    ReplayObjectTy Obj = Objects[ObjIdx];
     intptr_t Offset = OA.getOffsetFromObjBasePtr(LocalPtr);
     VoidPtrTy RealPtr = Obj.Start - Obj.OutputOffset + Offset;
     *PtrLoc = RealPtr;

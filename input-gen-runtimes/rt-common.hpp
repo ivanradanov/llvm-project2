@@ -226,7 +226,7 @@ struct InputRecordPageObjectAddressing {
       assert(Object);
       return Object.get();
     }
-    void getObjects(IRVector<ObjectTy *> Objects,
+    void getObjects(IRVector<ObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
       assert(Object);
       Objects.push_back(Object.get());
@@ -272,10 +272,10 @@ struct InputRecordPageObjectAddressing {
       }
       return ChildPtr->getObject(ObjectAllocator, Ptr, NodeStorage);
     }
-    void getObjects(IRVector<ObjectTy *> Objects,
+    void getObjects(IRVector<ObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
       for (auto &ChildIdx : Children) {
-        if (ChildIdx)
+        if (ChildIdx != InvalidChildIdx)
           reinterpret_cast<SpecializedChildTy *>(
               &NodeStorage[Children[ChildIdx]])
               ->getObjects(Objects, NodeStorage);
@@ -288,6 +288,7 @@ struct InputRecordPageObjectAddressing {
   struct LinkedListNode {
     using Node = Node<NumBits, ChildTy, TopBit>;
     using SpecializedChildTy = ChildTy<Node::NextBit>;
+    static constexpr uintptr_t InvalidChildIdx = 0;
 
     // Need to think about alignment
     struct LLNodeTy {
@@ -295,9 +296,13 @@ struct InputRecordPageObjectAddressing {
       // FIXME this is _not_ enough memory always
       uintptr_t NextIndex : Node::RemainingBits;
       unsigned : 0; // new byte
-      // TODO this can be a bit field too if we index the NodeStorage to get
-      // `Next` instead of storing a pointer
       uint8_t ChildData[sizeof(typename Node::SpecializedChildTy)];
+
+      SpecializedChildTy *getChild() {
+        auto ChildPtr =
+            reinterpret_cast<typename Node::SpecializedChildTy *>(ChildData);
+        return ChildPtr;
+      }
     } Head;
 
     LinkedListNode(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
@@ -314,7 +319,7 @@ struct InputRecordPageObjectAddressing {
       assert(Ptr != nullptr);
       uintptr_t Masked = Node::extractMaskedPart(Ptr);
       LLNode.PtrMatch = Masked;
-      LLNode.NextIndex = 0;
+      LLNode.NextIndex = InvalidChildIdx;
       new (LLNode.ChildData) SpecializedChildTy(ObjectAllocator, Ptr);
     }
 
@@ -326,29 +331,29 @@ struct InputRecordPageObjectAddressing {
       SpecializedChildTy *ChildPtr;
       LLNodeTy *LLNode = &Head;
       while (LLNode->PtrMatch != Masked) {
-        if (LLNode->NextIndex != 0) {
+        if (LLNode->NextIndex != InvalidChildIdx) {
           LLNode =
               reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
         } else {
           auto [Idx, NewLLNode] =
               Node::template allocateNew<LLNodeTy>(NodeStorage);
           constructNode(ObjectAllocator, *NewLLNode, Ptr);
+          LLNode->NextIndex = Idx;
           LLNode = NewLLNode;
           break;
         }
       }
-      ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
-          LLNode->ChildData);
+      ChildPtr = LLNode->getChild();
       return ChildPtr->getObject(ObjectAllocator, Ptr, NodeStorage);
     }
-    void getObjects(IRVector<ObjectTy *> Objects,
+    void getObjects(IRVector<ObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
       LLNodeTy *LLNode = &Head;
-      do {
-        auto ChildPtr = reinterpret_cast<typename Node::SpecializedChildTy *>(
-            LLNode->ChildData);
-        ChildPtr->getObjects(Objects, NodeStorage);
-      } while (LLNode->NextIndex == 0);
+      LLNode->getChild()->getObjects(Objects, NodeStorage);
+      while (LLNode->NextIndex != InvalidChildIdx) {
+        LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
+        LLNode->getChild()->getObjects(Objects, NodeStorage);
+      }
     }
   };
 
