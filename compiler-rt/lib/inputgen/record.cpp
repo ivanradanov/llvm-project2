@@ -67,12 +67,12 @@ template <typename T> using IRVector = std::vector<T, IRAllocator<T>>;
 using IRString =
     std::basic_string<char, std::char_traits<char>, IRAllocator<char>>;
 
-#include "rt-common.hpp"
+#include "common.hpp"
 
 // For some reason we get a template error if we try to template the IRVector
 // type. That's why the implementation is in a different file and we define it
 // before the include.
-#include "rt-dump-input.hpp"
+#include "dump-input-impl.hpp"
 
 using BranchHint = llvm::inputgen::BranchHint;
 
@@ -86,7 +86,9 @@ std::unique_ptr<T> IRMakeUnique(_Args &&...Args) {
 
 struct InputRecordConfTy {
   IRString InputOutName;
+  bool QuitAfterRecord;
   InputRecordConfTy() {
+    QuitAfterRecord = getenv("INPUT_RECORD_QUIT_AFTER_RECORD");
     if (char *Str = getenv("INPUT_RECORD_FILENAME"))
       InputOutName = Str;
     else
@@ -280,6 +282,11 @@ struct InputRecordRTTy {
 #endif
   }
 
+  void cmpPtr(VoidPtrTy A, VoidPtrTy B, int32_t Predicate) {}
+
+  // TODO if we dont track mallocs during recording, we may get a different
+  // output state when replaying because a malloc may reuse part of an ObjectTy
+  // and that memory usage may differ between recording and replaying.
   void atMalloc(VoidPtrTy Ptr, size_t Size) {
 #if defined(IR_MALLOC_TRACKING)
     INPUTGEN_DEBUG(std::cerr << "Malloc " << toVoidPtr(Ptr) << " Size "
@@ -323,7 +330,7 @@ struct InputRecordRTTy {
       std::cerr << "Nested recording! Abort!" << std::endl;
       abort();
     }
-    INPUTGEN_DEBUG(std::cout << "Start recording\n");
+    INPUTGEN_DEBUG(std::cerr << "Start recording\n");
     Recording = true;
   }
   void recordPop() {
@@ -333,10 +340,14 @@ struct InputRecordRTTy {
       std::cerr << "Pop without push? Abort!" << std::endl;
       abort();
     }
-    INPUTGEN_DEBUG(std::cout << "Stop recording\n");
+    INPUTGEN_DEBUG(std::cerr << "Stop recording\n");
     Recording = false;
     report();
     Done = true;
+
+    std::cerr << "Completed recording" << std::endl;
+    if (Conf.QuitAfterRecord)
+      exit(14);
   }
 };
 
@@ -413,10 +424,14 @@ __attribute__((constructor(101))) static void hijackMallocAndFree() {
 extern "C" {
 void __record_push() { getInputRecordRT().recordPush(); }
 void __record_pop() { getInputRecordRT().recordPop(); }
+void __record_unreachable(int32_t No, const char *Name) {
+  printf("Reached unreachable %i due to '%s'\n", No, Name ? Name : "n/a");
+  exit(UnreachableExitStatus);
+}
 }
 
 #define __IG_OBJ__ getInputRecordRT()
-#include "rt-common-interface.def"
+#include "common-interface.def"
 extern "C" {
 DEFINE_INTERFACE(record)
 }

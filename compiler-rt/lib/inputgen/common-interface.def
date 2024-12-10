@@ -3,6 +3,17 @@
 #error "__IG_OBJ__ must be defined"
 #endif
 
+#define INTERFACE_CMP_PTR(PREFIX)                                              \
+  void __##PREFIX##_cmp_ptr(VoidPtrTy A, VoidPtrTy B, int32_t Predicate) {     \
+    __IG_OBJ__.cmpPtr(A, B, Predicate);                                        \
+  }
+
+#define INTERFACE_UNREACHABLE(PREFIX)                                          \
+  void __inputgen_unreachable(int32_t No, const char *Name) {                  \
+    printf("Reached unreachable %i due to '%s'\n", No, Name ? Name : "n/a");   \
+    exit(UnreachableExitStatus);                                               \
+  }
+
 #define INTERFACE_FUNCS(TY, NAME, PREFIX)                                      \
   static TY __ig_convert_##NAME##_from_i64(int64_t Val) {                      \
     TY TyVal;                                                                  \
@@ -44,7 +55,7 @@
   TY __##PREFIX##_arg_##NAME(BranchHint *BHs, int32_t BHSize) {                \
     return __IG_OBJ__.generateNewArg<TY>(BHs, BHSize);                         \
   }                                                                            \
-  void __##PREFIX##_arg_record_##NAME(int64_t Val, BranchHint *BHs,          \
+  void __##PREFIX##_arg_record_##NAME(int64_t Val, BranchHint *BHs,            \
                                       int32_t BHSize) {                        \
     TY TyVal = __ig_convert_##NAME##_from_i64(Val);                            \
     __IG_OBJ__.recordArg<TY>(TyVal);                                           \
@@ -60,4 +71,6 @@
   INTERFACE_FUNCS(double, double, PREFIX)                                      \
   INTERFACE_FUNCS(VoidPtrTy, ptr, PREFIX)                                      \
   INTERFACE_FUNCS(__int128, i128, PREFIX)                                      \
-  INTERFACE_FUNCS(long double, x86_fp80, PREFIX)
+  INTERFACE_FUNCS(long double, x86_fp80, PREFIX)                               \
+  INTERFACE_CMP_PTR(PREFIX)                                                    \
+  INTERFACE_UNREACHABLE(PREFIX)

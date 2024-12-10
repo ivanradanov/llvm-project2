@@ -68,7 +68,6 @@ if(COMPILER_RT_BUILD_ORC)
 endif()
 
 add_subdirectory(inputgen)
-compiler_rt_build_runtime(inputgen)
 
 # It doesn't normally make sense to build runtimes when a sanitizer is enabled,
 # so we don't add_subdirectory the runtimes in that case. However, the opposite

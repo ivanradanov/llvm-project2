@@ -104,7 +104,7 @@ static cl::opt<IGInstrumentationModeTy>
                           cl::Hidden, cl::init(IG_Generate),
                           cl::values(clEnumValN(IG_Record, "record", ""),
                                      clEnumValN(IG_Generate, "generate", ""),
-                                     clEnumValN(IG_Run, "run", "")));
+                                     clEnumValN(IG_Replay, "replay", "")));
 
 static cl::opt<bool>
     ClPruneModule("input-gen-prune-module",
@@ -602,7 +602,7 @@ void InputGenInstrumenter::emitMemoryAccessCallback(
 
 static std::string getCallbackPrefix(IGInstrumentationModeTy Mode) {
   switch (Mode) {
-  case IG_Run:
+  case IG_Replay:
     return InputRunCallbackPrefix;
   case IG_Record:
     return RecordingCallbackPrefix;
@@ -641,6 +641,8 @@ bool ModuleInputGenInstrumenter::instrumentClEntryPoint(Module &M) {
         EntryPoint = &*It;
     }
   }
+  // TODO in record mode, we still need to instrument _everything_, just
+  // excluding the entry point instrumentation if we were not able to find it.
   if (!EntryPoint) {
     errs() << "No entry point found, used \"" << ClEntryPoint << "\".\n";
     return false;
@@ -684,7 +686,7 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
   IGI.initializeCallbacks(M);
 
   switch (IGI.Mode) {
-  case IG_Run:
+  case IG_Replay:
   case IG_Generate:
     IGI.declareProbeStackFuncs(M);
 
@@ -701,7 +703,7 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
   }
 
   switch (IGI.Mode) {
-  case IG_Run:
+  case IG_Replay:
     IGI.provideGlobals(M);
     renameGlobals(M, *TLI);
     IGI.handleUnreachable(M);
@@ -718,7 +720,7 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
   }
 
   switch (IGI.Mode) {
-  case IG_Run:
+  case IG_Replay:
   case IG_Record:
     break;
   case IG_Generate:
@@ -755,7 +757,7 @@ bool ModuleInputGenInstrumenter::instrumentModule(Module &M) {
   switch (IGI.Mode) {
   case IG_Record:
     break;
-  case IG_Run:
+  case IG_Replay:
   case IG_Generate:
     IGI.stubDeclarations(M, *TLI);
 
@@ -784,7 +786,7 @@ bool ModuleInputGenInstrumenter::instrumentEntryPoint(Module &M,
   case IG_Generate:
     IGI.createGenerationEntryPoint(EntryPoint, UniqName);
     break;
-  case IG_Run:
+  case IG_Replay:
     IGI.createRunEntryPoint(EntryPoint, UniqName);
     break;
   }
@@ -802,7 +804,7 @@ bool ModuleInputGenInstrumenter::instrumentModuleForFunction(
 
   switch (IGI.Mode) {
   case IG_Generate:
-  case IG_Run:
+  case IG_Replay:
     IGI.pruneModule(EntryPoint);
     instrumentModule(M);
     instrumentEntryPoint(M, EntryPoint, /*UniqName=*/false);

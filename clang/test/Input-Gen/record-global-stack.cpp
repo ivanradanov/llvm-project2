@@ -1,8 +1,6 @@
 // RUN: mkdir -p %t
-// RUN: %clangxx -g -O0 %S/../../../input-gen-runtimes/rt-input-record.cpp -c -o %t/rt-input-record.o
-// RUN: %clangxx -g -O0 %S/../../../input-gen-runtimes/rt-run.cpp -c -o %t/rt-run.o
-// RUN: %clangxx -g -O2 %t/rt-input-record.o %s -mllvm --input-gen-mode=record -mllvm --input-gen-entry-point=foo -mllvm -include-input-gen -o %t/record.a.out
-// RUN: %clangxx -g -O2 %t/rt-run.o %s -mllvm --input-gen-mode=run -mllvm --input-gen-entry-point=foo -mllvm -include-input-gen -rdynamic -o %t/replay.a.out
+// RUN: %clangxx -g -O2 -linputgen.record %s -mllvm --input-gen-mode=record -mllvm --input-gen-entry-point=foo -mllvm -include-input-gen -o %t/record.a.out
+// RUN: %clangxx -g -O2 -linputgen.replay %s -mllvm --input-gen-mode=run -mllvm --input-gen-entry-point=foo -mllvm -include-input-gen -rdynamic -o %t/replay.a.out
 // RUN: INPUT_RECORD_FILENAME=%t/input.bin %t/record.a.out
 // RUN: %t/replay.a.out %t/input.bin
 

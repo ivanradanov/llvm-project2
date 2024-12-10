@@ -16,7 +16,7 @@
 #include <string.h>
 #include <vector>
 
-#include "../llvm/include/llvm/Transforms/IPO/InputGenerationTypes.h"
+#include "../../../llvm/include/llvm/Transforms/IPO/InputGenerationTypes.h"
 
 using BranchHint = llvm::inputgen::BranchHint;
 
@@ -49,7 +49,7 @@ static const char *inputModeToStr(enum InputMode Mode) {
     return "Record_v2";
   }
   assert(false && "Invalid input mode");
-};
+}
 
 #ifndef NDEBUG
 #define INPUTGEN_DEBUG(X)                                                      \
@@ -115,7 +115,7 @@ template <typename T> static void writeV(std::ofstream &Output, T El) {
   Output.write(ccast(&El), sizeof(El));
 }
 
-class ObjectTy;
+struct ObjectTy;
 using OffsetTy = intptr_t;
 using SizeTy = uintptr_t;
 
@@ -219,6 +219,7 @@ struct InputRecordPageObjectAddressing {
     std::unique_ptr<ObjectTy> Object;
 
     Leaf(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
+      [[maybe_unused]]
       uintptr_t Masked = Node::extractMaskedPart(Ptr);
       INPUTGEN_DEBUG(std::cerr << "Created Leaf Node for Ptr" << toVoidPtr(Ptr)
                                << "\n");
@@ -392,7 +393,7 @@ struct InputRecordPageObjectAddressing {
   // clang-format off
   using TreeType =
     ArrayNode<0,
-      ALinkedListNode<52,
+      ALinkedListNode<44,
       Leaf
       >::SNode,
     sizeof(uintptr_t) * 8>;
@@ -554,6 +555,8 @@ struct ObjectTy {
 
     if (AllocateInputUsed) {
       this->Input.ensureAllocation<true>(0, Size);
+      // TODO include a mode where we do not tracked Used on per-byte basis, and
+      // only the range
       this->Used.ensureAllocation<true>(0, Size);
     }
     if (KnownSizeObjBundle) {

@@ -203,7 +203,7 @@ public:
       switch (Mode) {
       case llvm::IG_Generate:
         return "generate";
-      case llvm::IG_Run:
+      case llvm::IG_Replay:
         return "run";
       case llvm::IG_Record:
         llvm_unreachable("Unsupported mode");
@@ -228,7 +228,7 @@ public:
   }
 
   bool shouldInstrumentForCoverage(IGInstrumentationModeTy Mode) {
-    return Mode == llvm::IG_Run && ClInstrumentModuleForCoverage;
+    return Mode == llvm::IG_Replay && ClInstrumentModuleForCoverage;
   }
 
   void preprocessModule(Module &M, IGInstrumentationModeTy Mode) {
@@ -281,7 +281,7 @@ public:
       switch (Mode) {
       case llvm::IG_Generate:
         return "generate";
-      case llvm::IG_Run:
+      case llvm::IG_Replay:
         return "run";
       case llvm::IG_Record:
         llvm_unreachable("Unsupported mode");
@@ -408,14 +408,14 @@ public:
     GenInstr.genFunctionForRuntime(ClGenRuntime, IG_Generate, *EntryPoint);
 
     InputGenOrchestrationImpl RunInstr(M, Functions, Executable);
-    RunInstr.genFunctionForRuntime(ClRunRuntime, IG_Run, *EntryPoint);
+    RunInstr.genFunctionForRuntime(ClRunRuntime, IG_Replay, *EntryPoint);
   }
 
   void genAllFunctionForAllRuntimes(char *Executable) {
     InputGenOrchestrationImpl(M, Functions, Executable)
         .genAllFunctionsForRuntime(ClGenRuntime, IG_Generate);
     InputGenOrchestrationImpl(M, Functions, Executable)
-        .genAllFunctionsForRuntime(ClRunRuntime, IG_Run);
+        .genAllFunctionsForRuntime(ClRunRuntime, IG_Replay);
   }
 
   void dumpFunctions() {

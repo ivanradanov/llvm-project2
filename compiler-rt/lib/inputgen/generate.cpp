@@ -755,13 +755,6 @@ VoidPtrTy __inputgen_memset(VoidPtrTy Tgt, char C, uint64_t N) {
 
 void __inputgen_use(VoidPtrTy Ptr, uint32_t Size) { useValue(Ptr, Size); }
 
-void __inputgen_cmp_ptr(VoidPtrTy A, VoidPtrTy B, int32_t Predicate) {
-  getInputGenRT().cmpPtr(A, B, Predicate);
-}
-void __inputgen_unreachable(int32_t No, const char *Name) {
-  printf("Reached unreachable %i due to '%s'\n", No, Name ? Name : "n/a");
-  exit(UnreachableExitStatus);
-}
 void __inputgen_override_free(void *P) {}
 }
 
@@ -881,7 +874,7 @@ int main(int argc, char **argv) {
 }
 
 #define __IG_OBJ__ getInputGenRT()
-#include "rt-common-interface.def"
+#include "common-interface.def"
 extern "C" {
 DEFINE_INTERFACE(inputgen)
 }

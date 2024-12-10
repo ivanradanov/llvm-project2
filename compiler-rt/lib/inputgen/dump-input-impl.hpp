@@ -1,7 +1,7 @@
 #ifndef _INPUT_GEN_RUNTIMES_RT_DUMP_INPUT_H_
 #define _INPUT_GEN_RUNTIMES_RT_DUMP_INPUT_H_
 
-#include "rt-common.hpp"
+#include "common.hpp"
 
 #include <cstdint>
 

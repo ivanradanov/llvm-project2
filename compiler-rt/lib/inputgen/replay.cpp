@@ -20,7 +20,7 @@
 
 template <typename T> using IRVector = std::vector<T>;
 
-#include "rt-common.hpp"
+#include "common.hpp"
 
 namespace {
 INPUTGEN_TIMER_DEFINE(IRInitialization);
