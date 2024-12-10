@@ -300,10 +300,13 @@ struct InputRecordPageObjectAddressing {
     using SpecializedChildTy = ChildTy<Node::NextBit>;
     static constexpr uintptr_t InvalidChildIdx = (1 << Node::RemainingBits) - 1;
 
-    // Need to think about alignment
+    // TODO something like this where we pack the index of the next node after
+    // the PtrMatch would be nice but we may sometimes overflow the next index.
+    // (also the allocateNew function cannot take the address of a bitfield as
+    // its argument)
     struct LLNodeTyBitfield {
       uintptr_t PtrMatch : NumBits;
-      // FIXME this is _not_ enough memory always
+      // this is _not_ enough memory always
       uintptr_t NextIndex : Node::RemainingBits;
       unsigned : 0; // new byte
       uint8_t ChildData[sizeof(typename Node::SpecializedChildTy)];
