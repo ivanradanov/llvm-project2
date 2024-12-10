@@ -278,8 +278,8 @@ struct ObjectTy {
   ObjectTy(ObjectAllocatorTy &Allocator, VoidPtrTy Output, size_t Size,
            OffsetTy Offset, bool AllocateInputUsed,
            bool KnownSizeObjBundle = false)
-      : KnownSizeObjBundle(false), Output(Allocator), Input(Allocator),
-        Used(Allocator) {
+      : KnownSizeObjBundle(KnownSizeObjBundle), Output(Allocator),
+        Input(Allocator), Used(Allocator) {
     INPUTGEN_DEBUG(std::cerr << "Creating Object at #" << this
                              << " with memory " << (void *)Output << " size "
                              << Size << " offset " << Offset << "\n");
@@ -288,8 +288,8 @@ struct ObjectTy {
     this->Output.AllocationOffset = Offset;
 
     if (AllocateInputUsed) {
-      this->Input.ensureAllocation(0, Size);
-      this->Used.ensureAllocation(0, Size);
+      this->Input.ensureAllocation<true>(0, Size);
+      this->Used.ensureAllocation<true>(0, Size);
     }
     if (KnownSizeObjBundle) {
       CurrentStaticObjEnd = Offset;
@@ -439,10 +439,11 @@ public:
     }
 
     /// Returns true if it was already allocated
+    template <bool Exact = false>
     bool ensureAllocation(intptr_t Offset, uint32_t Size) {
       if (isAllocated(Offset, Size))
         return true;
-      reallocateData(Offset, Size);
+      reallocateData<Exact>(Offset, Size);
       return false;
     }
 
@@ -460,6 +461,7 @@ public:
 
     /// Reallocates the data so as to make the memory at `Offset` with length
     /// `Size` available
+    template <bool Exact = false>
     void reallocateData(intptr_t Offset, uint32_t Size) {
       assert(!isAllocated(Offset, Size));
 
@@ -474,13 +476,22 @@ public:
 
       if (AccessStartOffset < AllocatedMemoryStartOffset) {
         // Extend the allocation in the negative direction
-        NewAllocatedMemoryStartOffset = alignStart(
-            std::min(2 * AccessStartOffset, -MinObjAllocation), ObjAlignment);
+        if constexpr (Exact) {
+          NewAllocatedMemoryStartOffset =
+              alignStart(AccessStartOffset, ObjAlignment);
+        } else {
+          NewAllocatedMemoryStartOffset = alignStart(
+              std::min(2 * AccessStartOffset, -MinObjAllocation), ObjAlignment);
+        }
       }
       if (AccessEndOffset >= AllocatedMemoryEndOffset) {
         // Extend the allocation in the positive direction
-        NewAllocatedMemoryEndOffset = alignEnd(
-            std::max(2 * AccessEndOffset, MinObjAllocation), ObjAlignment);
+        if constexpr (Exact) {
+          NewAllocatedMemoryEndOffset = alignEnd(AccessEndOffset, ObjAlignment);
+        } else {
+          NewAllocatedMemoryEndOffset = alignEnd(
+              std::max(2 * AccessEndOffset, MinObjAllocation), ObjAlignment);
+        }
       }
 
       intptr_t NewAllocationOffset = NewAllocatedMemoryStartOffset;

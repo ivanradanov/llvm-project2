@@ -104,6 +104,7 @@ struct InputRecordPageObjectAddressing {
             unsigned TopBit>
   struct Node {
     template <unsigned X> struct Shift {
+      // FIXME we depend on 1 << 64 == 0 is it UB?
       static const uintptr_t Value = ((uintptr_t)1) << X;
     };
     static constexpr uintptr_t NumChildren = Shift<NumBits>::Value;
@@ -138,19 +139,26 @@ struct InputRecordPageObjectAddressing {
     std::unique_ptr<ObjectTy> Object;
 
     Leaf(ObjectTy::ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
-      Object = IRMakeUnique<ObjectTy>(ObjectAllocator, Ptr, Node::NumChildren,
-                                      0, true, false);
+      uintptr_t Masked = Node::extractMaskedPart(Ptr);
       INPUTGEN_DEBUG(std::cerr << "Created Leaf Node for Ptr" << toVoidPtr(Ptr)
                                << "\n");
       INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
                                << Node::NumChildren << "\n");
+      VoidPtrTy BasePtr = reinterpret_cast<VoidPtrTy>(
+          reinterpret_cast<uintptr_t>(Ptr) & ~(Node::NumChildren - 1));
+      assert(reinterpret_cast<VoidPtrTy>(reinterpret_cast<uintptr_t>(Ptr) &
+                                         ~Masked) == BasePtr);
+      Object = IRMakeUnique<ObjectTy>(ObjectAllocator, BasePtr,
+                                      Node::NumChildren, 0, true, false);
     }
 
     ObjectTy *getObject(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
                         VoidPtrTy Ptr, IRVector<uint8_t> &NodeStorage) {
+      assert(Object);
       return Object.get();
     }
     void getObjects(IRVector<ObjectTy *> Objects) {
+      assert(Object);
       Objects.push_back(Object.get());
     }
   };
@@ -214,12 +222,12 @@ struct InputRecordPageObjectAddressing {
 
     LinkedListNode(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
                    VoidPtrTy Ptr) {
-      constructNode(ObjectAllocator, Head, Ptr);
       INPUTGEN_DEBUG(std::cerr << "Created Linked List Node for Ptr "
                                << toBits(Ptr) << "\n");
       INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
                                << Node::NumChildren << " NumBits " << NumBits
                                << " NextBit " << Node::NextBit << "\n");
+      constructNode(ObjectAllocator, Head, Ptr);
     }
 
     void constructNode(ObjectTy::ObjectAllocatorTy &ObjectAllocator,
@@ -275,13 +283,9 @@ struct InputRecordPageObjectAddressing {
   // clang-format off
   ArrayNode<0,
   ALinkedListNode<52,
-  ALinkedListNode<2,
-  AArrayNode<4,
   Leaf
   >::SNode
-  >::SNode
-  >::SNode
-  , 63> Tree;
+  , sizeof(uintptr_t) * 8> Tree;
   IRVector<uint8_t> NodeStorage;
   ObjectTy *getObject(VoidPtrTy Ptr) {
     return Tree.getObject(ObjectAllocator, Ptr, NodeStorage);
