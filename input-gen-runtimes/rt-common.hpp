@@ -1,6 +1,7 @@
 #ifndef _INPUT_GEN_RUNTIMES_RT_COMMON_H_
 #define _INPUT_GEN_RUNTIMES_RT_COMMON_H_
 
+#include <bitset>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -29,10 +30,23 @@ struct InitGlobalsTy {
 } // namespace
 
 static uint64_t InputGenMagicNumber = 0x4e45475455504e49; // "INPUTGEN"
+static uint32_t InputGenVersion = 0;
 
 enum InputMode {
-  InputMode_Record = 0,
-  InputMode_Generate = 1,
+  InputMode_Generate = 0,
+  InputMode_Record_v1 = 1,
+  InputMode_Record_v2 = 2,
+};
+static const char *inputModeToStr(enum InputMode Mode) {
+  switch (Mode) {
+  case InputMode_Generate:
+    return "Generate";
+  case InputMode_Record_v1:
+    return "Record_v1";
+  case InputMode_Record_v2:
+    return "Record_v2";
+  }
+  assert(false && "Invalid input mode");
 };
 
 #ifndef NDEBUG
@@ -105,7 +119,7 @@ using SizeTy = uintptr_t;
 
 struct ObjectAddressing {
   virtual size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const = 0;
-  virtual VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
+  virtual OffsetTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
   virtual OffsetTy getObjBaseOffset() const = 0;
   OffsetTy getOffsetFromObjBasePtr(OffsetTy Ptr) const {
     return Ptr - getObjBaseOffset();
@@ -124,16 +138,17 @@ struct InputRecordObjectAddressing : public ObjectAddressing {
   RTTy &RT;
   InputRecordObjectAddressing(RTTy &RT) : RT(RT) {}
 
-  VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const override {
+  OffsetTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const override {
     auto Res = RT.globalPtrToObjAndLocalPtr(GlobalPtr);
     assert(Res);
     return Res->second;
   }
-  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
+  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, OffsetTy PtrInObj) const {
     return RT.localPtrToGlobalPtr(ObjIdx, PtrInObj);
   }
 
   size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const override {
+    abort();
     auto Res = RT.globalPtrToObjAndLocalPtr(GlobalPtr);
     assert(Res);
     return Res->first->getIdx();
@@ -150,14 +165,13 @@ struct InputGenObjectAddressing : public ObjectAddressing {
     return Idx - ObjIdxOffset;
   }
 
-  VoidPtrTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const override {
-    return reinterpret_cast<VoidPtrTy>(reinterpret_cast<intptr_t>(GlobalPtr) &
-                                       PtrInObjMask);
+  OffsetTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const override {
+    return reinterpret_cast<intptr_t>(GlobalPtr) & PtrInObjMask;
   }
 
   OffsetTy getObjBaseOffset() const override { return MaxObjectSize / 2; }
 
-  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
+  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, OffsetTy PtrInObj) const {
     return reinterpret_cast<VoidPtrTy>(
         ((ObjIdxOffset + ObjIdx) * MaxObjectSize) |
         reinterpret_cast<intptr_t>(PtrInObj));

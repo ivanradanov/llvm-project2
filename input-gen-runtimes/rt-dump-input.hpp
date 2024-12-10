@@ -15,6 +15,7 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   });
 
   writeV<decltype(InputGenMagicNumber)>(File, InputGenMagicNumber);
+  writeV<decltype(InputGenVersion)>(File, InputGenVersion);
   writeV<uint32_t>(File, Mode);
   if constexpr (Mode == InputMode_Generate) {
     writeV<uintptr_t>(File, RT.OA.getSize());
@@ -31,8 +32,6 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   } else {
     static_assert(false);
   }
-  int32_t SeedStub = 0;
-  writeV<uint32_t>(File, SeedStub);
 
   auto BeforeTotalSize = File.tellp();
   uint64_t TotalSize = 0;

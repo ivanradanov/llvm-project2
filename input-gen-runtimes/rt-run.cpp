@@ -46,10 +46,6 @@ static size_t CurGlobal = 0;
 static std::vector<intptr_t> FunctionPtrs;
 static size_t CurFunctionPtr = 0;
 
-static std::mt19937 Gen;
-static std::uniform_int_distribution<> Rand;
-int rand() { return Rand(Gen); }
-
 template <typename T> T getNewValue() {
   static_assert(sizeof(T) <= MaxPrimitiveTypeSize);
   assert(CurStub < NumStubs);
@@ -115,7 +111,7 @@ struct InputRecordObjectTracker {
   std::vector<std::unique_ptr<ObjectTy>> Objects;
 
   // TODO deduplicate logic with InputRecordRTTy
-  std::optional<std::pair<ObjectTy *, VoidPtrTy>>
+  std::optional<std::pair<ObjectTy *, OffsetTy>>
   globalPtrToObjAndLocalPtr(VoidPtrTy GlobalPtr) {
     // FIXME do we need to walk backwards so that we get the _last_ (currently
     // active) allocation?
@@ -125,7 +121,7 @@ struct InputRecordObjectTracker {
     return {};
   }
 
-  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, VoidPtrTy PtrInObj) const {
+  VoidPtrTy localPtrToGlobalPtr(size_t ObjIdx, OffsetTy PtrInObj) const {
     return Objects[ObjIdx]->getGlobalPtr(PtrInObj);
   }
 };
@@ -171,10 +167,16 @@ int main(int argc, char **argv) {
     std::cerr << "Unknown file type" << std::endl;
     abort();
   }
-  auto Mode = readV<int32_t>(Input);
-  INPUTGEN_DEBUG(std::cerr << "Input mode "
-                           << (Mode == InputMode_Record ? "Record" : "Generate")
-                           << std::endl);
+  auto Version = readV<decltype(InputGenVersion)>(Input);
+  if (Version != InputGenVersion) {
+    std::cerr << "Version mismatch" << std::endl;
+    abort();
+  }
+  InputMode Mode = (InputMode)readV<int32_t>(Input);
+  INPUTGEN_DEBUG(
+      std::cerr << "Input mode "
+                << (Mode == InputMode_Record_ ? "Record" : "Generate")
+                << std::endl);
 
   ObjectAddressing *_OA;
   InputGenObjectAddressing IGOA;
@@ -187,19 +189,21 @@ int main(int argc, char **argv) {
     auto ObjIdxOffset = readV<uintptr_t>(Input);
     IGOA.setObjIdxOffset(ObjIdxOffset);
     _OA = &IGOA;
-  } else {
+  } else if (Mode == InputMode_Record_v1) {
     auto NumObjects = readV<uint32_t>(Input);
     for (uint32_t I = 0; I < NumObjects; I++) {
       auto Ptr = readV<VoidPtrTy>(Input);
       auto Size = readV<uintptr_t>(Input);
-      IROT.Objects.push_back(
-          std::make_unique<ObjectTy>(ObjectAllocator, I, IROA, Ptr, Size));
+      IROT.Objects.push_back(std::make_unique<ObjectTy>(ObjectAllocator, Ptr,
+                                                        Size, 0, false, false));
     }
     _OA = &IROA;
+  } else if (Mode == InputMode_Record_v2) {
+  } else {
+    std::cerr << "Unknown input mode" << std::endl;
+    abort();
   }
   ObjectAddressing &OA = *_OA;
-  auto Seed = readV<uint32_t>(Input);
-  Gen.seed(Seed);
 
   auto MemSize = readV<uint64_t>(Input);
   // TODO Maybe we should space out allocations so that they are on different
@@ -272,7 +276,7 @@ int main(int argc, char **argv) {
              (void *)nullptr);
       return;
     }
-    VoidPtrTy LocalPtr = OA.globalPtrToLocalPtr(GlobalPtr);
+    OffsetTy LocalPtr = OA.globalPtrToLocalPtr(GlobalPtr);
     ReplayObjectTy Obj = Objects[OA.globalPtrToObjIdx(GlobalPtr)];
     intptr_t Offset = OA.getOffsetFromObjBasePtr(LocalPtr);
     VoidPtrTy RealPtr = Obj.Start - Obj.OutputOffset + Offset;
