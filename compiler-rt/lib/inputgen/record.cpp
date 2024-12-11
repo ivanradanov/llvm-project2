@@ -104,6 +104,9 @@ std::unique_ptr<ObjectTy> InputRecordPageObjectAddressing::makeUniqueObject(
 }
 
 struct InputRecordRTTy {
+  INPUTGEN_TIMER_DEFINE(InputRecordRecord);
+  INPUTGEN_TIMER_DEFINE(InputRecordDump);
+
   ObjectAllocatorTy ObjectAllocator;
   InputRecordRTTy(InputRecordConfTy Conf) : Conf(Conf) {
     OutputObjIdxOffset = 0;
@@ -320,7 +323,9 @@ struct InputRecordRTTy {
     if (Conf.InputOutName) {
       std::ofstream InputOutStream(Conf.InputOutName->c_str(),
                                    std::ios::out | std::ios::binary);
+      INPUTGEN_TIMER_START(InputRecordDump);
       dumpInput<InputRecordRTTy, InputMode_Record_v1>(InputOutStream, *this);
+      INPUTGEN_TIMER_END(InputRecordDump);
       std::cerr << "Dumped input to `" << *Conf.InputOutName << "`"
                 << std::endl;
     } else {
@@ -341,6 +346,7 @@ struct InputRecordRTTy {
       abort();
     }
     INPUTGEN_DEBUG(std::cerr << "Start recording\n");
+    INPUTGEN_TIMER_START(InputRecordRecord);
     Recording = true;
   }
   void recordPop() {
@@ -350,6 +356,7 @@ struct InputRecordRTTy {
       std::cerr << "Pop without push? Abort!" << std::endl;
       abort();
     }
+    INPUTGEN_TIMER_END(InputRecordRecord);
     std::cerr << "Completed recording" << std::endl;
     INPUTGEN_DEBUG(std::cerr << "Stop recording\n");
     Recording = false;
