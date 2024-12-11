@@ -189,8 +189,8 @@ public:
     preprocessModule(M, Mode);
 
     bool InstrumentForCoverage = shouldInstrumentForCoverage(Mode);
-    ModuleInputGenInstrumenter MIGI(*InstrM, MAM, Mode, InstrumentForCoverage);
-    bool Success = MIGI.instrumentModuleForFunction(
+    InputGenInstrumenter IGI(*InstrM, MAM, Mode, InstrumentForCoverage);
+    bool Success = IGI.instrumentModuleForFunction(
         *InstrM, *cast<Function>(VMap[&EntryPoint]));
 
     postprocessModule(*InstrM, Mode);
@@ -271,8 +271,8 @@ public:
     preprocessModule(*InstrM, Mode);
 
     bool InstrumentForCoverage = shouldInstrumentForCoverage(Mode);
-    ModuleInputGenInstrumenter MIGI(*InstrM, MAM, Mode, InstrumentForCoverage);
-    bool Success = MIGI.instrumentModule(*InstrM);
+    InputGenInstrumenter IGI(*InstrM, MAM, Mode, InstrumentForCoverage);
+    bool Success = IGI.instrumentModule(*InstrM);
     if (!Success) {
       llvm::errs() << "Instrumenting failed\n";
       return;
@@ -296,14 +296,14 @@ public:
       LLVM_DEBUG(dbgs() << "Instrumenting...\n");
 
       auto Success =
-          MIGI.instrumentEntryPoint(*InstrM, *cast<Function>(VMap[&F]), true);
+          IGI.instrumentEntryPoint(*InstrM, *cast<Function>(VMap[&F]), true);
 
       if (!Success) {
         llvm::errs() << "Instrumenting failed\n";
         continue;
       }
     }
-    MIGI.instrumentFunctionPtrs(*InstrM);
+    IGI.instrumentFunctionPtrs(*InstrM);
 
     postprocessModule(*InstrM, Mode);
 

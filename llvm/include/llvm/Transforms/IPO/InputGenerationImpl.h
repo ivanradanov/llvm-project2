@@ -77,12 +77,20 @@ struct InterestingMemoryAccess {
 
 /// Instrument the code in module to profile memory accesses.
 class InputGenInstrumenter {
+private:
+  Triple TargetTriple;
+  std::unique_ptr<TargetLibraryInfoImpl> _TLII;
+  std::unique_ptr<TargetLibraryInfo> _TLI;
+  Function *InputGenCtorFunction = nullptr;
+
 public:
   InputGenInstrumenter(Module &M, AnalysisManager<Module> &MAM,
-                       TargetLibraryInfo &TLI, IGInstrumentationModeTy Mode,
+                       IGInstrumentationModeTy Mode,
                        bool InstrumentedForCoverage)
-      : Mode(Mode), MAM(MAM), M(M), TLI(TLI),
-        InstrumentedForCoverage(InstrumentedForCoverage) {
+      : TargetTriple(Triple(M.getTargetTriple())),
+        _TLII(new TargetLibraryInfoImpl(TargetTriple)),
+        _TLI(new TargetLibraryInfo(*_TLII)), Mode(Mode), MAM(MAM), M(M),
+        TLI(*_TLI), InstrumentedForCoverage(InstrumentedForCoverage) {
     Ctx = &(M.getContext());
     PtrTy = PointerType::getUnqual(*Ctx);
     Int1Ty = IntegerType::getIntNTy(*Ctx, 1);
@@ -194,6 +202,13 @@ public:
   bool shouldPreserveGVName(GlobalVariable &GV);
   bool shouldNotStubGV(GlobalVariable &GV);
 
+  void renameGlobals(Module &M, TargetLibraryInfo &TLI);
+  bool instrumentClEntryPoint(Module &);
+  bool instrumentModule(Module &);
+  bool instrumentEntryPoint(Module &, Function &, bool);
+  bool instrumentModuleForFunction(Module &, Function &);
+  bool instrumentFunctionPtrs(Module &);
+
 private:
   Module &M;
   TargetLibraryInfo &TLI;
@@ -213,31 +228,6 @@ private:
   bool InstrumentedForCoverage;
   unsigned StubNameCounter = 0;
   unsigned FpMapNameCounter = 0;
-};
-
-class ModuleInputGenInstrumenter {
-public:
-  ModuleInputGenInstrumenter(Module &M, AnalysisManager<Module> &AM,
-                             IGInstrumentationModeTy Mode,
-                             bool InstrumentedForCoverage)
-      : TargetTriple(Triple(M.getTargetTriple())),
-        TLII(new TargetLibraryInfoImpl(TargetTriple)),
-        TLI(new TargetLibraryInfo(*TLII)),
-        IGI(M, AM, *TLI, Mode, InstrumentedForCoverage) {}
-
-  void renameGlobals(Module &M, TargetLibraryInfo &TLI);
-  bool instrumentClEntryPoint(Module &);
-  bool instrumentModule(Module &);
-  bool instrumentEntryPoint(Module &, Function &, bool);
-  bool instrumentModuleForFunction(Module &, Function &);
-  bool instrumentFunctionPtrs(Module &);
-
-private:
-  Triple TargetTriple;
-  std::unique_ptr<TargetLibraryInfoImpl> TLII;
-  std::unique_ptr<TargetLibraryInfo> TLI;
-  Function *InputGenCtorFunction = nullptr;
-  InputGenInstrumenter IGI;
 };
 
 bool inputGenerationInstrumentModuleForFunction(Function &F,
