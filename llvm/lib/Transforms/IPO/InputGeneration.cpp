@@ -140,6 +140,11 @@ static cl::opt<bool>
 STATISTIC(NumInstrumented, "Number of instrumented instructions");
 
 namespace {
+// FIXME temp these are here because there is difference between how we want to
+// handle replay for generated inputs and recorded inputs. (quick hack to enable
+// replaying recorded inputs)
+constexpr bool ReplayStubDeclarations = false;
+constexpr bool ReplayRenameAll = false;
 
 // These are global variables that are never meant to be defined and are just
 // used to identify types in the source language
@@ -631,16 +636,6 @@ void createProfileFileNameVar(Module &M, Triple &TT,
 
 bool InputGenInstrumenter::instrumentClEntryPoint(Module &M) {
   Function *EntryPoint = M.getFunction(ClEntryPoint);
-  if (!EntryPoint) {
-    int No;
-    if (to_integer(ClEntryPoint, No)) {
-      auto It = M.begin(), End = M.end();
-      while (No-- > 0 && It != End)
-        It = std::next(It);
-      if (It != End)
-        EntryPoint = &*It;
-    }
-  }
   // TODO in record mode, we still need to instrument _everything_, just
   // excluding the entry point instrumentation if we were not able to find it.
   if (!EntryPoint) {
@@ -704,7 +699,13 @@ bool InputGenInstrumenter::instrumentModule(Module &M) {
   switch (Mode) {
   case IG_Replay:
     provideGlobals(M);
-    renameGlobals(M, TLI);
+
+    if (ReplayRenameAll) {
+      renameGlobals(M, TLI);
+    } else {
+      if (Function *Main = M.getFunction("main"))
+        Main->setName("__inputgen_renamed_main");
+    }
     handleUnreachable(M);
     break;
   case IG_Generate:
@@ -758,7 +759,8 @@ bool InputGenInstrumenter::instrumentModule(Module &M) {
     break;
   case IG_Replay:
   case IG_Generate:
-    stubDeclarations(M, TLI);
+    if (ReplayStubDeclarations)
+      stubDeclarations(M, TLI);
 
     auto *GlobalInitF =
         Function::Create(FunctionType::get(VoidTy, /*isVarArg=*/false),
@@ -1771,6 +1773,7 @@ void InputGenInstrumenter::recordValueUsingCallbacks(Module &M,
     }
   } else {
     auto *OrigTy = T;
+    // FIXME do we need addrspace casts here?
     if (isa<PointerType>(T) && T->getPointerAddressSpace())
       T = T->getPointerTo();
     FunctionCallee Fn = CC[T];
