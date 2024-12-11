@@ -101,6 +101,10 @@ template <typename T> static void *toVoidPtr(T Ptr) {
   return static_cast<void *>(Ptr);
 }
 
+template <unsigned Width, typename T>
+static std::bitset<Width> toBitsFixed(T Ptr) {
+  return std::bitset<Width>((uintptr_t)Ptr);
+}
 template <typename T> static std::bitset<sizeof(T) * 8> toBits(T Ptr) {
   return std::bitset<sizeof(T) * 8>((uintptr_t)Ptr);
 }
@@ -165,6 +169,8 @@ struct InputRecordObjectAddressing : public ObjectAddressing {
 struct InputRecordPageObjectAddressing {
 
   ObjectAllocatorTy &ObjectAllocator;
+
+  static std::string o(unsigned N) { return std::string(N, ' '); }
 
   template <unsigned NumBits, template <unsigned TopBit> typename ChildTy,
             unsigned TopBit>
@@ -242,6 +248,7 @@ struct InputRecordPageObjectAddressing {
       assert(Object);
       Objects.push_back(Object.get());
     }
+    void report(IRVector<uint8_t> &NodeStorage) {}
   };
 
   template <unsigned NumBits, template <unsigned TopBit> typename ChildTy,
@@ -291,6 +298,18 @@ struct InputRecordPageObjectAddressing {
               &NodeStorage[Children[ChildIdx]])
               ->getObjects(Objects, NodeStorage);
       }
+    }
+    void report(IRVector<uint8_t> &NodeStorage) {
+      for (auto &ChildIdx : Children)
+        if (ChildIdx != InvalidChildIdx)
+          std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
+                    << toBitsFixed<NumBits>(ChildIdx) << std::endl;
+
+      for (auto &ChildIdx : Children)
+        if (ChildIdx != InvalidChildIdx)
+          reinterpret_cast<SpecializedChildTy *>(
+              &NodeStorage[Children[ChildIdx]])
+              ->report(NodeStorage);
     }
   };
 
@@ -374,6 +393,23 @@ struct InputRecordPageObjectAddressing {
         LLNode->getChild()->getObjects(Objects, NodeStorage);
       }
     }
+    void report(IRVector<uint8_t> &NodeStorage) {
+      LLNodeTy *LLNode = &Head;
+      std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
+                << toBitsFixed<NumBits>(LLNode->PtrMatch) << std::endl;
+      while (LLNode->NextIndex != InvalidChildIdx) {
+        LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
+        std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
+                  << toBitsFixed<NumBits>(LLNode->PtrMatch) << std::endl;
+      }
+
+      LLNode = &Head;
+      LLNode->getChild()->report(NodeStorage);
+      while (LLNode->NextIndex != InvalidChildIdx) {
+        LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
+        LLNode->getChild()->report(NodeStorage);
+      }
+    }
   };
 
   template <unsigned NumBits, template <unsigned> typename ChildTy>
@@ -393,21 +429,32 @@ struct InputRecordPageObjectAddressing {
   // clang-format off
   using TreeType =
     ArrayNode<0,
-      ALinkedListNode<44,
+      ALinkedListNode<42,
+      AArrayNode<4,
       Leaf
+      >::SNode
       >::SNode,
     sizeof(uintptr_t) * 8>;
   // clang-format on
   TreeType Tree;
   IRVector<uint8_t> NodeStorage;
+
   ObjectTy *getObject(VoidPtrTy Ptr) {
     return Tree.getObject(ObjectAllocator, Ptr, NodeStorage);
   }
+
   void getObjects(IRVector<ObjectTy *> &Objects) {
     Tree.getObjects(Objects, NodeStorage);
   }
+
+  void report() {
+    std::cerr << "Object addressing data structure:\n";
+    Tree.report(NodeStorage);
+  }
+
   InputRecordPageObjectAddressing(ObjectAllocatorTy &ObjectAllocator)
       : ObjectAllocator(ObjectAllocator), Tree(ObjectAllocator) {}
+
   InputRecordPageObjectAddressing(ObjectAllocatorTy &ObjectAllocator,
                                   TreeType Tree, IRVector<uint8_t> NodeStorage)
       : ObjectAllocator(ObjectAllocator), Tree(Tree), NodeStorage(NodeStorage) {

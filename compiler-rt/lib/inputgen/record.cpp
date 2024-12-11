@@ -85,15 +85,16 @@ std::unique_ptr<T> IRMakeUnique(_Args &&...Args) {
 }
 
 struct InputRecordConfTy {
-  IRString InputOutName;
+  std::optional<IRString> InputOutName;
   bool QuitAfterRecord;
+  bool ReportObjectAddressing;
   InputRecordConfTy() {
+    ReportObjectAddressing = getenv("INPUT_RECORD_REPORT_OBJECT_ADDRESSING");
     QuitAfterRecord = getenv("INPUT_RECORD_QUIT_AFTER_RECORD");
     if (char *Str = getenv("INPUT_RECORD_FILENAME"))
       InputOutName = Str;
     else
-      // FIXME
-      InputOutName = "/dev/null";
+      InputOutName = {};
   }
 };
 
@@ -316,9 +317,18 @@ struct InputRecordRTTy {
   intptr_t registerFunctionPtrIdx(size_t N) { abort(); }
 
   void report() {
-    std::ofstream InputOutStream(Conf.InputOutName.c_str(),
-                                 std::ios::out | std::ios::binary);
-    dumpInput<InputRecordRTTy, InputMode_Record_v1>(InputOutStream, *this);
+    if (Conf.InputOutName) {
+      std::ofstream InputOutStream(Conf.InputOutName->c_str(),
+                                   std::ios::out | std::ios::binary);
+      dumpInput<InputRecordRTTy, InputMode_Record_v1>(InputOutStream, *this);
+      std::cerr << "Dumped input to `" << *Conf.InputOutName << "`"
+                << std::endl;
+    } else {
+      std::cerr << "No file specified, not dumping input." << std::endl;
+    }
+    if (Conf.ReportObjectAddressing) {
+      OA->report();
+    }
   }
 
   bool Recording = false;
@@ -340,12 +350,11 @@ struct InputRecordRTTy {
       std::cerr << "Pop without push? Abort!" << std::endl;
       abort();
     }
+    std::cerr << "Completed recording" << std::endl;
     INPUTGEN_DEBUG(std::cerr << "Stop recording\n");
     Recording = false;
     report();
     Done = true;
-
-    std::cerr << "Completed recording" << std::endl;
     if (Conf.QuitAfterRecord)
       exit(14);
   }
