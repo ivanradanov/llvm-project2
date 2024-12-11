@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utility>
 #include <vector>
 
 #include "../../../llvm/include/llvm/Transforms/IPO/InputGenerationTypes.h"
@@ -224,7 +225,11 @@ struct InputRecordPageObjectAddressing {
 
     std::unique_ptr<ObjectTy> Object;
 
+    Leaf() {}
     Leaf(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
+      init(ObjectAllocator, Ptr);
+    }
+    void init(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
       [[maybe_unused]]
       uintptr_t Masked = Node::extractMaskedPart(Ptr);
       INPUTGEN_DEBUG(std::cerr << "Created Leaf Node for Ptr" << toVoidPtr(Ptr)
@@ -256,20 +261,18 @@ struct InputRecordPageObjectAddressing {
   struct ArrayNode {
     using Node = Node<NumBits, ChildTy, TopBit>;
     using SpecializedChildTy = ChildTy<Node::NextBit>;
-    static constexpr size_t InvalidChildIdx =
-        std::numeric_limits<size_t>::max();
 
-    std::array<size_t, Node::NumChildren> Children;
+    std::array<SpecializedChildTy, Node::NumChildren> Children;
 
     ArrayNode(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr = nullptr) {
-      for (auto &ChildIdx : Children)
-        // FIXME This should _not_ be one
-        ChildIdx = InvalidChildIdx;
       INPUTGEN_DEBUG(std::cerr << "Created Array Node for Ptr " << toBits(Ptr)
                                << "\n");
       INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
                                << Node::NumChildren << " NumBits " << NumBits
                                << " NextBit " << Node::NextBit << "\n");
+
+      for (auto &Child : Children)
+        Child.init(ObjectAllocator, Ptr);
     }
 
     ObjectTy *getObject(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr,
@@ -277,39 +280,21 @@ struct InputRecordPageObjectAddressing {
       uintptr_t Masked = Node::extractMaskedPart(Ptr);
       INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
                                << " Masked " << toBits(Masked) << "\n");
-      SpecializedChildTy *ChildPtr;
-      if (Children[Masked] == InvalidChildIdx) {
-        size_t Idx;
-        std::tie(Idx, ChildPtr) =
-            Node::template allocateNew<SpecializedChildTy>(NodeStorage);
-        new (ChildPtr) SpecializedChildTy(ObjectAllocator, Ptr);
-        Children[Masked] = Idx;
-      } else {
-        ChildPtr = reinterpret_cast<SpecializedChildTy *>(
-            &NodeStorage[Children[Masked]]);
-      }
-      return ChildPtr->getObject(ObjectAllocator, Ptr, NodeStorage);
+      return Children[Masked].getObject(ObjectAllocator, Ptr, NodeStorage);
     }
     void getObjects(IRVector<ObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
-      for (auto &ChildIdx : Children) {
-        if (ChildIdx != InvalidChildIdx)
-          reinterpret_cast<SpecializedChildTy *>(
-              &NodeStorage[Children[ChildIdx]])
-              ->getObjects(Objects, NodeStorage);
+      for (auto &Child : Children) {
+        Child.getObjects(Objects, NodeStorage);
       }
     }
     void report(IRVector<uint8_t> &NodeStorage) {
-      for (auto &ChildIdx : Children)
-        if (ChildIdx != InvalidChildIdx)
-          std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
-                    << toBitsFixed<NumBits>(ChildIdx) << std::endl;
-
-      for (auto &ChildIdx : Children)
-        if (ChildIdx != InvalidChildIdx)
-          reinterpret_cast<SpecializedChildTy *>(
-              &NodeStorage[Children[ChildIdx]])
-              ->report(NodeStorage);
+      uintptr_t I = 0;
+      for (auto &Child : Children) {
+        std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
+                  << toBitsFixed<NumBits>(I++) << std::endl;
+        Child.report(NodeStorage);
+      }
     }
   };
 
@@ -344,7 +329,11 @@ struct InputRecordPageObjectAddressing {
       }
     } Head;
 
+    LinkedListNode() {}
     LinkedListNode(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
+      init(ObjectAllocator, Ptr);
+    }
+    void init(ObjectAllocatorTy &ObjectAllocator, VoidPtrTy Ptr) {
       INPUTGEN_DEBUG(std::cerr << "Created Linked List Node for Ptr "
                                << toBits(Ptr) << "\n");
       INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
@@ -397,16 +386,11 @@ struct InputRecordPageObjectAddressing {
       LLNodeTy *LLNode = &Head;
       std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
                 << toBitsFixed<NumBits>(LLNode->PtrMatch) << std::endl;
+      LLNode->getChild()->report(NodeStorage);
       while (LLNode->NextIndex != InvalidChildIdx) {
         LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
         std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
                   << toBitsFixed<NumBits>(LLNode->PtrMatch) << std::endl;
-      }
-
-      LLNode = &Head;
-      LLNode->getChild()->report(NodeStorage);
-      while (LLNode->NextIndex != InvalidChildIdx) {
-        LLNode = reinterpret_cast<LLNodeTy *>(&NodeStorage[LLNode->NextIndex]);
         LLNode->getChild()->report(NodeStorage);
       }
     }
