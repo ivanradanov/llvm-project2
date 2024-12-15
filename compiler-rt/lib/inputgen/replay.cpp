@@ -13,10 +13,13 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <sstream>
 #include <type_traits>
 #include <vector>
 
 #include <sys/mman.h>
+
+// DO_NOT_REMOVE_INPUT_REPLAY_AFTER_INCLUDES
 
 template <typename T> using IRVector = std::vector<T>;
 
@@ -135,7 +138,12 @@ struct InputRecordObjectTracker {
 };
 
 int main(int argc, char **argv) {
+#ifdef INPUT_REPLAY_EMBEDDED_INPUT
 
+  std::string Str(__inputgen_embedded_input, __inputgen_embedded_input_len);
+  std::istringstream Input(Str, std::ios::binary);
+
+#else
   if (argc != 4 && argc != 5 && argc != 2) {
     std::cerr << "Wrong usage." << std::endl;
     return 1;
@@ -169,6 +177,8 @@ int main(int argc, char **argv) {
   INPUTGEN_TIMER_START(IRInitialization);
 
   std::ifstream Input(InputName, std::ios::in | std::ios::binary);
+
+#endif
 
   auto Magic = readV<decltype(InputGenMagicNumber)>(Input);
   if (Magic != InputGenMagicNumber) {

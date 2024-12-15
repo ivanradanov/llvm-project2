@@ -19,9 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "../../../llvm/include/llvm/Transforms/IPO/InputGenerationTypes.h"
-
-using BranchHint = llvm::inputgen::BranchHint;
+struct  BranchHint {};
 
 namespace {
 int VERBOSE = 0;

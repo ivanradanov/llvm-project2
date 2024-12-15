@@ -12371,7 +12371,7 @@ struct AAIndirectCallInfoCallSite : public AAIndirectCallInfo {
     // Special handling for the single callee case.
     if (AllCalleesKnown && AssumedCallees.size() == 1 &&
         A.shouldSpecializeCallSiteForCallee(*this, *CB,
-                                            *AssumedCallees.back())) {
+                                            *AssumedCallees.back(), AssumedCallees.size())) {
       auto *NewCallee = AssumedCallees.front();
       if (isLegalToPromote(*CB, NewCallee)) {
         promoteCall(*CB, NewCallee, nullptr);

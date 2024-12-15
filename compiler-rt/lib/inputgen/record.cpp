@@ -74,8 +74,6 @@ using IRString =
 // before the include.
 #include "dump-input-impl.hpp"
 
-using BranchHint = llvm::inputgen::BranchHint;
-
 template <typename T, typename... _Args>
 std::unique_ptr<T> IRMakeUnique(_Args &&...Args) {
   IRAllocator<T> A;
