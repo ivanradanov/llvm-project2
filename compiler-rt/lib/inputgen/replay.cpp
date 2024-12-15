@@ -137,11 +137,17 @@ struct InputRecordObjectTracker {
   }
 };
 
+#ifdef INPUT_REPLAY_EMBEDDED_INPUT
+VoidPtrTy __inputrun_function_pointers[] = {};
+#endif
+
 int main(int argc, char **argv) {
 #ifdef INPUT_REPLAY_EMBEDDED_INPUT
 
-  std::string Str(__inputgen_embedded_input, __inputgen_embedded_input_len);
+  std::string Str((char *)__inputgen_embedded_input,
+                  __inputgen_embedded_input_len);
   std::istringstream Input(Str, std::ios::binary);
+  std::string FuncName = ("__inputrun_entry");
 
 #else
   if (argc != 4 && argc != 5 && argc != 2) {
