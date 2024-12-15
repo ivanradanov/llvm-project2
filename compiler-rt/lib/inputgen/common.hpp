@@ -118,13 +118,13 @@ template <typename T> static std::bitset<sizeof(T) * 8> toBits(T Ptr) {
   return std::bitset<sizeof(T) * 8>((uintptr_t)Ptr);
 }
 
-template <typename T> static T readV(std::ifstream &Input) {
+template <typename T> static T readV(std::istream &Input) {
   T El;
   Input.read(ccast(&El), sizeof(El));
   return El;
 }
 
-template <typename T> static void writeV(std::ofstream &Output, T El) {
+template <typename T> static void writeV(std::ostream &Output, T El) {
   Output.write(ccast(&El), sizeof(El));
 }
 
@@ -751,10 +751,9 @@ struct InputRecordPageObjectAddressing {
                       IRVector<uint8_t> &NodeStorage) {
       Object.access(Ptr, Info);
     }
-    void getObjects(IRVector<LocalObjectTy *> &Objects,
+    void getObjects(VoidPtrTy BasePtr, IRVector<LocalObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
-      // assert(Object);
-      Objects.push_back(&Object);
+      abort();
     }
     void report(IRVector<uint8_t> &NodeStorage) {
       std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Leaf Node\n";
@@ -798,10 +797,12 @@ struct InputRecordPageObjectAddressing {
                                << " Masked " << toBits(Masked) << "\n");
       Children[Masked].accessObject(Info, Ptr, NodeStorage);
     }
-    void getObjects(IRVector<LocalObjectTy *> &Objects,
+    void getObjects(VoidPtrTy BasePtr, IRVector<LocalObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
+      unsigned I = 0;
       for (auto &Child : Children) {
-        Child.getObjects(Objects, NodeStorage);
+        Child.getObjects(toPtr(toUint(BasePtr) | I << Node::NextBit), Objects, NodeStorage);
+        I++;
       }
     }
     void report(IRVector<uint8_t> &NodeStorage) {
@@ -928,13 +929,13 @@ struct InputRecordPageObjectAddressing {
       addChild(Info, NodeStorage, LastIdx, LLNode, Ptr)
           ->accessObject(Info, Ptr, NodeStorage);
     }
-    void getObjects(IRVector<LocalObjectTy *> &Objects,
+    void getObjects(VoidPtrTy BasePtr, IRVector<LocalObjectTy *> &Objects,
                     IRVector<uint8_t> &NodeStorage) {
       LLIdxType Idx = getIdx(NodeStorage, &Head);
       do {
         LLNodeTy *LLNode = getAt(NodeStorage, Idx);
         for (unsigned I = 0; I < LLNode->NumChildren; I++)
-          LLNode->getChild(I)->getObjects(Objects, NodeStorage);
+          LLNode->getChild(I)->getObjects(toPtr(toUint(BasePtr) | (LLNode->PtrMatch[I] << Node::NextBit)), Objects, NodeStorage);
         Idx = LLNode->NextIdx;
       } while (Idx != InvalidChildIdx);
     }
@@ -1022,7 +1023,7 @@ struct InputRecordPageObjectAddressing {
   }
 
   void getObjects(IRVector<LocalObjectTy *> &Objects) {
-    getTree()->getObjects(Objects, NodeStorage);
+    getTree()->getObjects(nullptr, Objects, NodeStorage);
   }
 
   void report() {
