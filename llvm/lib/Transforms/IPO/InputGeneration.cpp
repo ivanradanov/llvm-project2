@@ -1125,7 +1125,7 @@ void InputGenInstrumenter::gatherFunctionPtrCallees(Module &M) {
   };
   AC.IndirectCalleeSpecializationCallback =
       [&](Attributor &, const AbstractAttribute &AA, CallBase &CB,
-          Function &Callee) { return false; };
+          Function &Callee, unsigned NumAssumedCallees) { return false; };
 
   Attributor A(Functions, InfoCache, AC);
   for (Function &F : M)
@@ -1270,7 +1270,7 @@ void InputGenInstrumenter::instrumentFunctionPtrSources(Module &M) {
   };
   AC.IndirectCalleeSpecializationCallback =
       [&](Attributor &, const AbstractAttribute &AA, CallBase &CB,
-          Function &Callee) { return false; };
+          Function &Callee, unsigned NumAssumedCallees) { return false; };
   AC.IPOAmendableCB = [](const Function &F) {
     return !F.isDeclaration() || F.hasWeakAnyLinkage();
   };
