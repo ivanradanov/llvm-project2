@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -97,6 +98,91 @@ static cl::opt<bool> TokensDump("tokens-dump",
                                 cl::cat(ClangCheckCategory));
 
 namespace {
+  using namespace clang;
+
+  class ASTMinimizer : public ASTConsumer,
+                     public RecursiveASTVisitor<ASTMinimizer> {
+    typedef RecursiveASTVisitor<ASTMinimizer> base;
+
+  public:
+    ASTMinimizer(std::unique_ptr<raw_ostream> Out,
+               StringRef FilterString,
+               bool DumpLookups = false, bool DumpDeclTypes = false)
+        : Out(Out ? *Out : llvm::outs()), OwnedOut(std::move(Out)),
+          FilterString(FilterString),
+          DumpLookups(DumpLookups), DumpDeclTypes(DumpDeclTypes) {}
+
+    void HandleTranslationUnit(ASTContext &Context) override {
+      TranslationUnitDecl *D = Context.getTranslationUnitDecl();
+
+      if (FilterString.empty())
+        return print(D);
+
+      TraverseDecl(D);
+    }
+
+    bool shouldWalkTypesOfTypeLocs() const { return false; }
+
+    bool TraverseDecl(Decl *D) {
+      if (D && filterMatches(D)) {
+        print(D);
+        Out << "\n";
+        // Don't traverse child nodes to avoid output duplication.
+        return true;
+      }
+      return base::TraverseDecl(D);
+    }
+
+  private:
+    std::string getName(Decl *D) {
+      if (isa<NamedDecl>(D))
+        return cast<NamedDecl>(D)->getQualifiedNameAsString();
+      return "";
+    }
+    bool filterMatches(Decl *D) {
+      return getName(D).find(FilterString) != std::string::npos;
+    }
+    void print(Decl *D) {
+      PrintingPolicy Policy(D->getASTContext().getLangOpts());
+      D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
+
+      if (DumpDeclTypes) {
+        Decl *InnerD = D;
+        if (auto *TD = dyn_cast<TemplateDecl>(D))
+          if (Decl *TempD = TD->getTemplatedDecl())
+            InnerD = TempD;
+
+        // FIXME: Support combining -ast-dump-decl-types with -ast-dump-lookups.
+        if (auto *VD = dyn_cast<ValueDecl>(InnerD))
+          VD->getType().dump(Out, VD->getASTContext());
+        if (auto *TD = dyn_cast<TypeDecl>(InnerD))
+          TD->getTypeForDecl()->dump(Out, TD->getASTContext());
+      }
+    }
+
+    raw_ostream &Out;
+    std::unique_ptr<raw_ostream> OwnedOut;
+
+    /// Which declarations or DeclContexts to display.
+    std::string FilterString;
+
+    /// Whether the primary output is lookup results or declarations. Individual
+    /// results will be output with a format determined by OutputKind. This is
+    /// incompatible with OutputKind == Print.
+    bool DumpLookups;
+
+    /// Whether to dump the type for each declaration dumped.
+    bool DumpDeclTypes;
+  };
+
+  std::unique_ptr<ASTConsumer>
+  CreateASTMinimizer(std::unique_ptr<raw_ostream> Out,
+                          StringRef FilterString) {
+    return std::make_unique<ASTMinimizer>(std::move(Out), FilterString);
+  }
+}
+
+namespace {
 
 // FIXME: Move FixItRewriteInPlace from lib/Rewrite/Frontend/FrontendActions.cpp
 // into a header file and reuse that.
@@ -174,18 +260,7 @@ public:
 class ClangCheckActionFactory {
 public:
   std::unique_ptr<clang::ASTConsumer> newASTConsumer() {
-    if (ASTList)
-      return clang::CreateASTDeclNodeLister();
-    if (ASTDump)
-      return clang::CreateASTDumper(nullptr /*Dump to stdout.*/, ASTDumpFilter,
-                                    /*DumpDecls=*/true,
-                                    /*Deserialize=*/false,
-                                    /*DumpLookups=*/false,
-                                    /*DumpDeclTypes=*/false,
-                                    clang::ADOF_Default);
-    if (ASTPrint)
-      return clang::CreateASTPrinter(nullptr, ASTDumpFilter);
-    return std::make_unique<clang::ASTConsumer>();
+    return CreateASTMinimizer(nullptr, ASTDumpFilter);
   }
 };
 
@@ -245,15 +320,7 @@ int main(int argc, const char **argv) {
   ClangCheckActionFactory CheckFactory;
   std::unique_ptr<FrontendActionFactory> FrontendFactory;
 
-  // Choose the correct factory based on the selected mode.
-  if (Analyze)
-    FrontendFactory = newFrontendActionFactory<clang::ento::AnalysisAction>();
-  else if (Fixit)
-    FrontendFactory = newFrontendActionFactory<ClangCheckFixItAction>();
-  else if (SyntaxTreeDump || TokensDump)
-    FrontendFactory = newFrontendActionFactory<DumpSyntaxTree>();
-  else
-    FrontendFactory = newFrontendActionFactory(&CheckFactory);
+  FrontendFactory = newFrontendActionFactory(&CheckFactory);
 
   return Tool.run(FrontendFactory.get());
 }
