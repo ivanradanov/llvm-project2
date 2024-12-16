@@ -51,7 +51,7 @@
 
 namespace llvm {
 
-enum IGInstrumentationModeTy { IG_Record, IG_Generate, IG_Replay };
+enum IGInstrumentationModeTy { IG_Record, IG_Generate, IG_Replay, IG_Disabled };
 
 struct InterestingMemoryAccess {
   Instruction *I = nullptr;

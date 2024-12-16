@@ -101,8 +101,9 @@ static std::string InputGenOutputFilename = "input_gen_%{fn}_%{uuid}.c";
 
 static cl::opt<IGInstrumentationModeTy>
     ClInstrumentationMode("input-gen-mode", cl::desc("Instrumentation mode"),
-                          cl::Hidden, cl::init(IG_Generate),
-                          cl::values(clEnumValN(IG_Record, "record", ""),
+                          cl::Hidden, cl::init(IG_Disabled),
+                          cl::values(clEnumValN(IG_Disabled, "disable", ""),
+                                     clEnumValN(IG_Record, "record", ""),
                                      clEnumValN(IG_Generate, "generate", ""),
                                      clEnumValN(IG_Replay, "replay", "")));
 
@@ -120,11 +121,6 @@ static cl::opt<std::string, true> ClOutputFilename(
     "input-gen-output-filename",
     cl::desc("Name of the file the generated input is stored in."), cl::Hidden,
     cl::location(InputGenOutputFilename));
-
-static cl::opt<std::string>
-    ClEntryPoint("input-gen-entry-point",
-                 cl::desc("Entry point identification (via name or #)."),
-                 cl::Hidden, cl::init("main"));
 
 static cl::opt<bool>
     ClProvideBranchHints("input-gen-provide-branch-hints",
@@ -232,6 +228,8 @@ InputGenerationInstrumentPass::InputGenerationInstrumentPass() = default;
 
 PreservedAnalyses
 InputGenerationInstrumentPass::run(Module &M, AnalysisManager<Module> &MAM) {
+  if (ClInstrumentationMode == IG_Disabled)
+    return PreservedAnalyses::all();
   InputGenInstrumenter IGI(M, MAM, ClInstrumentationMode, true);
   if (IGI.instrumentClEntryPoint(M))
     return PreservedAnalyses::none();
@@ -635,11 +633,20 @@ void createProfileFileNameVar(Module &M, Triple &TT,
 }
 
 bool InputGenInstrumenter::instrumentClEntryPoint(Module &M) {
-  Function *EntryPoint = M.getFunction(ClEntryPoint);
-  // TODO in record mode, we still need to instrument _everything_, just
+  Function *EntryPoint = nullptr;
+  for (auto &F : M) {
+    if (F.hasFnAttribute("inputgen_entry")) {
+      if (EntryPoint)
+        llvm::errs() << "Multiple inputgen entry points found, ignoring "
+                     << EntryPoint->getName() << "\n";
+      // TODO support multiple entry points
+      EntryPoint = &F;
+    }
+  }
+  // FIXME in record mode, we still need to instrument _everything_, just
   // excluding the entry point instrumentation if we were not able to find it.
   if (!EntryPoint) {
-    errs() << "No entry point found, used \"" << ClEntryPoint << "\".\n";
+    errs() << "No entry point found\n";
     return false;
   }
   return instrumentModuleForFunction(M, *EntryPoint);

@@ -2557,6 +2557,7 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     B.addAttribute(llvm::Attribute::NoInline);
   } else if (D->hasAttr<InputGenEntryAttr>()) {
     B.addAttribute(llvm::Attribute::NoInline);
+    B.addAttribute(llvm::Attribute::InputGenEntry);
     // TODO add inputgen attr
   } else if (D->hasAttr<NoDuplicateAttr>()) {
     B.addAttribute(llvm::Attribute::NoDuplicate);

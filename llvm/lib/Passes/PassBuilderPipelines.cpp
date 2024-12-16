@@ -186,8 +186,6 @@ static cl::opt<bool> EnablePostPGOLoopRotation(
     "enable-post-pgo-loop-rotation", cl::init(true), cl::Hidden,
     cl::desc("Run the loop rotation transformation after PGO instrumentation"));
 
-static cl::opt<bool> UseInputGen("include-input-gen", cl::desc(""));
-
 static cl::opt<bool> EnableGlobalAnalyses(
     "enable-global-analyses", cl::init(true), cl::Hidden,
     cl::desc("Enable inter-procedural analyses"));
@@ -1593,8 +1591,7 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   if (PTO.MergeFunctions)
     MPM.addPass(MergeFunctionsPass());
 
-  if (UseInputGen)
-    MPM.addPass(InputGenerationInstrumentPass());
+  MPM.addPass(InputGenerationInstrumentPass());
 
   if (PTO.CallGraphProfile && !LTOPreLink)
     MPM.addPass(CGProfilePass(LTOPhase == ThinOrFullLTOPhase::FullLTOPostLink ||
