@@ -17,7 +17,7 @@ add_compiler_rt_runtime(inputgen.record
   OBJECT_LIBS RTSanitizerCommon
               RTSanitizerCommonLibc
               RTSanitizerCommonSymbolizer
-  CFLAGS ${COMPILER_RT_COMMON_CFLAGS} -flto -ffat-lto-objects -O0 -g
+  CFLAGS ${COMPILER_RT_COMMON_CFLAGS} -flto -ffat-lto-objects
   LINK_FLAGS ${COMPILER_RT_COMMON_LINK_FLAGS} ${WEAK_SYMBOL_LINK_FLAGS}
   LINK_LIBS ${STATS_LINK_LIBS}
   PARENT_TARGET inputgen_record)
@@ -34,7 +34,7 @@ add_compiler_rt_runtime(inputgen.replay
   OBJECT_LIBS RTSanitizerCommon
               RTSanitizerCommonLibc
               RTSanitizerCommonSymbolizer
-  CFLAGS ${COMPILER_RT_COMMON_CFLAGS} -flto -ffat-lto-objects -O0 -g
+  CFLAGS ${COMPILER_RT_COMMON_CFLAGS} -flto -ffat-lto-objects
   LINK_FLAGS ${COMPILER_RT_COMMON_LINK_FLAGS} ${WEAK_SYMBOL_LINK_FLAGS}
   LINK_LIBS ${STATS_LINK_LIBS}
   PARENT_TARGET inputgen_replay)

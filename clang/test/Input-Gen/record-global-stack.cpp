@@ -1,11 +1,11 @@
 // RUN: mkdir -p %t
 // RUN: %clangxx -g -O2 %s -mllvm --input-gen-mode=record -mllvm --input-gen-entry-point=foo -mllvm -include-input-gen -o %t/record.a.out -linputgen.record
 // RUN: %clangxx -g -O2 %s -mllvm --input-gen-mode=replay -mllvm --input-gen-entry-point=foo -mllvm -include-input-gen -rdynamic -o %t/replay.a.out -linputgen.replay
-// RUN: INPUT_RECORD_FILENAME=%t/input.bin %t/record.a.out | FileCheck %x
-// RUN: %t/replay.a.out %t/input.bin | FileCheck %x
-// RUN: ../../../scripts//inputgen_minimize.py --source-file %s --input-file t/input.bin --func-name foo --output-file %t/minimized.cpp
-// RUN: %clangxx %t/minimized.cpp -o minimized.a.out
-// RUN: minimized.a.out | FileCheck %s
+// RUN: INPUT_RECORD_FILENAME=%t/input.bin %t/record.a.out | FileCheck %s
+// RUN: %t/replay.a.out %t/input.bin | FileCheck %s
+// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --input-file %t/input.bin --func-name foo --output-file %t/minimized.cpp
+// RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
+// RUN: %t/minimized.a.out | FileCheck %s
 
 // CHECK: Sum: 495
 
