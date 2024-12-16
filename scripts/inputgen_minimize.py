@@ -94,10 +94,11 @@ def main():
     with open(args.output_file, 'w') as f:
 
         print(rt_pre, file=f)
-        print('\n\n// =========== RECORDED FUNCTION BEGIN ===========\n', file=f)
         print(minimized_func, file=f)
-        print('\n// =========== RECORDED FUNCTION END ===========\n\n', file=f)
+        print('\n', file=f)
+        print('// =========== EMBEDDED INPUT BEGIN ===========\n', file=f)
         print(embedded_input, file=f)
+        print('// =========== RECORDED FUNCTION END ===========\n', file=f)
         print('#define INPUT_REPLAY_EMBEDDED_INPUT\n', file=f)
         print(rt_post, file=f)
 

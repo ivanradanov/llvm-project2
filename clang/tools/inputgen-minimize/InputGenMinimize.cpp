@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/ASTConsumers.h"
@@ -52,8 +53,7 @@ static cl::extrahelp MoreHelp(
     "\n"
     "\tNote, that path/in/subtree and current directory should follow the\n"
     "\trules described above.\n"
-    "\n"
-);
+    "\n");
 
 static cl::OptionCategory ClangCheckCategory("clang-check options");
 static const opt::OptTable &Options = getDriverOptTable();
@@ -98,166 +98,118 @@ static cl::opt<bool> TokensDump("tokens-dump",
                                 cl::cat(ClangCheckCategory));
 
 namespace {
-  using namespace clang;
+using namespace clang;
 
-  class ASTMinimizer : public ASTConsumer,
+class ASTMinimizer : public ASTConsumer,
                      public RecursiveASTVisitor<ASTMinimizer> {
-    typedef RecursiveASTVisitor<ASTMinimizer> base;
+  typedef RecursiveASTVisitor<ASTMinimizer> base;
 
-  public:
-    ASTMinimizer(std::unique_ptr<raw_ostream> Out,
-               StringRef FilterString,
-               bool DumpLookups = false, bool DumpDeclTypes = false)
-        : Out(Out ? *Out : llvm::outs()), OwnedOut(std::move(Out)),
-          FilterString(FilterString),
-          DumpLookups(DumpLookups), DumpDeclTypes(DumpDeclTypes) {}
+public:
+  ASTMinimizer(std::unique_ptr<raw_ostream> Out, StringRef FilterString,
+               bool DumpDeclTypes = false)
+      : Out(Out ? *Out : llvm::outs()), OwnedOut(std::move(Out)),
+        FilterString(FilterString), DumpDeclTypes(DumpDeclTypes) {}
 
-    void HandleTranslationUnit(ASTContext &Context) override {
-      TranslationUnitDecl *D = Context.getTranslationUnitDecl();
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
 
-      if (FilterString.empty())
-        return print(D);
+    if (FilterString.empty())
+      return print(D);
 
-      TraverseDecl(D);
+    TraverseDecl(D);
+  }
+
+  bool shouldWalkTypesOfTypeLocs() const { return false; }
+
+  bool generateEntryPoint(FunctionDecl *FD) {
+    std::string Indent = "  ";
+
+    Out << "void __inputrun_entry(char *Args) {\n";
+
+    Out << Indent << "char *CurArg = Args;\n";
+    for (unsigned I = 0; I < FD->getNumParams(); I++) {
+      ParmVarDecl *Param = FD->getParamDecl(I);
+
+      QualType T = Param->getType();
+      std::string TypeStr = T.getAsString();
+      Out << Indent << TypeStr << " Arg" << I << " = *(" << TypeStr
+          << " *) CurArg;\n";
+      Out << Indent << "CurArg += 16;\n";
     }
 
-    bool shouldWalkTypesOfTypeLocs() const { return false; }
+    Out << Indent << FD->getNameAsString() << "(";
+    for (unsigned I = 0; I < FD->getNumParams(); I++) {
+      if (I != 0)
+        Out << ", ";
+      Out << "Arg" << I;
+    }
+    Out << ");\n";
 
-    bool TraverseDecl(Decl *D) {
-      if (D && filterMatches(D)) {
-        print(D);
+    Out << "}\n";
+    return true;
+  }
+
+  bool TraverseDecl(Decl *D) {
+    if (D && filterMatches(D)) {
+      if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
         Out << "\n";
+        Out << "// =========== RECORDED FUNCTION BEGIN ===========\n";
+        print(D);
+        Out << "// =========== RECORDED FUNCTION END ===========\n";
+        Out << "\n";
+        Out << "// =========== GENERATED ENTRY POINT BEGIN ===========\n";
+        generateEntryPoint(FD);
+        Out << "// =========== GENERATED ENTRY POINT END ===========\n";
         // Don't traverse child nodes to avoid output duplication.
         return true;
       }
-      return base::TraverseDecl(D);
     }
-
-  private:
-    std::string getName(Decl *D) {
-      if (isa<NamedDecl>(D))
-        return cast<NamedDecl>(D)->getQualifiedNameAsString();
-      return "";
-    }
-    bool filterMatches(Decl *D) {
-      return getName(D).find(FilterString) != std::string::npos;
-    }
-    void print(Decl *D) {
-      PrintingPolicy Policy(D->getASTContext().getLangOpts());
-      D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
-
-      if (DumpDeclTypes) {
-        Decl *InnerD = D;
-        if (auto *TD = dyn_cast<TemplateDecl>(D))
-          if (Decl *TempD = TD->getTemplatedDecl())
-            InnerD = TempD;
-
-        // FIXME: Support combining -ast-dump-decl-types with -ast-dump-lookups.
-        if (auto *VD = dyn_cast<ValueDecl>(InnerD))
-          VD->getType().dump(Out, VD->getASTContext());
-        if (auto *TD = dyn_cast<TypeDecl>(InnerD))
-          TD->getTypeForDecl()->dump(Out, TD->getASTContext());
-      }
-    }
-
-    raw_ostream &Out;
-    std::unique_ptr<raw_ostream> OwnedOut;
-
-    /// Which declarations or DeclContexts to display.
-    std::string FilterString;
-
-    /// Whether the primary output is lookup results or declarations. Individual
-    /// results will be output with a format determined by OutputKind. This is
-    /// incompatible with OutputKind == Print.
-    bool DumpLookups;
-
-    /// Whether to dump the type for each declaration dumped.
-    bool DumpDeclTypes;
-  };
-
-  std::unique_ptr<ASTConsumer>
-  CreateASTMinimizer(std::unique_ptr<raw_ostream> Out,
-                          StringRef FilterString) {
-    return std::make_unique<ASTMinimizer>(std::move(Out), FilterString);
+    return base::TraverseDecl(D);
   }
+
+private:
+  std::string getName(Decl *D) {
+    if (isa<NamedDecl>(D))
+      return cast<NamedDecl>(D)->getQualifiedNameAsString();
+    return "";
+  }
+  bool filterMatches(Decl *D) {
+    return getName(D).find(FilterString) != std::string::npos;
+  }
+  void print(Decl *D) {
+    PrintingPolicy Policy(D->getASTContext().getLangOpts());
+    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
+
+    if (DumpDeclTypes) {
+      Decl *InnerD = D;
+      if (auto *TD = dyn_cast<TemplateDecl>(D))
+        if (Decl *TempD = TD->getTemplatedDecl())
+          InnerD = TempD;
+
+      // FIXME: Support combining -ast-dump-decl-types with -ast-dump-lookups.
+      if (auto *VD = dyn_cast<ValueDecl>(InnerD))
+        VD->getType().dump(Out, VD->getASTContext());
+      if (auto *TD = dyn_cast<TypeDecl>(InnerD))
+        TD->getTypeForDecl()->dump(Out, TD->getASTContext());
+    }
+  }
+
+  raw_ostream &Out;
+  std::unique_ptr<raw_ostream> OwnedOut;
+
+  /// Which declarations or DeclContexts to display.
+  std::string FilterString;
+
+  /// Whether to dump the type for each declaration dumped.
+  bool DumpDeclTypes;
+};
+
+std::unique_ptr<ASTConsumer>
+CreateASTMinimizer(std::unique_ptr<raw_ostream> Out, StringRef FilterString) {
+  return std::make_unique<ASTMinimizer>(std::move(Out), FilterString);
 }
 
-namespace {
-
-// FIXME: Move FixItRewriteInPlace from lib/Rewrite/Frontend/FrontendActions.cpp
-// into a header file and reuse that.
-class FixItOptions : public clang::FixItOptions {
-public:
-  FixItOptions() {
-    FixWhatYouCan = ::FixWhatYouCan;
-  }
-
-  std::string RewriteFilename(const std::string& filename, int &fd) override {
-    // We don't need to do permission checking here since clang will diagnose
-    // any I/O errors itself.
-
-    fd = -1;  // No file descriptor for file.
-
-    return filename;
-  }
-};
-
-/// Subclasses \c clang::FixItRewriter to not count fixed errors/warnings
-/// in the final error counts.
-///
-/// This has the side-effect that clang-check -fixit exits with code 0 on
-/// successfully fixing all errors.
-class FixItRewriter : public clang::FixItRewriter {
-public:
-  FixItRewriter(clang::DiagnosticsEngine& Diags,
-                clang::SourceManager& SourceMgr,
-                const clang::LangOptions& LangOpts,
-                clang::FixItOptions* FixItOpts)
-      : clang::FixItRewriter(Diags, SourceMgr, LangOpts, FixItOpts) {
-  }
-
-  bool IncludeInDiagnosticCounts() const override { return false; }
-};
-
-/// Subclasses \c clang::FixItAction so that we can install the custom
-/// \c FixItRewriter.
-class ClangCheckFixItAction : public clang::FixItAction {
-public:
-  bool BeginSourceFileAction(clang::CompilerInstance& CI) override {
-    FixItOpts.reset(new FixItOptions);
-    Rewriter.reset(new FixItRewriter(CI.getDiagnostics(), CI.getSourceManager(),
-                                     CI.getLangOpts(), FixItOpts.get()));
-    return true;
-  }
-};
-
-class DumpSyntaxTree : public clang::ASTFrontendAction {
-public:
-  std::unique_ptr<clang::ASTConsumer>
-  CreateASTConsumer(clang::CompilerInstance &CI, StringRef InFile) override {
-    class Consumer : public clang::ASTConsumer {
-    public:
-      Consumer(clang::CompilerInstance &CI) : Collector(CI.getPreprocessor()) {}
-
-      void HandleTranslationUnit(clang::ASTContext &AST) override {
-        clang::syntax::TokenBuffer TB = std::move(Collector).consume();
-        if (TokensDump)
-          llvm::outs() << TB.dumpForTests();
-        clang::syntax::TokenBufferTokenManager TBTM(TB, AST.getLangOpts(),
-                                                    AST.getSourceManager());
-        clang::syntax::Arena A;
-        llvm::outs()
-            << clang::syntax::buildSyntaxTree(A, TBTM, AST)->dump(TBTM);
-      }
-
-    private:
-      clang::syntax::TokenCollector Collector;
-    };
-    return std::make_unique<Consumer>(CI);
-  }
-};
-
-class ClangCheckActionFactory {
+class MimimizeFactory {
 public:
   std::unique_ptr<clang::ASTConsumer> newASTConsumer() {
     return CreateASTMinimizer(nullptr, ASTDumpFilter);
@@ -317,7 +269,7 @@ int main(int argc, const char **argv) {
         getInsertArgumentAdjuster("--analyze", ArgumentInsertPosition::BEGIN));
   }
 
-  ClangCheckActionFactory CheckFactory;
+  MimimizeFactory CheckFactory;
   std::unique_ptr<FrontendActionFactory> FrontendFactory;
 
   FrontendFactory = newFrontendActionFactory(&CheckFactory);

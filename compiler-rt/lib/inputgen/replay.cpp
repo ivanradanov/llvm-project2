@@ -410,13 +410,17 @@ int main(int argc, char **argv) {
   INPUTGEN_DEBUG(printf("Args %u : %p\n", NumArgs, (void *)ArgsMemory));
   INPUTGEN_DEBUG(printf("Stubs %u : %p\n", NumStubs, (void *)StubsMemory));
 
+  typedef void (*EntryFnType)(char *);
+
+#ifdef INPUT_REPLAY_EMBEDDED_INPUT
+  EntryFnType EntryFn = __inputrun_entry;
+#else
   void *Handle = dlopen(NULL, RTLD_NOW);
   if (!Handle) {
     std::cout << "Could not dyn load binary" << std::endl;
     std::cout << dlerror() << std::endl;
     return 11;
   }
-  typedef void (*EntryFnType)(char *);
   EntryFnType EntryFn = (EntryFnType)dlsym(Handle, FuncName.c_str());
 
   if (!EntryFn) {
@@ -424,6 +428,7 @@ int main(int argc, char **argv) {
               << std::endl;
     return 12;
   }
+#endif
 
   INPUTGEN_TIMER_END(IRInitialization);
   printf("Run\n");
@@ -431,7 +436,9 @@ int main(int argc, char **argv) {
   EntryFn(ccast(ArgsMemory));
   INPUTGEN_TIMER_END(IRRun);
 
+#ifndef INPUT_REPLAY_EMBEDDED_INPUT
   dlclose(Handle);
+#endif
 
   // TODO: we intercept free
   free(ArgsMemory);
