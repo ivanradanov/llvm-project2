@@ -119,10 +119,26 @@ void __inputgen_override_free(void *P) {}
 }
 
 struct InputRecordObjectTracker {
-  std::vector<std::unique_ptr<IRObjectTy>> Objects;
+  struct ObjectTy {
+    VoidPtrTy Ptr;
+    intptr_t Size;
+    ObjectTy(VoidPtrTy Ptr, intptr_t Size) : Ptr(Ptr), Size(Size) {}
+    VoidPtrTy getBasePtr() { return Ptr; }
+    OffsetTy getLocalPtr(VoidPtrTy GlobalPtr) {
+      return GlobalPtr - getBasePtr();
+    }
+    VoidPtrTy getGlobalPtr(OffsetTy LocalPtr) {
+      return getBasePtr() + LocalPtr;
+    }
+    bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
+      VoidPtrTy BasePtr = getBasePtr();
+      return BasePtr <= GlobalPtr && BasePtr + Size > GlobalPtr;
+    }
+  };
+  std::vector<std::unique_ptr<ObjectTy>> Objects;
 
   // TODO deduplicate logic with InputRecordRTTy
-  std::optional<std::pair<IRObjectTy *, OffsetTy>>
+  std::optional<std::pair<ObjectTy *, OffsetTy>>
   globalPtrToObjAndLocalPtr(VoidPtrTy GlobalPtr) {
     // FIXME do we need to walk backwards so that we get the _last_ (currently
     // active) allocation?
@@ -224,7 +240,9 @@ int main(int argc, char **argv) {
     for (uint32_t I = 0; I < NumObjects; I++) {
       auto Ptr = readV<VoidPtrTy>(Input);
       auto Size = readV<uintptr_t>(Input);
-      IROT.Objects.push_back(std::make_unique<IRObjectTy>(Ptr));
+      IROT.Objects.push_back(
+          std::make_unique<InputRecordObjectTracker::ObjectTy>(Ptr, Size));
+      INPUTGEN_DEBUG(printf("New O#%d %lu : %p\n", I, Size, (void *)Ptr));
     }
     _OA = &IROA;
     GlobalPtrToLocalPtrAndObjIdx =

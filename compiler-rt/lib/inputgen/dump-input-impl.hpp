@@ -7,7 +7,6 @@
 
 template <typename RTTy, enum InputMode Mode>
 static void dumpInput(std::ofstream &File, RTTy &RT) {
-#if 0
   auto Objects = RT.getObjects();
   INPUTGEN_DEBUG({
     fprintf(stderr, "Args (%u total)\n", RT.NumArgs);
@@ -28,10 +27,8 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
     uint32_t NumObjects = Objects.size();
     writeV<uint32_t>(File, NumObjects);
     for (auto &Obj : Objects) {
-      const IRObjectTy::MemoryTy ObjMem = Obj->getOutputMemory();
-      assert(ObjMem.AllocationOffset == 0);
-      writeV<VoidPtrTy>(File, ObjMem.Memory);
-      writeV<uintptr_t>(File, ObjMem.AllocationSize);
+      writeV<VoidPtrTy>(File, Obj->getOutputMemoryPtr());
+      writeV<uintptr_t>(File, Obj->getOutputMemorySize());
     }
   } else {
     static_assert(false);
@@ -45,7 +42,7 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   writeV(File, NumObjects);
   INPUTGEN_DEBUG(fprintf(stderr, "Num Obj %u\n", NumObjects));
 
-  IRVector<IRObjectTy::AlignedMemoryChunk> MemoryChunks;
+  IRVector<AlignedMemoryChunk> MemoryChunks;
   uintptr_t I = 0;
   for (auto &Obj : Objects) {
     auto MemoryChunk = Obj->getAlignedInputMemory();
@@ -103,10 +100,11 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
 
   I = 0;
   for (auto &Obj : Objects) {
+    auto Ptrs = Obj->getPtrs();
     writeV<intptr_t>(File, I);
-    writeV<uintptr_t>(File, Obj->Ptrs.size());
-    INPUTGEN_DEBUG(fprintf(stderr, "O #%p NP %ld\n", &Obj, Obj->Ptrs.size()));
-    for (auto Ptr : Obj->Ptrs) {
+    writeV<uintptr_t>(File, Ptrs.size());
+    INPUTGEN_DEBUG(fprintf(stderr, "O #%p NP %ld\n", &Obj, Ptrs.size()));
+    for (auto Ptr : Ptrs) {
       writeV<intptr_t>(File, Ptr);
       INPUTGEN_DEBUG(fprintf(
           stderr, "P at %ld : %p\n", Ptr,
@@ -114,9 +112,10 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
                                      MemoryChunks[I].InputOffset + Ptr)));
     }
 
-    writeV<uintptr_t>(File, Obj->FPtrs.size());
-    INPUTGEN_DEBUG(fprintf(stderr, "O #%p NFP %ld\n", &Obj, Obj->FPtrs.size()));
-    for (auto Ptr : Obj->FPtrs) {
+    auto FPtrs = Obj->getFPtrs();
+    writeV<uintptr_t>(File, FPtrs.size());
+    INPUTGEN_DEBUG(fprintf(stderr, "O #%p NFP %ld\n", &Obj, FPtrs.size()));
+    for (auto Ptr : FPtrs) {
       writeV<intptr_t>(File, Ptr.first);
       writeV<uint32_t>(File, Ptr.second);
       INPUTGEN_DEBUG(
@@ -156,5 +155,3 @@ static void dumpInput(std::ofstream &File, RTTy &RT) {
   }
 #endif
 }
-
-#endif

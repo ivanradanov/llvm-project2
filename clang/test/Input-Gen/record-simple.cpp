@@ -10,6 +10,8 @@
 
 #define N 10
 
+// FIXME we should make sure the function is noinline without requiring the
+// programmer to do this
 extern "C" int foo(int *a, int *b, int *c, int n) {
   int sum = 0;
   for (int i = 0; i < n; i++) {

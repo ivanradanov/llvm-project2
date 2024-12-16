@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-struct  BranchHint {};
+struct BranchHint {};
 
 namespace {
 int VERBOSE = 0;
@@ -208,6 +208,16 @@ static VoidPtrTy advance(VoidPtrTy Ptr, uint64_t Bytes) {
   return reinterpret_cast<uint8_t *>(Ptr) + Bytes;
 }
 
+struct AlignedMemoryChunk {
+  VoidPtrTy Ptr;
+  intptr_t InputSize;
+  intptr_t InputOffset;
+  intptr_t OutputSize;
+  intptr_t OutputOffset;
+  intptr_t CmpSize;
+  intptr_t CmpOffset;
+};
+
 // TODO There should also be a template argument to the class which says whether
 // the Input and Used should expand dynamically
 template <bool StaticSize = false> struct ObjectTy {
@@ -240,16 +250,6 @@ template <bool StaticSize = false> struct ObjectTy {
 
   void report() { std::cerr << OutputLimits.getSize() << std::endl; }
 
-  struct AlignedMemoryChunk {
-    VoidPtrTy Ptr;
-    intptr_t InputSize;
-    intptr_t InputOffset;
-    intptr_t OutputSize;
-    intptr_t OutputOffset;
-    intptr_t CmpSize;
-    intptr_t CmpOffset;
-  };
-
   bool KnownSizeObjBundle;
   OffsetTy CurrentStaticObjEnd;
 
@@ -263,7 +263,7 @@ template <bool StaticSize = false> struct ObjectTy {
 
   bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
     VoidPtrTy BasePtr = getBasePtr();
-    return BasePtr <= GlobalPtr && BasePtr + Output.AllocationSize > GlobalPtr;
+    return BasePtr <= GlobalPtr && BasePtr > GlobalPtr;
   }
 
   OffsetTy getOffsetFromObjMemory(OffsetTy Ptr) {
@@ -602,6 +602,7 @@ struct InputRecordPageObjectAddressing {
     void addInput(VoidPtrTy Output, size_t Size) {
       Inputs.emplace_back(InputTy{});
       auto &Input = Inputs.back();
+      Input.Size = Size;
       Input.Output = Output;
       Input.Memory = toPtr(malloc(Size));
       memcpy(Input.Memory, Output, Size);
@@ -609,6 +610,37 @@ struct InputRecordPageObjectAddressing {
     ObjectAddressingInfoTy(AllocatorTy &Allocator) : Allocator(Allocator) {}
 
   } ObjectAddressingInfo;
+
+  struct DumpObjectTy {
+    ObjectAddressingInfoTy::InputTy &Input;
+
+    DumpObjectTy(ObjectAddressingInfoTy::InputTy &I) : Input(I) {}
+
+    std::vector<intptr_t> Ptrs;
+    std::unordered_map<intptr_t, uint32_t> FPtrs;
+    auto &getPtrs() { return Ptrs; }
+    auto &getFPtrs() { return FPtrs; }
+
+    bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
+      // FIXME  terrible performance
+      VoidPtrTy BasePtr = getBasePtr();
+      return BasePtr <= GlobalPtr && BasePtr + Input.Size > GlobalPtr;
+    }
+    VoidPtrTy getBasePtr() { return Input.Output; }
+    OffsetTy getLocalPtr(VoidPtrTy GlobalPtr) {
+      return GlobalPtr - getBasePtr();
+    }
+    VoidPtrTy getGlobalPtr(OffsetTy LocalPtr) {
+      return getBasePtr() + LocalPtr;
+    }
+
+    VoidPtrTy getOutputMemoryPtr() { return Input.Output; }
+    size_t getOutputMemorySize() { return Input.Size; }
+    AlignedMemoryChunk getAlignedInputMemory() {
+      return {
+          Input.Memory, (intptr_t)Input.Size, 0, (intptr_t)Input.Size, 0, 0, 0};
+    }
+  };
 
   template <size_t TopBit>
   struct __attribute__((packed)) StaticSizeObjectTy final {
@@ -675,7 +707,6 @@ struct InputRecordPageObjectAddressing {
       OffsetTy AllocationOffset;
     };
     MemoryTy getOutputMemory() { return MemoryTy{Output, OutputSize, 0}; }
-    // getAlignedInputMemory();
   };
 
   static std::string o(unsigned N) { return std::string(N, ' '); }
@@ -751,10 +782,6 @@ struct InputRecordPageObjectAddressing {
                       IRVector<uint8_t> &NodeStorage) {
       Object.access(Ptr, Info);
     }
-    void getObjects(VoidPtrTy BasePtr, IRVector<LocalObjectTy *> &Objects,
-                    IRVector<uint8_t> &NodeStorage) {
-      abort();
-    }
     void report(IRVector<uint8_t> &NodeStorage) {
       std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Leaf Node\n";
       std::cerr << o(sizeof(uintptr_t) * 8 - TopBit);
@@ -796,14 +823,6 @@ struct InputRecordPageObjectAddressing {
       INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
                                << " Masked " << toBits(Masked) << "\n");
       Children[Masked].accessObject(Info, Ptr, NodeStorage);
-    }
-    void getObjects(VoidPtrTy BasePtr, IRVector<LocalObjectTy *> &Objects,
-                    IRVector<uint8_t> &NodeStorage) {
-      unsigned I = 0;
-      for (auto &Child : Children) {
-        Child.getObjects(toPtr(toUint(BasePtr) | I << Node::NextBit), Objects, NodeStorage);
-        I++;
-      }
     }
     void report(IRVector<uint8_t> &NodeStorage) {
       std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Array Node" << "\n";
@@ -929,16 +948,6 @@ struct InputRecordPageObjectAddressing {
       addChild(Info, NodeStorage, LastIdx, LLNode, Ptr)
           ->accessObject(Info, Ptr, NodeStorage);
     }
-    void getObjects(VoidPtrTy BasePtr, IRVector<LocalObjectTy *> &Objects,
-                    IRVector<uint8_t> &NodeStorage) {
-      LLIdxType Idx = getIdx(NodeStorage, &Head);
-      do {
-        LLNodeTy *LLNode = getAt(NodeStorage, Idx);
-        for (unsigned I = 0; I < LLNode->NumChildren; I++)
-          LLNode->getChild(I)->getObjects(toPtr(toUint(BasePtr) | (LLNode->PtrMatch[I] << Node::NextBit)), Objects, NodeStorage);
-        Idx = LLNode->NextIdx;
-      } while (Idx != InvalidChildIdx);
-    }
     void report(IRVector<uint8_t> &NodeStorage) {
       std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Linked List" << "\n";
       LLIdxType Idx = getIdx(NodeStorage, &Head);
@@ -984,9 +993,6 @@ struct InputRecordPageObjectAddressing {
   std::vector<std::pair<bool, VoidPtrTy>> Ptrs;
   IRVector<uint8_t> NodeStorage;
 
-  static std::unique_ptr<LocalObjectTy> makeUniqueObject(VoidPtrTy BasePtr,
-                                                         size_t Size);
-
   TreeType *getTree() {
     return reinterpret_cast<TreeType *>(NodeStorage.data());
   }
@@ -1022,8 +1028,15 @@ struct InputRecordPageObjectAddressing {
       Ptrs.push_back({false, Ptr});
   }
 
-  void getObjects(IRVector<LocalObjectTy *> &Objects) {
-    getTree()->getObjects(nullptr, Objects, NodeStorage);
+  IRVector<std::unique_ptr<DumpObjectTy>> DumpObjects;
+
+  void getObjects(IRVector<DumpObjectTy *> &Objects) {
+    for (auto &Input : ObjectAddressingInfo.Inputs) {
+      // FIXME need to fill in the pointers
+      // FIXME use appropriate make_unique
+      DumpObjects.push_back(std::make_unique<DumpObjectTy>(Input));
+      Objects.push_back(DumpObjects.back().get());
+    }
   }
 
   void report() {
@@ -1043,7 +1056,7 @@ struct InputRecordPageObjectAddressing {
       : ObjectAddressingInfo(Allocator), NodeStorage(NodeStorage) {}
 };
 
-using IRObjectTy = typename InputRecordPageObjectAddressing::LocalObjectTy;
+using IRObjectTy = typename InputRecordPageObjectAddressing::DumpObjectTy;
 
 struct InputGenObjectAddressing : public ObjectAddressing {
   ~InputGenObjectAddressing(){};

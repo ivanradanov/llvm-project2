@@ -96,12 +96,6 @@ struct InputRecordConfTy {
   }
 };
 
-std::unique_ptr<IRObjectTy>
-InputRecordPageObjectAddressing::makeUniqueObject(VoidPtrTy BasePtr,
-                                                  size_t Size) {
-  return IRMakeUnique<IRObjectTy>(BasePtr);
-}
-
 struct InputRecordRTTy {
   INPUTGEN_TIMER_DEFINE(InputRecordRecord);
   INPUTGEN_TIMER_DEFINE(InputRecordDump);
