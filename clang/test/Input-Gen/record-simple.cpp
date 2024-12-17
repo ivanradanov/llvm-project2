@@ -15,7 +15,7 @@
 // FIXME we should make sure the function is noinline without requiring the
 // programmer to do this
 __attribute__((inputgen_entry))
-extern "C" int foo(int *a, int *b, int *c, int n) {
+int foo(int *a, int *b, int *c, int n) {
   int sum = 0;
   for (int i = 0; i < n; i++) {
     c[i] = a[i] + b[i] * n;

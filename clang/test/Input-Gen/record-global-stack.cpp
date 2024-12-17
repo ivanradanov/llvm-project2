@@ -3,9 +3,14 @@
 // RUN: %clangxx -g -O2 %s -mllvm --input-gen-mode=replay -rdynamic -o %t/replay.a.out -linputgen.replay
 // RUN: INPUT_RECORD_FILENAME=%t/input.bin %t/record.a.out | FileCheck %s
 // RUN: %t/replay.a.out %t/input.bin | FileCheck %s
-// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --input-file %t/input.bin --func-name foo --output-file %t/minimized.cpp
+// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --embed-input-file %t/input.bin --output-file %t/minimized.cpp
 // RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 // RUN: %t/minimized.a.out | FileCheck %s
+// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --output-file %t/minimized.cpp
+// RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
+//
+// FIXME: undefined reference to `__inputrun_function_pointers'
+// COM: %t/minimized.a.out %t/input.bin | FileCheck %s
 
 // CHECK: Sum: 495
 
@@ -18,7 +23,7 @@
 // FIXME we should make sure the function is noinline without requiring the
 // programmer to do this
 __attribute__((inputgen_entry))
-extern "C" int foo(int *a, int *b, int *c, int n) {
+int foo(int *a, int *b, int *c, int n) {
   int sum = 0;
   for (int i = 0; i < n; i++) {
     c[i] = a[i] + b[i] * n;

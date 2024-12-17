@@ -40,62 +40,7 @@ using namespace clang::driver;
 using namespace clang::tooling;
 using namespace llvm;
 
-static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-static cl::extrahelp MoreHelp(
-    "\tFor example, to run clang-check on all files in a subtree of the\n"
-    "\tsource tree, use:\n"
-    "\n"
-    "\t  find path/in/subtree -name '*.cpp'|xargs clang-check\n"
-    "\n"
-    "\tor using a specific build path:\n"
-    "\n"
-    "\t  find path/in/subtree -name '*.cpp'|xargs clang-check -p build/path\n"
-    "\n"
-    "\tNote, that path/in/subtree and current directory should follow the\n"
-    "\trules described above.\n"
-    "\n");
-
-static cl::OptionCategory ClangCheckCategory("clang-check options");
-static const opt::OptTable &Options = getDriverOptTable();
-static cl::opt<bool>
-    ASTDump("ast-dump",
-            cl::desc(Options.getOptionHelpText(options::OPT_ast_dump)),
-            cl::cat(ClangCheckCategory));
-static cl::opt<bool>
-    ASTList("ast-list",
-            cl::desc(Options.getOptionHelpText(options::OPT_ast_list)),
-            cl::cat(ClangCheckCategory));
-static cl::opt<bool>
-    ASTPrint("ast-print",
-             cl::desc(Options.getOptionHelpText(options::OPT_ast_print)),
-             cl::cat(ClangCheckCategory));
-static cl::opt<std::string> ASTDumpFilter(
-    "ast-dump-filter",
-    cl::desc(Options.getOptionHelpText(options::OPT_ast_dump_filter)),
-    cl::cat(ClangCheckCategory));
-static cl::opt<bool>
-    Analyze("analyze",
-            cl::desc(Options.getOptionHelpText(options::OPT_analyze)),
-            cl::cat(ClangCheckCategory));
-static cl::opt<std::string>
-    AnalyzerOutput("analyzer-output-path",
-                   cl::desc(Options.getOptionHelpText(options::OPT_o)),
-                   cl::cat(ClangCheckCategory));
-
-static cl::opt<bool>
-    Fixit("fixit", cl::desc(Options.getOptionHelpText(options::OPT_fixit)),
-          cl::cat(ClangCheckCategory));
-static cl::opt<bool> FixWhatYouCan(
-    "fix-what-you-can",
-    cl::desc(Options.getOptionHelpText(options::OPT_fix_what_you_can)),
-    cl::cat(ClangCheckCategory));
-
-static cl::opt<bool> SyntaxTreeDump("syntax-tree-dump",
-                                    cl::desc("dump the syntax tree"),
-                                    cl::cat(ClangCheckCategory));
-static cl::opt<bool> TokensDump("tokens-dump",
-                                cl::desc("dump the preprocessed tokens"),
-                                cl::cat(ClangCheckCategory));
+static cl::OptionCategory InputGenMinimizeCat("inputgen-minimize options");
 
 namespace {
 using namespace clang;
@@ -104,24 +49,21 @@ class ASTMinimizer : public ASTConsumer,
                      public RecursiveASTVisitor<ASTMinimizer> {
   typedef RecursiveASTVisitor<ASTMinimizer> base;
 
+  bool Done = false;
+
 public:
-  ASTMinimizer(std::unique_ptr<raw_ostream> Out, StringRef FilterString,
-               bool DumpDeclTypes = false)
-      : Out(Out ? *Out : llvm::outs()), OwnedOut(std::move(Out)),
-        FilterString(FilterString), DumpDeclTypes(DumpDeclTypes) {}
+  ASTMinimizer(std::unique_ptr<raw_ostream> Out)
+      : Out(Out ? *Out : llvm::outs()), OwnedOut(std::move(Out)) {}
 
   void HandleTranslationUnit(ASTContext &Context) override {
     TranslationUnitDecl *D = Context.getTranslationUnitDecl();
-
-    if (FilterString.empty())
-      return print(D);
-
     TraverseDecl(D);
   }
 
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
   bool generateEntryPoint(FunctionDecl *FD) {
+    PrintingPolicy Policy(FD->getASTContext().getLangOpts());
     std::string Indent = "  ";
 
     Out << "void __inputrun_entry(char *Args) {\n";
@@ -131,7 +73,7 @@ public:
       ParmVarDecl *Param = FD->getParamDecl(I);
 
       QualType T = Param->getType();
-      std::string TypeStr = T.getAsString();
+      std::string TypeStr = T.getAsString(Policy);
       Out << Indent << TypeStr << " Arg" << I << " = *(" << TypeStr
           << " *) CurArg;\n";
       Out << Indent << "CurArg += 16;\n";
@@ -150,8 +92,13 @@ public:
   }
 
   bool TraverseDecl(Decl *D) {
-    if (D && filterMatches(D)) {
-      if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+    if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+      if (FD->hasAttr<InputGenEntryAttr>()) {
+        if (Done) {
+          llvm::errs() << "Multiple inputgen entry points found, ignoring "
+                       << FD->getName() << "\n";
+          return true;
+        }
         Out << "\n";
         Out << "// =========== RECORDED FUNCTION BEGIN ===========\n";
         print(D);
@@ -160,6 +107,7 @@ public:
         Out << "// =========== GENERATED ENTRY POINT BEGIN ===========\n";
         generateEntryPoint(FD);
         Out << "// =========== GENERATED ENTRY POINT END ===========\n";
+        Done = true;
         // Don't traverse child nodes to avoid output duplication.
         return true;
       }
@@ -173,46 +121,25 @@ private:
       return cast<NamedDecl>(D)->getQualifiedNameAsString();
     return "";
   }
-  bool filterMatches(Decl *D) {
-    return getName(D).find(FilterString) != std::string::npos;
-  }
   void print(Decl *D) {
+    // TODO if possible try to omit the inputgen attr
     PrintingPolicy Policy(D->getASTContext().getLangOpts());
     D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
-
-    if (DumpDeclTypes) {
-      Decl *InnerD = D;
-      if (auto *TD = dyn_cast<TemplateDecl>(D))
-        if (Decl *TempD = TD->getTemplatedDecl())
-          InnerD = TempD;
-
-      // FIXME: Support combining -ast-dump-decl-types with -ast-dump-lookups.
-      if (auto *VD = dyn_cast<ValueDecl>(InnerD))
-        VD->getType().dump(Out, VD->getASTContext());
-      if (auto *TD = dyn_cast<TypeDecl>(InnerD))
-        TD->getTypeForDecl()->dump(Out, TD->getASTContext());
-    }
   }
 
   raw_ostream &Out;
   std::unique_ptr<raw_ostream> OwnedOut;
-
-  /// Which declarations or DeclContexts to display.
-  std::string FilterString;
-
-  /// Whether to dump the type for each declaration dumped.
-  bool DumpDeclTypes;
 };
 
 std::unique_ptr<ASTConsumer>
-CreateASTMinimizer(std::unique_ptr<raw_ostream> Out, StringRef FilterString) {
-  return std::make_unique<ASTMinimizer>(std::move(Out), FilterString);
+CreateASTMinimizer(std::unique_ptr<raw_ostream> Out) {
+  return std::make_unique<ASTMinimizer>(std::move(Out));
 }
 
 class MimimizeFactory {
 public:
   std::unique_ptr<clang::ASTConsumer> newASTConsumer() {
-    return CreateASTMinimizer(nullptr, ASTDumpFilter);
+    return CreateASTMinimizer(nullptr);
   }
 };
 
@@ -228,7 +155,7 @@ int main(int argc, const char **argv) {
   llvm::InitializeAllAsmParsers();
 
   auto ExpectedParser =
-      CommonOptionsParser::create(argc, argv, ClangCheckCategory);
+      CommonOptionsParser::create(argc, argv, InputGenMinimizeCat);
   if (!ExpectedParser) {
     llvm::errs() << ExpectedParser.takeError();
     return 1;
@@ -236,38 +163,6 @@ int main(int argc, const char **argv) {
   CommonOptionsParser &OptionsParser = ExpectedParser.get();
   ClangTool Tool(OptionsParser.getCompilations(),
                  OptionsParser.getSourcePathList());
-
-  if (Analyze) {
-    // Set output path if is provided by user.
-    //
-    // As the original -o options have been removed by default via the
-    // strip-output adjuster, we only need to add the analyzer -o options here
-    // when it is provided by users.
-    if (!AnalyzerOutput.empty())
-      Tool.appendArgumentsAdjuster(
-          getInsertArgumentAdjuster(CommandLineArguments{"-o", AnalyzerOutput},
-                                    ArgumentInsertPosition::END));
-
-    // Running the analyzer requires --analyze. Other modes can work with the
-    // -fsyntax-only option.
-    //
-    // The syntax-only adjuster is installed by default.
-    // Good: It also strips options that trigger extra output, like -save-temps.
-    // Bad:  We don't want the -fsyntax-only when executing the static analyzer.
-    //
-    // To enable the static analyzer, we first strip all -fsyntax-only options
-    // and then add an --analyze option to the front.
-    Tool.appendArgumentsAdjuster(
-        [&](const CommandLineArguments &Args, StringRef /*unused*/) {
-          CommandLineArguments AdjustedArgs;
-          for (const std::string &Arg : Args)
-            if (Arg != "-fsyntax-only")
-              AdjustedArgs.emplace_back(Arg);
-          return AdjustedArgs;
-        });
-    Tool.appendArgumentsAdjuster(
-        getInsertArgumentAdjuster("--analyze", ArgumentInsertPosition::BEGIN));
-  }
 
   MimimizeFactory CheckFactory;
   std::unique_ptr<FrontendActionFactory> FrontendFactory;
