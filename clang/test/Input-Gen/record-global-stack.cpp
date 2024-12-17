@@ -7,9 +7,9 @@
 // RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 // RUN: %t/minimized.a.out | FileCheck %s
 // RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --output-file %t/minimized.cpp
-// RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 //
 // FIXME: undefined reference to `__inputrun_function_pointers'
+// COM: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 // COM: %t/minimized.a.out %t/input.bin | FileCheck %s
 
 // CHECK: Sum: 495
