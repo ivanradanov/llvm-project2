@@ -1763,6 +1763,7 @@ LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
         deviceFunc->setAttr("nvvm.kernel", builder.getUnitAttr());
         auto shMemSize = builder.create<LLVM::TruncOp>(
             loc, builder.getI32Type(), callOp.getArgOperands()[7]);
+        auto stream = callOp.getArgOperands()[8];
         // TODO stream is arg 8
         llvm::SmallVector<mlir::Value> args;
         for (unsigned i = 9; i < callOp.getArgOperands().size(); i++)
@@ -1783,9 +1784,7 @@ LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
                                               callOp.getArgOperands()[5]),
                  builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
                                               callOp.getArgOperands()[6])}),
-            shMemSize,
-            // TODO need stream
-            ValueRange(args));
+            shMemSize, ValueRange(args), stream);
         callOp->erase();
       }
     }
