@@ -1,6 +1,5 @@
 # Enable errors for any global constructors.
-# FIXME we need some global variables in ExecutorEngine dont know how to get rid of this flag only there
-# add_flag_if_supported("-Werror=global-constructors" WERROR_GLOBAL_CONSTRUCTOR)
+add_flag_if_supported("-Werror=global-constructors" WERROR_GLOBAL_CONSTRUCTOR)
 
 add_subdirectory(Analysis)
 add_subdirectory(AsmParser)

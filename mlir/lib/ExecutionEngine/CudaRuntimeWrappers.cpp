@@ -34,8 +34,6 @@
 #define MLIR_CUDA_WRAPPERS_EXPORT __attribute__((visibility("default")))
 #endif // _WIN32
 
-#include <map>
-
 #define CUDA_REPORT_IF_ERROR(expr)                                             \
   [](CUresult result) {                                                        \
     if (!result)                                                               \
@@ -122,17 +120,11 @@ static bool cusparseLt_initiated = false;
 #endif // MLIR_ENABLE_CUDA_CUSPARSELT
 #endif // MLIR_ENABLE_CUDA_CUSPARSE
 
-static std::map<const void *, CUmodule> loadedModules;
-
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT CUmodule
 mgpuModuleLoad(void *data, size_t /*gpuBlobSize*/) {
-  auto found = loadedModules.find(data);
-  if (found != loadedModules.end())
-    return found->second;
   ScopedContext scopedContext;
   CUmodule module = nullptr;
   CUDA_REPORT_IF_ERROR(cuModuleLoadData(&module, data));
-  loadedModules.insert({data, module});
   return module;
 }
 
@@ -158,22 +150,13 @@ extern "C" MLIR_CUDA_WRAPPERS_EXPORT CUmodule mgpuModuleLoadJIT(void *data,
 }
 
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT void mgpuModuleUnload(CUmodule module) {
-  // FIXME
-  return;
   CUDA_REPORT_IF_ERROR(cuModuleUnload(module));
 }
 
-static std::map<std::pair<CUmodule, const char*>, CUfunction> loadedFunctions;
-
 extern "C" MLIR_CUDA_WRAPPERS_EXPORT CUfunction
 mgpuModuleGetFunction(CUmodule module, const char *name) {
-  auto key = std::make_pair(module, name);
-  auto found = loadedFunctions.find(key);
-  if (found != loadedFunctions.end())
-    return found->second;
   CUfunction function = nullptr;
   CUDA_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, name));
-  loadedFunctions.insert({key, function});
   return function;
 }
 
