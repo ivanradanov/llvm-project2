@@ -650,9 +650,14 @@ def GPU_CallOp :GPU_Op<"call", [
       return getKernelOperandsMutable();
     }
 
-    operand_iterator arg_operand_begin() { return operand_begin();   }
-    operand_iterator arg_operand_end() { return operand_begin() + getNumKernelOperands(); }
-
+    operand_iterator arg_operand_begin() {
+      if (getAsyncObject())
+        return operand_begin() + 1;
+      return operand_begin();
+    }
+    operand_iterator arg_operand_end() {
+      return arg_operand_begin() + getNumKernelOperands();
+    }
 
     /// Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() {
