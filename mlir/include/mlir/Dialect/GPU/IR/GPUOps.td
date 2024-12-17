@@ -643,7 +643,7 @@ def GPU_CallOp :GPU_Op<"call", [
 
     /// Get the argument operands to the called function.
     operand_range getArgOperands() {
-      return {arg_operand_begin(), arg_operand_end()};
+      return getKernelOperands();
     }
 
     MutableOperandRange getArgOperandsMutable() {
@@ -651,12 +651,10 @@ def GPU_CallOp :GPU_Op<"call", [
     }
 
     operand_iterator arg_operand_begin() {
-      if (getAsyncObject())
-        return operand_begin() + 1;
-      return operand_begin();
+      return getKernelOperands().begin();
     }
     operand_iterator arg_operand_end() {
-      return arg_operand_begin() + getNumKernelOperands();
+      return getKernelOperands().end();
     }
 
     /// Return the callee of this operation.

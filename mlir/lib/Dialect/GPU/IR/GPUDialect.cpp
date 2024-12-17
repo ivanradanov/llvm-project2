@@ -1327,10 +1327,9 @@ void CallOp::build(OpBuilder &builder, OperationState &result,
   result.addOperands(asyncDependencies);
   if (asyncTokenType)
     result.types.push_back(builder.getType<AsyncTokenType>());
+  result.addOperands(kernelOperands);
   if (asyncObject)
     result.addOperands({asyncObject});
-
-  result.addOperands(kernelOperands);
 
   Properties &prop = result.getOrAddProperties<Properties>();
   prop.kernel = kernelSymbol;
