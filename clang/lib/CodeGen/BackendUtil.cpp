@@ -336,7 +336,9 @@ public:
         TargetOpts(TOpts), LangOpts(LOpts), TheModule(M), VFS(std::move(VFS)),
         CodeGenerationTime("codegen", "Code Generation Time"),
         TargetTriple(TheModule->getTargetTriple()) {
-    shouldEmitMLIR = EmitMLIR || transformerIsTargetOffloadingModule(TheModule);
+    shouldEmitMLIR =
+        ClTransformerEnable &&
+        (EmitMLIR || transformerIsTargetOffloadingModule(TheModule));
   }
 
   ~EmitAssemblyHelper() {
@@ -1205,11 +1207,11 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
 
     if (TransformerEnabled && TransformerPreprocessing) {
       if (CodeGenOpts.FatLTO) {
-        llvm_unreachable("TODO");
+        llvm_unreachable("TODOA");
       } else if (PrepareForThinLTO) {
-        llvm_unreachable("TODO");
+        llvm_unreachable("TODOB");
       } else if (PrepareForLTO) {
-        llvm_unreachable("TODO");
+        llvm_unreachable("TODOC");
       } else {
         MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
       }
