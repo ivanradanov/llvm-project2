@@ -568,7 +568,10 @@ IslScop::addAccessRelation(ScopStmt &stmt, MemoryAccess::AccessType type,
 
   isl::id stmtId = stmt.getDomain().get_tuple_id();
   assert(stmtId.get() == stmt.id.get());
-  static const std::string TypeStrings[] = {"", "_Read", "_Write", "_MayWrite"};
+  static constexpr unsigned ArrayLen = 5;
+  static const std::array<std::string, ArrayLen> TypeStrings = {
+      "", "_Read", "_Write", "_MayWrite", "_Kill"};
+  static_assert(ArrayLen == MemoryAccess::AccessType_LAST + 1);
   std::string Access = TypeStrings[type] + llvm::utostr(stmt.size());
   Access = stmt.getName() + Access;
   makeIslCompatible(Access);

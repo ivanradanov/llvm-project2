@@ -93,6 +93,7 @@ public:
     MUST_WRITE = 0x2,
     MAY_WRITE = 0x3,
     KILL = 0x4,
+    AccessType_LAST = KILL,
   };
 
   MemoryAccess(isl::id Id, isl::map AccessRelation, MemoryKind Kind,
