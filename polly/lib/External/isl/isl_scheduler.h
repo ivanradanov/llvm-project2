@@ -167,7 +167,7 @@ int isl_sched_edge_is_conditional_validity(struct isl_sched_edge *edge);
 int isl_sched_edge_scc_exactly(struct isl_sched_edge *edge, int scc);
 int isl_sched_edge_is_proximity(struct isl_sched_edge *edge);
 
-static const int original_magic_const_vars = 5;
+#define original_magic_const_vars 5
 
 /* Internal information about the dependence graph used during
  * the construction of the schedule.
