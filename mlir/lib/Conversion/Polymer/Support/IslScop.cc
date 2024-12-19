@@ -1150,6 +1150,7 @@ public:
     const char *CalleeName = isl_id_get_name(Id);
 
     SmallVector<Value> ivs;
+    SmallVector<Value> arrayArgs;
     IRMapping arrayMapping;
     bool arraysStarted = false;
     for (int i = 0; i < isl_ast_expr_get_op_n_arg(Expr) - 1; ++i) {
@@ -1160,6 +1161,7 @@ public:
       if (arraysStarted) {
         IndexedArray ia = createIndexedArray(SubExpr);
         arrayMapping.map(ia.base, ia.indexed);
+        arrayArgs.push_back(ia.indexed);
       } else {
         Value V = create(SubExpr);
         ivs.push_back(V);
@@ -1210,7 +1212,7 @@ public:
           if (arg.getType() != origArg.getType()) {
             // This can only happen to index types as we may have replaced them
             // with the target system width
-            assert(origArg.getType().isa<IndexType>());
+            assert(isa<IndexType>(origArg.getType()));
             arg = b.create<arith::IndexCastOp>(loc, origArg.getType(), arg);
           }
           stmtMapping.map(origArg, arg);
@@ -1228,12 +1230,18 @@ public:
         }
       }
     }
+    if (getenv("ISL_SCOP_GENERATE_TEST_STMT_CALLS")) {
+      SmallVector<Value> args = ivs;
+      args.insert(args.end(), arrayArgs.begin(), arrayArgs.end());
+      b.create<func::CallOp>(origCaller->getLoc(), CalleeName, TypeRange{},
+                             args);
+    } else {
+      Operation *newStmt = b.clone(*origCaller, stmtMapping);
 
-    Operation *newStmt = b.clone(*origCaller, stmtMapping);
-
-    funcMapping.map(origCaller, newStmt);
-    for (unsigned i = 0, e = origCaller->getNumResults(); i != e; ++i)
-      funcMapping.map(origCaller->getResult(i), newStmt->getResult(i));
+      funcMapping.map(origCaller, newStmt);
+      for (unsigned i = 0, e = origCaller->getNumResults(); i != e; ++i)
+        funcMapping.map(origCaller->getResult(i), newStmt->getResult(i));
+    }
 
     isl_ast_expr_free(Expr);
     isl_ast_node_free(User);
