@@ -363,6 +363,7 @@ def GPUAffineOptPass : Pass<"gpu-affine-opt"> {
   let summary = "";
   let dependentDialects = [
     "scf::SCFDialect",
+    "func::FuncDialect",
     "arith::ArithDialect",
     "affine::AffineDialect",
     "nvgpu::NVGPUDialect",
