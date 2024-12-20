@@ -861,18 +861,8 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_dump(newSchedule.get());
   });
 
-  isl_ast_build *build = isl_ast_build_alloc(scop->getIslCtx());
-  build = isl_ast_build_set_live_range_span(
-      build, isl_schedule_constraints_get_live_range_span(sc));
-  isl_ast_node *node =
-      isl_ast_build_node_from_schedule(build, newSchedule.copy());
-  LLVM_DEBUG({
-    llvm::dbgs() << "New AST:\n";
-    isl_ast_node_dump(node);
-  });
+  auto applied = scop->applySchedule(newSchedule.copy(), psi.lrs.copy(), f);
   isl_schedule_constraints_free(sc);
-
-  auto applied = scop->applySchedule(newSchedule.copy(), f);
   auto g = cast<LLVM::LLVMFuncOp>(applied.newFunc);
   LLVM_DEBUG({
     llvm::dbgs() << "New func:\n";
@@ -895,8 +885,6 @@ void transform(LLVM::LLVMFuncOp f) {
                                      g.getRegion().getBlocks());
     g->erase();
   }
-
-  isl_ast_build_free(build);
 }
 
 } // namespace affine_opt

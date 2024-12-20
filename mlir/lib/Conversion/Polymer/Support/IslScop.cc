@@ -345,7 +345,8 @@ void IslScop::dumpAccesses(llvm::raw_ostream &os) {
   domain = isl_union_set_free(domain);
   o(0) << "accesses:\n";
   for (auto &stmt : *this) {
-    o(2) << "- " << stmt.name << ":" << "\n";
+    o(2) << "- " << stmt.name << ":"
+         << "\n";
     for (MemoryAccess *MA : stmt) {
       std::string type;
       if (MA->isRead())
@@ -763,7 +764,6 @@ public:
     // strides.erase(strides.begin(), std::next(strides.begin(), toDrop));
     // sizes.erase(sizes.begin(), std::next(sizes.begin(), toDrop));
 
-    uint64_t curStride = 1;
     // Generate indexing into the expandedDims
     SmallVector<OpFoldResult> offsets;
     SmallVector<OpFoldResult> sizes;
@@ -775,7 +775,6 @@ public:
       offsets.push_back(V);
       auto stride = b.getIndexAttr(1);
       uint64_t curSize = expandedArray.getType().getShape()[i];
-      curStride *= curSize;
       strides.push_back(stride);
       sizes.push_back(one);
     }
@@ -789,7 +788,6 @@ public:
       auto sizeAttr = b.getIndexAttr(curSize);
       sizes.push_back(sizeAttr);
       strides.push_back(b.getIndexAttr(1));
-      curStride *= curSize;
     }
 
     auto inferredType =
@@ -1124,7 +1122,7 @@ public:
     isl_ast_expr_free(Expr);
     return V;
   }
-  Value create(__isl_take isl_ast_expr *Expr) {
+  Value _create(__isl_take isl_ast_expr *Expr) {
     switch (isl_ast_expr_get_type(Expr)) {
     case isl_ast_expr_error:
       llvm_unreachable("Code generation error");
@@ -1136,6 +1134,12 @@ public:
       return createInt(Expr);
     }
     llvm_unreachable("Unexpected enum value");
+  }
+  Value create(__isl_take isl_ast_expr *Expr) {
+    LLVM_DEBUG(dbgs() << "Creating Expr\n"; polly::dumpIslObj(Expr););
+    Value created = _create(Expr);
+    LLVM_DEBUG(dbgs() << "Done\n"; created.dump(););
+    return created;
   }
 
   void createUser(__isl_keep isl_ast_node *User) {
@@ -1629,7 +1633,7 @@ void IslScop::cleanup(Operation *func) {
 
 IslScop::ApplyScheduleRes
 IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
-                       Operation *originalFunc) {
+                       __isl_take isl_union_map *lrs, Operation *originalFunc) {
   IRMapping oldToNewMapping;
   OpBuilder moduleBuilder(originalFunc);
   Operation *f =
@@ -1671,9 +1675,14 @@ IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
   isl_union_set *domain = isl_schedule_get_domain(newSchedule);
   setIslOptions(getIslCtx());
   isl_ast_build *build = isl_ast_build_alloc(getIslCtx());
+  build = isl_ast_build_set_live_range_span(build, lrs);
   IslMLIRBuilder bc = {b, oldToNewMapping, *this};
   isl_ast_node *node =
       isl_ast_build_node_from_schedule(build, isl_schedule_copy(newSchedule));
+  LLVM_DEBUG({
+    llvm::dbgs() << "New AST:\n";
+    isl_ast_node_dump(node);
+  });
 
   bc.mapParams(domain);
   bc.create(node);
@@ -1687,8 +1696,8 @@ IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
 
 // TODO this takes the union of the write effects in the operations we rescope
 // to. instead, what should happen is we should do flow analysis to see what
-// memory effects live-out and live-in, i.e. not care about memory effects that
-// are not observable outside the rescoped op.
+// memory effects live-out and live-in, i.e. not care about memory effects
+// that are not observable outside the rescoped op.
 void IslScop::rescopeStatements(
     std::function<bool(Operation *op)> shouldRescope,
     std::function<bool(Operation *op)> isValidAsyncCopy) {
@@ -1738,8 +1747,8 @@ void IslScop::rescopeStatements(
 
       for (MemoryAccess *ma : stmt) {
         Value memref = ma->getScopArrayInfo()->val;
-        // FIXME this is wrong for iter args of for loops for example but we do
-        // not rescope operations where this would be problematic
+        // FIXME this is wrong for iter args of for loops for example but we
+        // do not rescope operations where this would be problematic
         Operation *scope = memref.getParentBlock()->getParentOp();
         // If the scope of the memref is inside the rescoped op then we do not
         // need to care about accesses to it
@@ -1799,8 +1808,8 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
   // segfault when printing scop. Please don't just return this object.
   auto scop = std::make_unique<IslScop>(f);
 
-  // Find all caller/callee pairs in which the callee has the attribute of name
-  // SCOP_STMT_ATTR_NAME.
+  // Find all caller/callee pairs in which the callee has the attribute of
+  // name SCOP_STMT_ATTR_NAME.
   IRMapping redirectMap;
   gatherStmts(f, redirectMap, *scop);
 
@@ -1833,9 +1842,9 @@ std::unique_ptr<IslScop> IslScopBuilder::build(Operation *f) {
     scop->addDomainRelation(stmt, domain);
 
     {
-      // FIXME remapping of ataddr op to the llvm pointer does not work because
-      // we get the information about the array rank from the memref value type,
-      // temp fix
+      // FIXME remapping of ataddr op to the llvm pointer does not work
+      // because we get the information about the array rank from the memref
+      // value type, temp fix
       if (isa<memref::AtAddrOp>(op))
         continue;
 
@@ -2035,10 +2044,10 @@ void IslScopBuilder::buildScopContext(
                                            /*numSymbols=*/symbols.size());
   ctx.setValues(0, symbols.size(), symbols);
 
-  // Union with the domains of all Scop statements. We first merge and align the
-  // IDs of the context and the domain of the scop statement, and then append
-  // the constraints from the domain to the context. Note that we don't want to
-  // mess up with the original domain at this point. Trivial redundant
+  // Union with the domains of all Scop statements. We first merge and align
+  // the IDs of the context and the domain of the scop statement, and then
+  // append the constraints from the domain to the context. Note that we don't
+  // want to mess up with the original domain at this point. Trivial redundant
   // constraints will be removed.
   for (auto &stmt : scop->stmts) {
     affine::FlatAffineValueConstraints *domain = stmt.getMlirDomain();

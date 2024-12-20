@@ -298,7 +298,8 @@ public:
     mlir::IRMapping oldToNew;
   };
   ApplyScheduleRes applySchedule(__isl_take isl_schedule *newSchedule,
-                                 mlir::Operation *f);
+                                 __isl_take isl_union_map *lrs,
+                                 mlir::Operation *originalFunc);
   void cleanup(mlir::Operation *);
 
   isl_ctx *getIslCtx() const { return IslCtx.get(); }
@@ -310,9 +311,8 @@ public:
   }
 
   void
-  rescopeStatements(
-    std::function<bool(mlir::Operation *op)> shouldRescope,
-    std::function<bool(mlir::Operation *op)> isValidAsyncCopy);
+  rescopeStatements(std::function<bool(mlir::Operation *op)> shouldRescope,
+                    std::function<bool(mlir::Operation *op)> isValidAsyncCopy);
 
   ScopArrayInfo *getArray(mlir::Value memref) {
     auto found =
