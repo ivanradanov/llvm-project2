@@ -316,6 +316,11 @@ static isl::schedule insertGridPar(isl::schedule schedule) {
 
   isl::id gridMark = isl::id::alloc(schedule.ctx(), polymer::gridParallelMark,
                                     (void *)(uintptr_t)(unsigned)nMember);
+
+  // The generated grid parallel loop must be atomic for all members
+  for (unsigned i = 0; i < (unsigned)nMember; i++)
+    band = band.member_set_ast_loop_atomic(i);
+
   isl::schedule_node node = band.insert_mark(gridMark);
   return node.get_schedule();
 }
@@ -474,6 +479,27 @@ static isl::schedule_node insertArrayExpansion(isl::schedule_node node,
   }
 
   if (!toAllocate.is_empty()) {
+
+    if (!toExpand.is_empty()) {
+      assert(node.isa<isl::schedule_node_band>() &&
+             "Expansion in non-band node?");
+      auto band = node.as<isl::schedule_node_band>();
+      unsigned members = unsignedFromIslSize(band.n_member());
+      // FIXME this is a workaround because our algorithm for determining what
+      // specific index of the expansion dim is accessed depends on the band
+      // being generated as a single loop.
+      //
+      // This needs to be fixed.
+      //
+      // Also we don't need all dimensions to be atomic.
+      //
+      // Also this will change when we separate the prologue, epilogue of
+      // expansion bands.
+      for (unsigned i = 0; i < members; i++)
+        band = band.member_set_ast_loop_atomic(i);
+      node = band;
+    }
+
     // TODO add free function
     polymer::AllocateArrayMarkInfo *aam =
         new polymer::AllocateArrayMarkInfo{toAllocate, toExpandMap};
