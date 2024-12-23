@@ -1,3 +1,4 @@
+#include "isl/aff.h"
 #include "isl/ctx.h"
 #include "isl/isl-noexceptions.h"
 #include "isl/map.h"
@@ -124,11 +125,16 @@ isl_union_map *isl_ast_generate_array_expansion_indexing(
 					if (offset_base_stmt.is_null()) {
 						offset_base_stmt = stmt_id;
 					}
+					ISL_DEBUG(std::cerr << "offset_base_stmt: ";
+							  isl_id_dump(offset_base_stmt.get()));
 
 					int invalid_offset = std::numeric_limits<int>::min();
 					int offset = invalid_offset;
 
 					bool lrs_relation_found = false;
+
+					bool is_intra_relation =
+						stmt_id.get() == offset_base_stmt.get();
 
 					lrs.foreach_map([&](isl::map map) {
 						// map is in a space ((S1->A) -> (S2->A))
@@ -144,18 +150,29 @@ isl_union_map *isl_ast_generate_array_expansion_indexing(
 												   .domain()
 												   .unwrap()
 												   .get_range_tuple_id();
+						[[maybe_unused]] isl::id map_range_array_id =
+							map.get_space()
+								.range()
+								.unwrap()
+								.get_range_tuple_id();
+						isl_assert(ctx,
+							map_array_id.get() == map_range_array_id.get(),
+							abort());
 
 						if (array_id.get() != map_array_id.get())
 							return isl::stat::ok();
 
-						if (domain_stmt.get() != stmt_id.get() &&
-							range_stmt.get() != stmt_id.get())
+						bool is_positive_offset;
+						if (domain_stmt.get() == stmt_id.get() &&
+							range_stmt.get() == offset_base_stmt.get())
+							is_positive_offset = true;
+						else if (range_stmt.get() == stmt_id.get() &&
+								 domain_stmt.get() == offset_base_stmt.get())
+							is_positive_offset = false;
+						else
 							return isl::stat::ok();
-						lrs_relation_found = true;
 
-						if (domain_stmt.get() != offset_base_stmt.get() &&
-							range_stmt.get() != offset_base_stmt.get())
-							return isl::stat::ok();
+						lrs_relation_found = true;
 
 						ISL_DEBUG(std::cerr << "map "; isl_map_dump(map.get()));
 
@@ -194,8 +211,18 @@ isl_union_map *isl_ast_generate_array_expansion_indexing(
 
 						offset = cur_offset;
 
+						if (!is_positive_offset)
+							offset = -offset;
+
 						return isl::stat::ok();
 					});
+
+					if (is_intra_relation)
+						isl_assert(ctx,
+							!lrs_relation_found &&
+								"Currently we do not support intra relations "
+								"in array expanded bands",
+							abort());
 
 					if (!lrs_relation_found)
 						offset = 0;
@@ -222,6 +249,7 @@ isl_union_map *isl_ast_generate_array_expansion_indexing(
 					aff = aff.add_constant_si(offset);
 				if (factor != 1)
 					aff = aff.mod(factor);
+				ISL_DEBUG(std::cerr << "aff: "; isl_aff_dump(aff.get()));
 
 				auto as_map = aff.as_map();
 				as_map = as_map.add_dims(
@@ -239,8 +267,9 @@ isl_union_map *isl_ast_generate_array_expansion_indexing(
 				auto tag = isl::multi_aff::domain_map(space);
 				as_map = as_map.preimage_range(tag);
 
-				// auto as_umap = as_map.set_range_tuple(id).to_union_map();
 				auto as_umap = as_map.to_union_map();
+				ISL_DEBUG(std::cerr << "as_umap: ";
+						  isl_union_map_dump(as_umap.get()));
 				if (umap.is_null())
 					umap = as_umap;
 				else
@@ -266,7 +295,13 @@ isl_union_map *isl_ast_generate_array_expansion_indexing(
 			full_array_umap = full_array_umap.intersect(member_array_umap);
 	}
 
+	ISL_DEBUG(std::cerr << "full_array_umap: ";
+			  isl_union_map_dump(full_array_umap.get()));
+
 	extra_umap = extra_umap.unite(full_array_umap);
+
+	ISL_DEBUG(std::cerr << "computed extra_umap: ";
+			  isl_union_map_dump(extra_umap.get()));
 
 	return extra_umap.release();
 }
