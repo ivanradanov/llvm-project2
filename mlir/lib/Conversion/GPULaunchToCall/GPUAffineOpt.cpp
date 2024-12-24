@@ -370,6 +370,33 @@ isl_id_to_id_foreach(isl_id_to_id *id_to_id,
   return isl::manage(isl_id_to_id_foreach(id_to_id, lambda2, &data));
 }
 
+static bool are_coincident(isl::union_map umap, isl::union_map schedule) {
+  isl::union_map applied = umap;
+  applied = applied.apply_domain(schedule);
+  applied = applied.apply_range(schedule);
+
+  LLVM_DEBUG(llvm::dbgs() << "Applied schedule "; dumpIslObj(applied));
+
+  isl::union_set deltas = applied.deltas();
+  LLVM_DEBUG(llvm::dbgs() << "Deltas "; dumpIslObj(deltas));
+  isl::union_map deltas_map =
+      isl::manage(isl_union_map_deltas_map(applied.copy()));
+  LLVM_DEBUG(llvm::dbgs() << "Deltas map "; dumpIslObj(deltas_map));
+
+  bool coincident = true;
+  deltas.foreach_set([&](isl::set set) {
+    unsigned size = unsignedFromIslSize(set.dim(isl::dim::set));
+    bool allZero = true;
+    for (unsigned i = 0; i < size; i++) {
+      isl::val v = set.plain_get_val_if_fixed(isl::dim::set, i);
+      allZero &= v.is_zero();
+    }
+    coincident &= allZero;
+    return isl::stat::ok();
+  });
+  return coincident;
+}
+
 static isl::schedule_node insertArrayExpansion(isl::schedule_node node,
                                                PrepScheduleInfo psi) {
 
@@ -389,29 +416,7 @@ static isl::schedule_node insertArrayExpansion(isl::schedule_node node,
     LLVM_DEBUG(llvm::dbgs() << "Tagged prefix schedule ";
                dumpIslObj(taggedSchedule));
 
-    isl::union_map applied = psi.lrs;
-    applied = applied.apply_domain(taggedSchedule);
-    applied = applied.apply_range(taggedSchedule);
-
-    LLVM_DEBUG(llvm::dbgs() << "Applied schedule "; dumpIslObj(applied));
-
-    isl::union_set deltas = applied.deltas();
-    LLVM_DEBUG(llvm::dbgs() << "Deltas "; dumpIslObj(deltas));
-    isl::union_map deltas_map =
-        isl::manage(isl_union_map_deltas_map(applied.copy()));
-    LLVM_DEBUG(llvm::dbgs() << "Deltas map "; dumpIslObj(deltas_map));
-
-    bool coincident = true;
-    deltas.foreach_set([&](isl::set set) {
-      unsigned size = unsignedFromIslSize(set.dim(isl::dim::set));
-      bool allZero = true;
-      for (unsigned i = 0; i < size; i++) {
-        isl::val v = set.plain_get_val_if_fixed(isl::dim::set, i);
-        allZero &= v.is_zero();
-      }
-      coincident &= allZero;
-      return isl::stat::ok();
-    });
+    bool coincident = are_coincident(psi.lrs, taggedSchedule);
 
     LLVM_DEBUG(llvm::dbgs() << "Array ";
                dumpIslObj(set.get_space().get_tuple_id(isl::dim::set));
@@ -547,17 +552,93 @@ insertAsyncCopySynchronisation(isl::schedule_node node, PrepScheduleInfo &psi) {
   }
   return node;
 }
-isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
-                                             PrepScheduleInfo &psi) {
+static isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
+                                                    PrepScheduleInfo &psi) {
   auto root = schedule.get_root();
   return insertAsyncCopySynchronisation(root, psi).get_schedule();
-  return schedule;
 }
 
-isl::schedule prepareScheduleForGPU(isl::schedule schedule,
-                                    PrepScheduleInfo &psi) {
+static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
+                                             PrepScheduleInfo &psi) {
+  if (!node.isa<isl::schedule_node_band>())
+    return node;
+  auto band = node.as<isl::schedule_node_band>();
+
+  isl::union_map schedule = isl::manage(
+      isl_schedule_node_get_prefix_and_node_schedule_union_map(node.get()));
+
+  LLVM_DEBUG(llvm::dbgs() << "asyncDeps: "; dumpIslObj(psi.asyncDeps));
+  LLVM_DEBUG(llvm::dbgs() << "schedule: "; dumpIslObj(schedule));
+
+  bool coincident = are_coincident(psi.asyncDeps, schedule);
+  LLVM_DEBUG(llvm::dbgs() << "coincident: " << coincident << "\n");
+
+  if (!coincident) {
+    isl::union_map reverseSchedule = schedule.reverse();
+    LLVM_DEBUG(llvm::dbgs() << "reverseSchedule: ";
+               dumpIslObj(reverseSchedule));
+
+    isl::union_set domain = node.get_domain();
+    LLVM_DEBUG(llvm::dbgs() << "domain: "; dumpIslObj(domain));
+
+    isl::set universe = domain.get_space().universe_set();
+
+    isl::set iterationIntersection;
+    isl::set iterationFull;
+    // TODO this is wrong for the iterationIntersection, it must be calculated
+    // for the asyncDeps domain  and not the entire domain
+    domain.foreach_set([&](isl::set set) {
+      LLVM_DEBUG(llvm::dbgs() << "domain set: "; dumpIslObj(set));
+      LLVM_DEBUG(llvm::dbgs() << "domain set . schedule: ";
+                 dumpIslObj(set.apply(schedule).as_set()));
+      isl::set applied = set.apply(schedule).as_set();
+      if (iterationIntersection.is_null()) {
+        iterationIntersection = applied;
+        iterationFull = applied;
+      } else {
+        iterationIntersection = iterationIntersection.intersect(applied);
+        iterationFull = iterationFull.unite(applied);
+      }
+      LLVM_DEBUG(llvm::dbgs() << "iterationIntersection: ";
+                 dumpIslObj(iterationIntersection));
+      LLVM_DEBUG(llvm::dbgs() << "iterationFull: "; dumpIslObj(iterationFull));
+      if (iterationFull.is_null())
+        iterationIntersection = set.apply(schedule).as_set();
+      else
+        iterationIntersection =
+            iterationIntersection.intersect(set.apply(schedule).as_set());
+      return isl::stat::ok();
+    });
+
+    isl::union_set rest = iterationFull.subtract(iterationIntersection);
+    LLVM_DEBUG(llvm::dbgs() << "rest: "; dumpIslObj(rest));
+
+    // FIXME need to check if the async deps are fully carried
+    bool fullyCarried = true;
+    if (fullyCarried)
+      return node;
+  }
+  auto nChildren = unsignedFromIslSize(node.n_children());
+  for (unsigned i = 0; i < (unsigned)nChildren; i++) {
+    auto child = node.child(i);
+    auto newChild = splitPipelineLoops(child, psi);
+    node = newChild.parent();
+  }
+
+  return node;
+}
+static isl::schedule splitPipelineLoops(isl::schedule schedule,
+                                        PrepScheduleInfo &psi) {
+  LLVM_DEBUG(llvm::dbgs() << "Splitting pipeline loops\n");
+  auto root = schedule.get_root();
+  return splitPipelineLoops(root, psi).get_schedule();
+}
+
+static isl::schedule prepareScheduleForGPU(isl::schedule schedule,
+                                           PrepScheduleInfo &psi) {
   schedule = insertGridPar(schedule);
   schedule = insertArrayExpansion(schedule, psi);
+  schedule = splitPipelineLoops(schedule, psi);
   schedule = insertAsyncCopySynchronisation(schedule, psi);
   return schedule;
 }
