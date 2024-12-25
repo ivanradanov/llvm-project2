@@ -44,6 +44,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include "isl/aff.h"
 #include "isl/ast.h"
 #include "isl/ast_build.h"
 #include "isl/constraint.h"
@@ -66,6 +67,8 @@ using namespace mlir;
 
 #define DEBUG_TYPE "gpu-affine-opt"
 #define DBGS (llvm::dbgs() << "gpu-affine-opt: ")
+
+#define ISL_DUMP(X) LLVM_DEBUG(llvm::dbgs() << #X << ": "; dumpIslObj(X));
 
 STATISTIC(numKernels, "number of kernels");
 STATISTIC(newSchedulesComputed, "how many new schedules we computed");
@@ -563,17 +566,21 @@ static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
   if (node.isa<isl::schedule_node_band>()) {
     auto band = node.as<isl::schedule_node_band>();
 
-    isl::union_map schedule = isl::manage(
+    isl::union_map upToSchedule = isl::manage(
         isl_schedule_node_get_prefix_and_node_schedule_union_map(node.get()));
+    isl::union_map partialSchedule =
+        isl::union_map::from(band.get_partial_schedule());
 
     LLVM_DEBUG(llvm::dbgs() << "asyncDeps: "; dumpIslObj(psi.asyncDeps));
-    LLVM_DEBUG(llvm::dbgs() << "schedule: "; dumpIslObj(schedule));
+    LLVM_DEBUG(llvm::dbgs() << "schedule: "; dumpIslObj(upToSchedule));
+    LLVM_DEBUG(llvm::dbgs() << "partialSchedule: ";
+               dumpIslObj(partialSchedule));
 
-    bool coincident = are_coincident(psi.asyncDeps, schedule);
+    bool coincident = are_coincident(psi.asyncDeps, upToSchedule);
     LLVM_DEBUG(llvm::dbgs() << "coincident: " << coincident << "\n");
 
     if (!coincident) {
-      isl::union_map reverseSchedule = schedule.reverse();
+      isl::union_map reverseSchedule = partialSchedule.reverse();
       LLVM_DEBUG(llvm::dbgs() << "reverseSchedule: ";
                  dumpIslObj(reverseSchedule));
 
@@ -586,8 +593,8 @@ static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
       domain.foreach_set([&](isl::set set) {
         LLVM_DEBUG(llvm::dbgs() << "domain set: "; dumpIslObj(set));
         LLVM_DEBUG(llvm::dbgs() << "domain set . schedule: ";
-                   dumpIslObj(set.apply(schedule).as_set()));
-        isl::set applied = set.apply(schedule).as_set();
+                   dumpIslObj(set.apply(partialSchedule).as_set()));
+        isl::set applied = set.apply(partialSchedule).as_set();
         if (iterationFull.is_null()) {
           iterationFull = applied;
         } else {
@@ -602,24 +609,59 @@ static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
           domain.intersect(psi.asyncDeps.domain())
               .unite(domain.intersect(psi.asyncDeps.range()));
       LLVM_DEBUG(llvm::dbgs() << "asyncDomain: "; dumpIslObj(asyncDomain));
-      isl::set iterationIntersection;
+      isl::set main;
       asyncDomain.foreach_set([&](isl::set set) {
         LLVM_DEBUG(llvm::dbgs() << "domain set: "; dumpIslObj(set));
         LLVM_DEBUG(llvm::dbgs() << "domain set . schedule: ";
-                   dumpIslObj(set.apply(schedule).as_set()));
-        isl::set applied = set.apply(schedule).as_set();
-        if (iterationIntersection.is_null()) {
-          iterationIntersection = applied;
+                   dumpIslObj(set.apply(partialSchedule).as_set()));
+        isl::set applied = set.apply(partialSchedule).as_set();
+        if (main.is_null()) {
+          main = applied;
         } else {
-          iterationIntersection = iterationIntersection.intersect(applied);
+          main = main.intersect(applied);
         }
-        LLVM_DEBUG(llvm::dbgs() << "iterationIntersection: ";
-                   dumpIslObj(iterationIntersection));
+        LLVM_DEBUG(llvm::dbgs() << "iterationIntersection: "; dumpIslObj(main));
         return isl::stat::ok();
       });
 
-      isl::union_set rest = iterationFull.subtract(iterationIntersection);
-      LLVM_DEBUG(llvm::dbgs() << "rest: "; dumpIslObj(rest));
+      // FIXME we would want to split the band in 1-member bands as
+      // preprocessing before this transformation
+      assert(unsignedFromIslSize(band.n_member()) == 1);
+
+      isl::union_set rest = iterationFull.subtract(main);
+      ISL_DUMP(rest);
+
+      auto lexmin = main.lexmin_pw_multi_aff();
+      auto lexmax = main.lexmax_pw_multi_aff();
+      ISL_DUMP(lexmin);
+      ISL_DUMP(lexmax);
+
+      isl::aff identity = isl::manage(isl_multi_aff_identity_on_domain_space(
+                                          main.get_space().release()))
+                              .get_at(0);
+
+      isl::set prologue, epilogue;
+      lexmin.foreach_piece([&](isl::set set, isl::multi_aff ma) {
+        assert(unsignedFromIslSize(ma.n_piece()) == 1);
+        isl::aff aff = ma.get_at(0).add_dims(isl::dim::in, 1).as_aff();
+        ISL_DUMP(identity);
+        ISL_DUMP(aff);
+        assert(prologue.is_null());
+        prologue = identity.lt_set(aff);
+        return isl::stat::ok();
+      });
+      lexmax.foreach_piece([&](isl::set set, isl::multi_aff ma) {
+        assert(unsignedFromIslSize(ma.n_piece()) == 1);
+        isl::aff aff = ma.get_at(0).add_dims(isl::dim::in, 1).as_aff();
+        ISL_DUMP(identity);
+        ISL_DUMP(aff);
+        assert(epilogue.is_null());
+        epilogue = identity.gt_set(aff);
+        return isl::stat::ok();
+      });
+      ISL_DUMP(prologue);
+      ISL_DUMP(main);
+      ISL_DUMP(epilogue);
 
       // FIXME need to check if the async deps are fully carried
       bool fullyCarried = true;
