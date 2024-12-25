@@ -173,13 +173,13 @@ static Value computeMap(RewriterBase &rewriter, Location loc, AffineMap map,
 static inline void islAssert(const isl_size &size) {
   assert(size != isl_size_error);
 }
-[[maybe_unused]]
-static inline unsigned unsignedFromIslSize(const isl::size &size) {
+[[maybe_unused]] static inline unsigned
+unsignedFromIslSize(const isl::size &size) {
   assert(!size.is_error());
   return static_cast<unsigned>(size);
 }
-[[maybe_unused]]
-static inline unsigned unsignedFromIslSize(const isl_size &size) {
+[[maybe_unused]] static inline unsigned
+unsignedFromIslSize(const isl_size &size) {
   islAssert(size);
   return static_cast<unsigned>(size);
 }
@@ -560,63 +560,72 @@ static isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
 
 static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
                                              PrepScheduleInfo &psi) {
-  if (!node.isa<isl::schedule_node_band>())
-    return node;
-  auto band = node.as<isl::schedule_node_band>();
+  if (node.isa<isl::schedule_node_band>()) {
+    auto band = node.as<isl::schedule_node_band>();
 
-  isl::union_map schedule = isl::manage(
-      isl_schedule_node_get_prefix_and_node_schedule_union_map(node.get()));
+    isl::union_map schedule = isl::manage(
+        isl_schedule_node_get_prefix_and_node_schedule_union_map(node.get()));
 
-  LLVM_DEBUG(llvm::dbgs() << "asyncDeps: "; dumpIslObj(psi.asyncDeps));
-  LLVM_DEBUG(llvm::dbgs() << "schedule: "; dumpIslObj(schedule));
+    LLVM_DEBUG(llvm::dbgs() << "asyncDeps: "; dumpIslObj(psi.asyncDeps));
+    LLVM_DEBUG(llvm::dbgs() << "schedule: "; dumpIslObj(schedule));
 
-  bool coincident = are_coincident(psi.asyncDeps, schedule);
-  LLVM_DEBUG(llvm::dbgs() << "coincident: " << coincident << "\n");
+    bool coincident = are_coincident(psi.asyncDeps, schedule);
+    LLVM_DEBUG(llvm::dbgs() << "coincident: " << coincident << "\n");
 
-  if (!coincident) {
-    isl::union_map reverseSchedule = schedule.reverse();
-    LLVM_DEBUG(llvm::dbgs() << "reverseSchedule: ";
-               dumpIslObj(reverseSchedule));
+    if (!coincident) {
+      isl::union_map reverseSchedule = schedule.reverse();
+      LLVM_DEBUG(llvm::dbgs() << "reverseSchedule: ";
+                 dumpIslObj(reverseSchedule));
 
-    isl::union_set domain = node.get_domain();
-    LLVM_DEBUG(llvm::dbgs() << "domain: "; dumpIslObj(domain));
+      isl::union_set domain = node.get_domain();
+      LLVM_DEBUG(llvm::dbgs() << "domain: "; dumpIslObj(domain));
 
-    isl::set universe = domain.get_space().universe_set();
+      isl::set universe = domain.get_space().universe_set();
 
-    isl::set iterationIntersection;
-    isl::set iterationFull;
-    // TODO this is wrong for the iterationIntersection, it must be calculated
-    // for the asyncDeps domain  and not the entire domain
-    domain.foreach_set([&](isl::set set) {
-      LLVM_DEBUG(llvm::dbgs() << "domain set: "; dumpIslObj(set));
-      LLVM_DEBUG(llvm::dbgs() << "domain set . schedule: ";
-                 dumpIslObj(set.apply(schedule).as_set()));
-      isl::set applied = set.apply(schedule).as_set();
-      if (iterationIntersection.is_null()) {
-        iterationIntersection = applied;
-        iterationFull = applied;
-      } else {
-        iterationIntersection = iterationIntersection.intersect(applied);
-        iterationFull = iterationFull.unite(applied);
-      }
-      LLVM_DEBUG(llvm::dbgs() << "iterationIntersection: ";
-                 dumpIslObj(iterationIntersection));
-      LLVM_DEBUG(llvm::dbgs() << "iterationFull: "; dumpIslObj(iterationFull));
-      if (iterationFull.is_null())
-        iterationIntersection = set.apply(schedule).as_set();
-      else
-        iterationIntersection =
-            iterationIntersection.intersect(set.apply(schedule).as_set());
-      return isl::stat::ok();
-    });
+      isl::set iterationFull;
+      domain.foreach_set([&](isl::set set) {
+        LLVM_DEBUG(llvm::dbgs() << "domain set: "; dumpIslObj(set));
+        LLVM_DEBUG(llvm::dbgs() << "domain set . schedule: ";
+                   dumpIslObj(set.apply(schedule).as_set()));
+        isl::set applied = set.apply(schedule).as_set();
+        if (iterationFull.is_null()) {
+          iterationFull = applied;
+        } else {
+          iterationFull = iterationFull.unite(applied);
+        }
+        LLVM_DEBUG(llvm::dbgs() << "iterationFull: ";
+                   dumpIslObj(iterationFull));
+        return isl::stat::ok();
+      });
 
-    isl::union_set rest = iterationFull.subtract(iterationIntersection);
-    LLVM_DEBUG(llvm::dbgs() << "rest: "; dumpIslObj(rest));
+      isl::union_set asyncDomain =
+          domain.intersect(psi.asyncDeps.domain())
+              .unite(domain.intersect(psi.asyncDeps.range()));
+      LLVM_DEBUG(llvm::dbgs() << "asyncDomain: "; dumpIslObj(asyncDomain));
+      isl::set iterationIntersection;
+      asyncDomain.foreach_set([&](isl::set set) {
+        LLVM_DEBUG(llvm::dbgs() << "domain set: "; dumpIslObj(set));
+        LLVM_DEBUG(llvm::dbgs() << "domain set . schedule: ";
+                   dumpIslObj(set.apply(schedule).as_set()));
+        isl::set applied = set.apply(schedule).as_set();
+        if (iterationIntersection.is_null()) {
+          iterationIntersection = applied;
+        } else {
+          iterationIntersection = iterationIntersection.intersect(applied);
+        }
+        LLVM_DEBUG(llvm::dbgs() << "iterationIntersection: ";
+                   dumpIslObj(iterationIntersection));
+        return isl::stat::ok();
+      });
 
-    // FIXME need to check if the async deps are fully carried
-    bool fullyCarried = true;
-    if (fullyCarried)
-      return node;
+      isl::union_set rest = iterationFull.subtract(iterationIntersection);
+      LLVM_DEBUG(llvm::dbgs() << "rest: "; dumpIslObj(rest));
+
+      // FIXME need to check if the async deps are fully carried
+      bool fullyCarried = true;
+      if (fullyCarried)
+        return node;
+    }
   }
   auto nChildren = unsignedFromIslSize(node.n_children());
   for (unsigned i = 0; i < (unsigned)nChildren; i++) {
@@ -976,7 +985,7 @@ void transform(LLVM::LLVMFuncOp f) {
     llvm::dbgs() << *g << "\n";
   });
   if (!getenv("GPU_AFFINE_OPT_DISABLE_CONVERT_TO_ASYNC"))
-      convertToAsync(*scop, applied);
+    convertToAsync(*scop, applied);
   LLVM_DEBUG({
     llvm::dbgs() << "Converted to async:\n";
     llvm::dbgs() << *g << "\n";

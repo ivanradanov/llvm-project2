@@ -440,7 +440,10 @@ struct AffineExprBuilder {
     if (constIndex) {
       return getAffineConstantExpr(constIndex.getInt(), user->getContext());
     } else {
-      return buildExpr(cast<Value>(index));
+      auto expr = buildExpr(cast<Value>(index));
+      if (succeeded(expr))
+        expr->dump();
+      return expr;
     }
   }
 
