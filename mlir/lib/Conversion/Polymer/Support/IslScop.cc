@@ -1688,8 +1688,11 @@ IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
   bc.create(node);
   LLVM_DEBUG(llvm::dbgs() << *f << "\n");
 
+// FIXME we are getting some double frees/invalid read/writes due to these...
+#if 0
   isl_ast_build_free(build);
   isl_schedule_free(newSchedule);
+#endif
 
   return IslScop::ApplyScheduleRes{f, oldToNewMapping};
 }

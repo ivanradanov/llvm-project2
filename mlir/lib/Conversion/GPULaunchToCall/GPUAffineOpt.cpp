@@ -401,7 +401,7 @@ static bool are_coincident(isl::union_map umap, isl::union_map schedule) {
 }
 
 static isl::schedule_node insertArrayExpansion(isl::schedule_node node,
-                                               PrepScheduleInfo psi) {
+                                               PrepScheduleInfo &psi) {
 
   auto nChildren = unsignedFromIslSize(node.n_children());
 
@@ -1063,7 +1063,10 @@ void transform(LLVM::LLVMFuncOp f) {
   });
 
   auto applied = scop->applySchedule(newSchedule.copy(), psi.lrs.copy(), f);
+// FIXME we are getting some double frees/invalid read/writes due to these...
+#if 0
   isl_schedule_constraints_free(sc);
+#endif
   auto g = cast<LLVM::LLVMFuncOp>(applied.newFunc);
   LLVM_DEBUG({
     llvm::dbgs() << "New func:\n";
