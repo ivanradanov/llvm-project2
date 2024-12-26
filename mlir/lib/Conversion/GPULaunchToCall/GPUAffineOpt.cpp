@@ -563,6 +563,7 @@ static isl::schedule insertAsyncCopySynchronisation(isl::schedule schedule,
 
 static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
                                              PrepScheduleInfo &psi) {
+  LLVM_DEBUG(llvm::dbgs() << "splitPipelineLoops for\n"; dumpIslObj(node));
   if (node.isa<isl::schedule_node_band>()) {
     auto band = node.as<isl::schedule_node_band>();
 
@@ -663,20 +664,62 @@ static isl::schedule_node splitPipelineLoops(isl::schedule_node node,
       ISL_DUMP(main);
       ISL_DUMP(epilogue);
 
+      isl::union_set prologueDomain = prologue.apply(reverseSchedule);
+      isl::union_set mainDomain = main.apply(reverseSchedule);
+      isl::union_set epilogueDomain = epilogue.apply(reverseSchedule);
+      ISL_DUMP(prologueDomain);
+      ISL_DUMP(mainDomain);
+      ISL_DUMP(epilogueDomain);
+
+      bool inSeq = node.parent().isa<isl::schedule_node_filter>();
+      node = node.order_after(epilogueDomain);
+      ISL_DUMP(node);
+      if (node.parent().isa<isl::schedule_node_filter>()) {
+        node = node.parent().next_sibling().child(0);
+        for (unsigned i = 0;
+             i <
+             unsignedFromIslSize(node.as<isl::schedule_node_band>().n_member());
+             i++)
+          node =
+              node.as<isl::schedule_node_band>().member_set_ast_loop_unroll(i);
+        node = node.parent().previous_sibling().child(0);
+      } else {
+        llvm_unreachable("???");
+      }
+
+      node = node.order_after(mainDomain);
+      ISL_DUMP(node);
+      for (unsigned i = 0;
+           i <
+           unsignedFromIslSize(node.as<isl::schedule_node_band>().n_member());
+           i++)
+        node = node.as<isl::schedule_node_band>().member_set_ast_loop_unroll(i);
+
       // FIXME need to check if the async deps are fully carried
       bool fullyCarried = true;
-      if (fullyCarried)
-        return node;
+      if (fullyCarried) {
+        if (inSeq)
+          return node;
+        else
+          return node.parent().parent();
+      }
+      // FIXME need to call this func recursively on the main band
+      llvm_unreachable("...");
     }
   }
-  auto nChildren = unsignedFromIslSize(node.n_children());
-  for (unsigned i = 0; i < (unsigned)nChildren; i++) {
-    auto child = node.child(i);
-    auto newChild = splitPipelineLoops(child, psi);
-    node = newChild.parent();
-  }
 
-  return node;
+  if (!node.has_children())
+    return node;
+
+  isl::schedule_node child = node.child(0);
+  while (true) {
+    child = splitPipelineLoops(child, psi);
+    if (child.has_next_sibling())
+      child = child.next_sibling();
+    else
+      break;
+  }
+  return child.parent();
 }
 static isl::schedule splitPipelineLoops(isl::schedule schedule,
                                         PrepScheduleInfo &psi) {
