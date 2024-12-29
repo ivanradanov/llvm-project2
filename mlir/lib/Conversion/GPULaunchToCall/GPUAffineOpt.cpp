@@ -373,6 +373,13 @@ isl_id_to_id_foreach(isl_id_to_id *id_to_id,
   return isl::manage(isl_id_to_id_foreach(id_to_id, lambda2, &data));
 }
 
+static bool isMark(isl::schedule_node node, StringRef mark) {
+  if (!node.isa<isl::schedule_node_mark>())
+    return false;
+  isl::id id = node.as<isl::schedule_node_mark>().get_id();
+  return mark.str() == id.get_name();
+}
+
 static bool are_coincident(isl::union_map umap, isl::union_map schedule) {
   isl::union_map applied = umap;
   applied = applied.apply_domain(schedule);
@@ -541,12 +548,34 @@ insertAsyncCopySynchronisation(isl::schedule_node node, PrepScheduleInfo &psi) {
 
   auto domain = node.get_domain();
   LLVM_DEBUG(llvm::dbgs() << "Domain "; dumpIslObj(domain));
-  if (!domain.isa_set())
+  if (!node.isa<isl::schedule_node_leaf>())
     return node;
+  assert(domain.isa_set());
   auto set = domain.as_set();
 
-  // TODO this is just for testing things out and is dumb
-  if (psi.asyncDeps.range().universe().contains(set.space())) {
+  if (set.is_subset(psi.asyncDeps.range())) {
+
+    // FIXME we are assuming here that copy->wait is a 1-to-1 relation. this is
+    // wrong in other cases.
+    isl::union_set executed = isl::union_set::empty(node.ctx());
+    isl::schedule_node nd = node;
+    // FIXME This is all wrong
+    while (true) {
+      if (nd.root().get() == nd.get())
+        break;
+      if (isMark(nd, polymer::allocateArrayMark))
+        break;
+      executed = executed.unite(nd.domain());
+      if (nd.has_previous_sibling())
+        nd = nd.previous_sibling();
+      else
+        nd = nd.parent();
+    }
+    isl::union_set launchedCopies = executed.intersect(psi.asyncDeps.domain());
+    isl::union_set waitedCopies = executed.intersect(psi.asyncDeps.range());
+    ISL_DUMP(launchedCopies);
+    ISL_DUMP(waitedCopies);
+
     // TODO add free function
     polymer::AsyncWaitGroupInfo *awg = new polymer::AsyncWaitGroupInfo{3};
     isl::id waitGroupMark =
