@@ -547,37 +547,64 @@ insertAsyncCopySynchronisation(isl::schedule_node node, PrepScheduleInfo &psi) {
   // ordering of the statements in its domain but still.
 
   auto domain = node.get_domain();
-  LLVM_DEBUG(llvm::dbgs() << "Domain "; dumpIslObj(domain));
   if (!node.isa<isl::schedule_node_leaf>())
     return node;
+
   assert(domain.isa_set());
-  auto set = domain.as_set();
+  isl::set asyncRange = domain.as_set();
+  ISL_DUMP(asyncRange);
 
-  if (set.is_subset(psi.asyncDeps.range())) {
+  if (asyncRange.is_subset(psi.asyncDeps.range())) {
+    unsigned waitNum = [&]() -> unsigned {
+      isl::union_map intersectedAsyncDeps =
+          psi.asyncDeps.intersect_range(asyncRange);
+      ISL_DUMP(intersectedAsyncDeps);
+      isl::union_set asyncDomainUset =
+          asyncRange.apply(psi.asyncDeps.reverse());
+      ISL_DUMP(asyncDomainUset);
+      if (!asyncDomainUset.isa_set())
+        return 0;
+      isl::set asyncDomain = asyncDomainUset.as_set();
 
-    // FIXME we are assuming here that copy->wait is a 1-to-1 relation. this is
-    // wrong in other cases.
-    isl::union_set executed = isl::union_set::empty(node.ctx());
-    isl::schedule_node nd = node;
-    // FIXME This is all wrong
-    while (true) {
-      if (nd.root().get() == nd.get())
-        break;
-      if (isMark(nd, polymer::allocateArrayMark))
-        break;
-      executed = executed.unite(nd.domain());
-      if (nd.has_previous_sibling())
-        nd = nd.previous_sibling();
-      else
+      ISL_DUMP(asyncDomain);
+
+      isl::schedule_node nd = node;
+      while (true) {
+        ISL_DUMP(nd);
+        if (!nd.has_parent())
+          break;
+        ISL_DUMP(nd.domain());
+        if (!asyncDomain.to_union_set().intersect(nd.domain()).is_empty() &&
+            nd.isa<isl::schedule_node_band>()) {
+          auto band = nd.as<isl::schedule_node_band>();
+          auto _partial = band.get_partial_schedule();
+          ISL_DUMP(_partial);
+          // Bands should have been Cconverted to single dim when splitting the
+          // pipeilne loops
+          if (unsignedFromIslSize(_partial.dim(isl::dim::out)) != 1)
+            return 0;
+          auto partial = _partial.get_at(0).as_union_map();
+          ISL_DUMP(partial);
+          isl::union_map applied = intersectedAsyncDeps;
+          applied = applied.apply_domain(partial);
+          applied = applied.apply_range(partial);
+          isl::union_set deltas = applied.deltas();
+          ISL_DUMP(deltas);
+          assert(deltas.isa_set());
+          isl::val v = deltas.as_set().plain_get_val_if_fixed(isl::dim::set, 0);
+          assert(v.is_int());
+          assert(v.get_den_si() == 1);
+          return v.get_num_si() - 1;
+          // FIXME this does not always need the (-1), that depends on the
+          // sequence schedule in the band
+        }
         nd = nd.parent();
-    }
-    isl::union_set launchedCopies = executed.intersect(psi.asyncDeps.domain());
-    isl::union_set waitedCopies = executed.intersect(psi.asyncDeps.range());
-    ISL_DUMP(launchedCopies);
-    ISL_DUMP(waitedCopies);
+      }
+      return 0;
+    }();
 
     // TODO add free function
-    polymer::AsyncWaitGroupInfo *awg = new polymer::AsyncWaitGroupInfo{3};
+    polymer::AsyncWaitGroupInfo *awg = new polymer::AsyncWaitGroupInfo{waitNum};
     isl::id waitGroupMark =
         isl::id::alloc(node.ctx(), polymer::asyncWaitGroupMark, (void *)awg);
     node = node.insert_mark(waitGroupMark);
