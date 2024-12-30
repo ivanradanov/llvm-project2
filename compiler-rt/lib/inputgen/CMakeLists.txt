@@ -5,6 +5,23 @@ set(INPUTGEN_HEADERS
   common-interface.def
 )
 
+add_custom_target(inputgen.generate)
+set_target_properties(inputgen.generate PROPERTIES FOLDER "Compiler-RT Misc")
+
+add_compiler_rt_runtime(inputgen.generate
+  STATIC
+  ARCHS x86_64
+  OS linux
+  SOURCES generate.cpp
+  ADDITIONAL_HEADERS ${INPUTGEN_HEADERS}
+  OBJECT_LIBS RTSanitizerCommon
+              RTSanitizerCommonLibc
+              RTSanitizerCommonSymbolizer
+  CFLAGS ${COMPILER_RT_COMMON_CFLAGS} -flto -ffat-lto-objects
+  LINK_FLAGS ${COMPILER_RT_COMMON_LINK_FLAGS} ${WEAK_SYMBOL_LINK_FLAGS}
+  LINK_LIBS ${STATS_LINK_LIBS}
+  PARENT_TARGET inputgen_record)
+
 add_custom_target(inputgen.record)
 set_target_properties(inputgen.record PROPERTIES FOLDER "Compiler-RT Misc")
 

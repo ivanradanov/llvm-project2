@@ -5,10 +5,10 @@
 
 #define INTERFACE_MEM(PREFIX)                                                  \
   void __##PREFIX##_memcpy(VoidPtrTy Tgt, VoidPtrTy Src, uint64_t N) {         \
-    __IG_OBJ__.memcpy(Tgt, Src, N);                                        \
+    __IG_OBJ__.memcpy(Tgt, Src, N);                                            \
   }                                                                            \
   void __##PREFIX##_memset(VoidPtrTy Tgt, char C, uint64_t N) {                \
-    __IG_OBJ__.memset(Tgt, C, N);                                        \
+    __IG_OBJ__.memset(Tgt, C, N);                                              \
   }
 
 #define INTERFACE_CMP_PTR(PREFIX)                                              \
@@ -42,11 +42,10 @@
     return TyVal;                                                              \
   }                                                                            \
   void __##PREFIX##_access_##NAME(VoidPtrTy Ptr, int64_t Val, int32_t Size,    \
-                                  VoidPtrTy Base, int32_t Kind,                \
-                                  BranchHint *BHs, int32_t BHSize) {           \
+                                  VoidPtrTy Base, int32_t Kind, RTInfo *BHs) { \
     switch (Kind) {                                                            \
     case 0:                                                                    \
-      __IG_OBJ__.read<TY>(Ptr, Base, Size, BHs, BHSize);                       \
+      __IG_OBJ__.read<TY>(Ptr, Base, Size, BHs);                               \
       return;                                                                  \
     case 1: {                                                                  \
       TY TyVal = __ig_convert_##NAME##_from_i64(Val);                          \
@@ -57,14 +56,13 @@
       abort();                                                                 \
     }                                                                          \
   }                                                                            \
-  TY __##PREFIX##_stub_##NAME(BranchHint *BHs, int32_t BHSize) {               \
-    return __IG_OBJ__.generateNewStubReturn<TY>(BHs, BHSize);                  \
+  TY __##PREFIX##_stub_##NAME(RTInfo *BHs) {                                   \
+    return __IG_OBJ__.generateNewStubReturn<TY>(BHs);                          \
   }                                                                            \
-  TY __##PREFIX##_arg_##NAME(BranchHint *BHs, int32_t BHSize) {                \
-    return __IG_OBJ__.generateNewArg<TY>(BHs, BHSize);                         \
+  TY __##PREFIX##_arg_##NAME(RTInfo *BHs) {                                    \
+    return __IG_OBJ__.generateNewArg<TY>(BHs);                                 \
   }                                                                            \
-  void __##PREFIX##_arg_record_##NAME(int64_t Val, BranchHint *BHs,            \
-                                      int32_t BHSize) {                        \
+  void __##PREFIX##_arg_record_##NAME(int64_t Val, RTInfo *BHs) {              \
     TY TyVal = __ig_convert_##NAME##_from_i64(Val);                            \
     __IG_OBJ__.recordArg<TY>(TyVal);                                           \
   }

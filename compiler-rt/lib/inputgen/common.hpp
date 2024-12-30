@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-struct BranchHint {};
+struct RTInfo {};
 
 namespace {
 int VERBOSE = 0;
@@ -218,9 +218,22 @@ struct AlignedMemoryChunk {
   intptr_t CmpOffset;
 };
 
+struct ObjectAddressing {
+  virtual size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const = 0;
+  virtual OffsetTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
+  virtual OffsetTy getObjBaseOffset() const = 0;
+  OffsetTy getOffsetFromObjBasePtr(OffsetTy Ptr) const {
+    return Ptr - getObjBaseOffset();
+  }
+  virtual OffsetTy getLowestObjOffset() const = 0;
+  virtual uintptr_t getMaxObjectSize() const = 0;
+  virtual ~ObjectAddressing() {};
+};
+
 // TODO There should also be a template argument to the class which says whether
 // the Input and Used should expand dynamically
-template <bool StaticSize = false> struct ObjectTy {
+struct ObjectTy {
+  static constexpr bool StaticSize = false;
   static constexpr bool NeedsToGrowUsedAndInput = !StaticSize;
   ObjectTy(AllocatorTy &Allocator, VoidPtrTy Output, size_t Size,
            OffsetTy Offset, bool AllocateInputUsed,
@@ -248,6 +261,9 @@ template <bool StaticSize = false> struct ObjectTy {
   }
   ~ObjectTy() {}
 
+  auto &getPtrs() { return Ptrs; }
+  auto &getFPtrs() { return FPtrs; }
+
   void report() { std::cerr << OutputLimits.getSize() << std::endl; }
 
   bool KnownSizeObjBundle;
@@ -270,34 +286,37 @@ template <bool StaticSize = false> struct ObjectTy {
     return Ptr - Output.AllocationOffset;
   }
 
-#if 0
-  VoidPtrTy addKnownSizeObject(uintptr_t Size) {
+  OffsetTy addKnownSizeObject(ObjectAddressing &OA, uintptr_t Size) {
     assert(KnownSizeObjBundle);
     // Make sure zero-sized objects have their own address
     if (Size == 0)
       Size = 1;
     if (Size + CurrentStaticObjEnd >
-        OA.getLowestObjPtr() + OA.getMaxObjectSize())
-      return nullptr;
-    VoidPtrTy ObjPtr = CurrentStaticObjEnd;
-    CurrentStaticObjEnd = alignEnd(CurrentStaticObjEnd + Size, ObjAlignment);
+        OA.getLowestObjOffset() + OA.getMaxObjectSize())
+      return 0;
+    OffsetTy ObjPtr = CurrentStaticObjEnd;
+    CurrentStaticObjEnd =
+        alignEnd<intptr_t>(CurrentStaticObjEnd + Size, ObjAlignment);
     return ObjPtr;
   }
 
   struct KnownSizeObjInputMem {
-    VoidPtrTy Start;
+    OffsetTy Start;
     uintptr_t Size;
   };
-  KnownSizeObjInputMem getKnownSizeObjectInputMemory(VoidPtrTy LocalPtr,
+  KnownSizeObjInputMem getKnownSizeObjectInputMemory(ObjectAddressing &OA,
+                                                     OffsetTy LocalPtr,
                                                      uintptr_t Size) {
     assert(KnownSizeObjBundle);
     KnownSizeObjInputMem Mem;
-    Mem.Start = std::min(
+    Mem.Start = std::min<uintptr_t>(
         LocalPtr + Size,
-        std::max(LocalPtr, OA.getObjBaseOffset() + InputLimits.LowestOffset));
-    VoidPtrTy End = std::max(
-        LocalPtr, std::min(LocalPtr + Size,
-                           OA.getObjBaseOffset() + InputLimits.HighestOffset));
+        std::max<uintptr_t>(LocalPtr,
+                            OA.getObjBaseOffset() + InputLimits.LowestOffset));
+    OffsetTy End = std::max<uintptr_t>(
+        LocalPtr,
+        std::min<uintptr_t>(LocalPtr + Size,
+                            OA.getObjBaseOffset() + InputLimits.HighestOffset));
     Mem.Size = End - Mem.Start;
     assert(Mem.Start <= End);
     return Mem;
@@ -307,7 +326,6 @@ template <bool StaticSize = false> struct ObjectTy {
     OffsetTy Offset = getLocalPtr(GlobalPtr);
     CmpLimits.update(Offset, 1);
   }
-#endif
 
   AlignedMemoryChunk getAlignedInputMemory() {
     // If we compare the pointer at some offset we need to make sure the output
@@ -336,12 +354,10 @@ template <bool StaticSize = false> struct ObjectTy {
             CmpLimits.LowestOffset};
   }
 
+  template <typename T> T read(OffsetTy Ptr, uint32_t Size, RTInfo *RTI);
   template <typename T>
-  T read(OffsetTy Ptr, uint32_t Size, BranchHint *BHs, int32_t BHSize);
-  template <typename T>
-  T readFromGlobalPtr(VoidPtrTy Ptr, uint32_t Size, BranchHint *BHs,
-                      int32_t BHSize) {
-    return read<T>(getLocalPtr(Ptr), Size, BHs, BHSize);
+  T readFromGlobalPtr(VoidPtrTy Ptr, uint32_t Size, RTInfo *RTI) {
+    return read<T>(getLocalPtr(Ptr), Size, RTI);
   }
 
   template <typename T> void write(T Val, OffsetTy Ptr, uint32_t Size) {
@@ -541,22 +557,10 @@ private:
   }
 };
 
-struct ObjectAddressing {
-  virtual size_t globalPtrToObjIdx(VoidPtrTy GlobalPtr) const = 0;
-  virtual OffsetTy globalPtrToLocalPtr(VoidPtrTy GlobalPtr) const = 0;
-  virtual OffsetTy getObjBaseOffset() const = 0;
-  OffsetTy getOffsetFromObjBasePtr(OffsetTy Ptr) const {
-    return Ptr - getObjBaseOffset();
-  }
-  virtual VoidPtrTy getLowestObjPtr() const = 0;
-  virtual uintptr_t getMaxObjectSize() const = 0;
-  virtual ~ObjectAddressing(){};
-};
-
 template <typename RTTy>
 struct InputRecordObjectAddressing : public ObjectAddressing {
   OffsetTy getObjBaseOffset() const override { return 0; }
-  VoidPtrTy getLowestObjPtr() const override { abort(); }
+  OffsetTy getLowestObjOffset() const override { abort(); }
   uintptr_t getMaxObjectSize() const override { abort(); }
 
   RTTy &RT;
@@ -589,474 +593,38 @@ template <size_t N> static constexpr size_t getStorageForSize() {
   }
 }
 
-struct InputRecordPageObjectAddressing {
-
-  struct ObjectAddressingInfoTy {
-    AllocatorTy &Allocator;
-    struct InputTy {
-      VoidPtrTy Output;
-      VoidPtrTy Memory;
-      size_t Size;
-    };
-    std::vector<InputTy> Inputs;
-    void addInput(VoidPtrTy Output, size_t Size) {
-      Inputs.emplace_back(InputTy{});
-      auto &Input = Inputs.back();
-      Input.Size = Size;
-      Input.Output = Output;
-      Input.Memory = toPtr(malloc(Size));
-      memcpy(Input.Memory, Output, Size);
-    }
-    ObjectAddressingInfoTy(AllocatorTy &Allocator) : Allocator(Allocator) {}
-
-  } ObjectAddressingInfo;
-
-  struct DumpObjectTy {
-    ObjectAddressingInfoTy::InputTy &Input;
-
-    DumpObjectTy(ObjectAddressingInfoTy::InputTy &I) : Input(I) {}
-
-    std::vector<intptr_t> Ptrs;
-    std::unordered_map<intptr_t, uint32_t> FPtrs;
-    auto &getPtrs() { return Ptrs; }
-    auto &getFPtrs() { return FPtrs; }
-
-    bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
-      // FIXME  terrible performance
-      VoidPtrTy BasePtr = getBasePtr();
-      return BasePtr <= GlobalPtr && BasePtr + Input.Size > GlobalPtr;
-    }
-    VoidPtrTy getBasePtr() { return Input.Output; }
-    OffsetTy getLocalPtr(VoidPtrTy GlobalPtr) {
-      return GlobalPtr - getBasePtr();
-    }
-    VoidPtrTy getGlobalPtr(OffsetTy LocalPtr) {
-      return getBasePtr() + LocalPtr;
-    }
-
-    VoidPtrTy getOutputMemoryPtr() { return Input.Output; }
-    size_t getOutputMemorySize() { return Input.Size; }
-    AlignedMemoryChunk getAlignedInputMemory() {
-      return {
-          Input.Memory, (intptr_t)Input.Size, 0, (intptr_t)Input.Size, 0, 0, 0};
-    }
-  };
-
-  template <size_t TopBit>
-  struct __attribute__((packed)) StaticSizeObjectTy final {
-    static constexpr size_t OutputSize = ((size_t)1) << TopBit;
-    static constexpr size_t PointerSize = sizeof(uintptr_t);
-    static constexpr size_t NumPointers = OutputSize / sizeof(uintptr_t);
-    static constexpr VoidPtrTy Output = nullptr;
-    static constexpr size_t PageSizeInBits = 12;
-    static constexpr size_t PageSize = (size_t)1 << PageSizeInBits;
-
-    static_assert(TopBit >= PageSizeInBits);
-    static constexpr size_t BitsToBeAddressed = TopBit - PageSizeInBits;
-    static constexpr size_t NumAddressingBits = (size_t)1 << BitsToBeAddressed;
-
-    static_assert(NumAddressingBits % 8 == 0);
-
-    // Zero initialized by default
-    std::bitset<NumAddressingBits> Accessed;
-
-    // VoidPtrTy Output;
-
-    StaticSizeObjectTy() {}
-    StaticSizeObjectTy(VoidPtrTy Output) {
-      assert(reinterpret_cast<uintptr_t>(Output) % PointerSize == 0);
-    }
-
-    std::set<intptr_t> Ptrs;
-    // std::unordered_map<intptr_t, uint32_t> FPtrs;
-
-    VoidPtrTy getBasePtr() { return Output; }
-
-    OffsetTy getLocalPtr(VoidPtrTy GlobalPtr) {
-      return GlobalPtr - getBasePtr();
-    }
-
-    VoidPtrTy getGlobalPtr(OffsetTy LocalPtr) {
-      return getBasePtr() + LocalPtr;
-    }
-
-    bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
-      VoidPtrTy BasePtr = getBasePtr();
-      return BasePtr <= GlobalPtr && BasePtr + OutputSize > GlobalPtr;
-    }
-
-    OffsetTy getOffsetFromObjMemory(OffsetTy Ptr) { return Ptr; }
-
-    void access(VoidPtrTy Ptr, ObjectAddressingInfoTy &Info) {
-      static constexpr uintptr_t AddressingMask =
-          (((uintptr_t)1) << BitsToBeAddressed) - 1;
-      uintptr_t Masked = (toUint(Ptr) >> PageSizeInBits) & AddressingMask;
-      if (!Accessed[Masked]) {
-        static constexpr uintptr_t PageMask =
-            ~((((uintptr_t)1) << PageSizeInBits) - 1);
-        Info.addInput(toPtr(toUint(Ptr) & PageMask), PageSize);
-        Accessed[Masked] = true;
-      }
-    }
-
-    void report() { std::cerr << Accessed << std::endl; }
-
-    struct MemoryTy {
-      VoidPtrTy Memory;
-      intptr_t AllocationSize;
-      OffsetTy AllocationOffset;
-    };
-    MemoryTy getOutputMemory() { return MemoryTy{Output, OutputSize, 0}; }
-  };
-
-  static std::string o(unsigned N) { return std::string(N, ' '); }
-
-  template <unsigned X> struct LShift {
-    // FIXME we depend on 1 << 64 == 0 is it UB?
-    static const uintptr_t Value = ((uintptr_t)1) << X;
-  };
-
-  template <unsigned NumBits, template <unsigned TopBit> typename ChildTy,
-            unsigned TopBit>
-  struct Node {
-    static constexpr uintptr_t NumChildren = LShift<NumBits>::Value;
-    static constexpr unsigned NextBit = TopBit - NumBits;
-    static constexpr unsigned RemainingBits = NextBit;
-    using SpecializedChildTy = ChildTy<NextBit>;
-
-    static constexpr uintptr_t extractMaskedPart(VoidPtrTy Ptr) {
-      // If NumBIts = 3
-      // Mask = 0000111
-      uintptr_t Mask = (static_cast<uintptr_t>(1) << NumBits) - 1;
-      uintptr_t ShiftedPtr =
-          reinterpret_cast<uintptr_t>(Ptr) >> (TopBit - NumBits);
-      uintptr_t Masked = ShiftedPtr & Mask;
-      return Masked;
-    }
-    // This function may move the NodeStorage, so all pointers users have may be
-    // invalid after the call. This is why it provides a way to set the Idx
-    // before the reallocation happens.
-    template <typename T, bool Store = false>
-    static std::pair<size_t, T *> allocateNew(IRVector<uint8_t> &NodeStorage,
-                                              size_t *IdxStorage = nullptr) {
-      unsigned AllocSize = sizeof(T);
-      size_t Idx = NodeStorage.size();
-      if constexpr (Store) {
-        assert(IdxStorage);
-        *IdxStorage = Idx;
-      } else {
-        assert(!IdxStorage);
-      }
-      NodeStorage.reserve(NodeStorage.size() + AllocSize);
-      NodeStorage.insert(NodeStorage.end(), AllocSize, 0);
-      VoidPtrTy AllocPtr = NodeStorage.data() + Idx;
-      return {Idx, reinterpret_cast<T *>(AllocPtr)};
-    }
-  };
-
-  template <unsigned TopBit> struct __attribute__((packed)) Leaf {
-    using Node = Node<TopBit, Leaf, TopBit>;
-    using LocalObjectTy = StaticSizeObjectTy<TopBit>;
-
-    static_assert(Node::NextBit == 0);
-
-    LocalObjectTy Object;
-
-    Leaf() {}
-    Leaf(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr) { init(Info, Ptr); }
-    void init(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr) {
-      [[maybe_unused]]
-      uintptr_t Masked = Node::extractMaskedPart(Ptr);
-      INPUTGEN_DEBUG(std::cerr << "Created Leaf Node for Ptr" << toVoidPtr(Ptr)
-                               << "\n");
-      INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
-                               << Node::NumChildren << "\n");
-      VoidPtrTy BasePtr = reinterpret_cast<VoidPtrTy>(
-          reinterpret_cast<uintptr_t>(Ptr) & ~(Node::NumChildren - 1));
-      assert(reinterpret_cast<VoidPtrTy>(reinterpret_cast<uintptr_t>(Ptr) &
-                                         ~Masked) == BasePtr);
-      Object = LocalObjectTy(BasePtr);
-    }
-
-    void accessObject(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr,
-                      IRVector<uint8_t> &NodeStorage) {
-      Object.access(Ptr, Info);
-    }
-    void report(IRVector<uint8_t> &NodeStorage) {
-      std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Leaf Node\n";
-      std::cerr << o(sizeof(uintptr_t) * 8 - TopBit);
-      Object.report();
-    }
-  };
-
-  template <unsigned NumBits, template <unsigned TopBit> typename ChildTy,
-            unsigned TopBit>
-  struct __attribute__((packed)) ArrayNode {
-    using Node = Node<NumBits, ChildTy, TopBit>;
-    using SpecializedChildTy = ChildTy<Node::NextBit>;
-    using LocalObjectTy = typename SpecializedChildTy::LocalObjectTy;
-
-    std::array<SpecializedChildTy, Node::NumChildren> Children;
-
-    ArrayNode(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr) {
-      INPUTGEN_DEBUG(std::cerr << "Created Array Node for Ptr " << toBits(Ptr)
-                               << "\n");
-      INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
-                               << Node::NumChildren << " NumBits " << NumBits
-                               << " NextBit " << Node::NextBit << "\n");
-
-      VoidPtrTy BasePtr = reinterpret_cast<VoidPtrTy>(
-          reinterpret_cast<uintptr_t>(Ptr) & ~(((uintptr_t)1 << TopBit) - 1));
-      uintptr_t Increment = ((uintptr_t)1) << Node::RemainingBits;
-      INPUTGEN_DEBUG(std::cerr << "BasePtr " << toBits(BasePtr) << " Increment "
-                               << toBits(Increment) << "\n");
-      Ptr = BasePtr;
-      for (auto &Child : Children) {
-        Child.init(Info, Ptr);
-        Ptr += Increment;
-      }
-    }
-
-    void accessObject(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr,
-                      IRVector<uint8_t> &NodeStorage) {
-      uintptr_t Masked = Node::extractMaskedPart(Ptr);
-      INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
-                               << " Masked " << toBits(Masked) << "\n");
-      Children[Masked].accessObject(Info, Ptr, NodeStorage);
-    }
-    void report(IRVector<uint8_t> &NodeStorage) {
-      std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Array Node" << "\n";
-      uintptr_t I = 0;
-      for (auto &Child : Children) {
-        std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
-                  << toBitsFixed<NumBits>(I++) << std::endl;
-        Child.report(NodeStorage);
-      }
-    }
-  };
-
-  template <unsigned NumBits, unsigned NumChildrenPerNode,
-            template <unsigned TopBit> typename ChildTy, unsigned TopBit>
-  struct __attribute__((packed)) LinkedListNode {
-    using Node = Node<NumBits, ChildTy, TopBit>;
-    using SpecializedChildTy = ChildTy<Node::NextBit>;
-    using LocalObjectTy = typename SpecializedChildTy::LocalObjectTy;
-
-    // TODO something like this where we pack the index of the next node after
-    // the PtrMatch would be nice but we may sometimes overflow the next index.
-    // (also the allocateNew function cannot take the address of a bitfield as
-    // its argument)
-    struct LLNodeTyBitfield {
-      static constexpr uintptr_t InvalidChildIdx =
-          (1 << Node::RemainingBits) - 1;
-      uintptr_t PtrMatch : NumBits;
-      // this is _not_ enough memory always
-      uintptr_t NextIndex : Node::RemainingBits;
-      unsigned : 0; // new byte
-      uint8_t ChildData[sizeof(typename Node::SpecializedChildTy) *
-                        NumChildrenPerNode];
-    };
-
-    struct __attribute__((packed)) LLNodeTyUnpacked {
-      static constexpr size_t StorageForArraySize =
-          getStorageForSize<NumChildrenPerNode>();
-      static constexpr size_t StorageForNextIdx =
-          (sizeof(uintptr_t) * 8) - StorageForArraySize;
-      static constexpr uintptr_t InvalidChildIdx =
-          LShift<StorageForNextIdx>::Value - 1;
-      using LLIdxType = uintptr_t;
-      uintptr_t NumChildren : StorageForArraySize;
-      uintptr_t NextIdx : StorageForNextIdx;
-      uintptr_t PtrMatch[NumChildrenPerNode];
-      uint8_t ChildData[sizeof(typename Node::SpecializedChildTy) *
-                        NumChildrenPerNode];
-
-      SpecializedChildTy *getChild(size_t Idx) {
-        auto ChildPtr =
-            reinterpret_cast<typename Node::SpecializedChildTy *>(ChildData) +
-            Idx;
-        return ChildPtr;
-      }
-    };
-    using LLNodeTy = LLNodeTyUnpacked;
-    static constexpr auto InvalidChildIdx = LLNodeTy::InvalidChildIdx;
-    using LLIdxType = typename LLNodeTy::LLIdxType;
-    LLNodeTy Head;
-    // LLIdxType HeadIdx;
-
-    LinkedListNode() { init(); }
-    LinkedListNode(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr) { init(); }
-    void init() {
-      Head.NumChildren = 0;
-      Head.NextIdx = InvalidChildIdx;
-      INPUTGEN_DEBUG(std::cerr << "Created Linked List Node\n");
-      INPUTGEN_DEBUG(std::cerr << "TopBit " << TopBit << " NumChildren "
-                               << Node::NumChildren << " NumBits " << NumBits
-                               << " NextBit " << Node::NextBit << "\n");
-    }
-
-    LLNodeTy *getAt(IRVector<uint8_t> &NodeStorage, LLIdxType Idx) {
-      return reinterpret_cast<LLNodeTy *>(&NodeStorage[Idx]);
-    }
-
-    size_t getIdx(IRVector<uint8_t> &NodeStorage, LLNodeTy *Node) {
-      return toPtr(Node) - NodeStorage.data();
-    }
-
-    SpecializedChildTy *addChild(ObjectAddressingInfoTy &Info,
-                                 IRVector<uint8_t> &NodeStorage, size_t CurIdx,
-                                 LLNodeTy *CurLLNode, VoidPtrTy Ptr) {
-      assert(Ptr != nullptr);
-      assert(getAt(NodeStorage, CurIdx) == CurLLNode);
-      assert(CurIdx == toPtr(CurLLNode) - NodeStorage.data());
-      uintptr_t Masked = Node::extractMaskedPart(Ptr);
-      if (CurLLNode->NumChildren == NumChildrenPerNode) {
-        auto [NewIdx, NewLLNode] =
-            Node::template allocateNew<LLNodeTy, false>(NodeStorage);
-        NewLLNode->PtrMatch[0] = Masked;
-        NewLLNode->NextIdx = InvalidChildIdx;
-        NewLLNode->NumChildren = 1;
-        new (NewLLNode->getChild(0)) SpecializedChildTy(Info, Ptr);
-        getAt(NodeStorage, CurIdx)->NextIdx = NewIdx;
-        return NewLLNode->getChild(0);
-      } else {
-        new (CurLLNode->getChild(CurLLNode->NumChildren))
-            SpecializedChildTy(Info, Ptr);
-        CurLLNode = getAt(NodeStorage, CurIdx);
-        CurLLNode->PtrMatch[CurLLNode->NumChildren] = Masked;
-        CurLLNode->NumChildren++;
-        return CurLLNode->getChild(CurLLNode->NumChildren - 1);
-      }
-    }
-
-    void accessObject(ObjectAddressingInfoTy &Info, VoidPtrTy Ptr,
-                      IRVector<uint8_t> &NodeStorage) {
-      uintptr_t Masked = Node::extractMaskedPart(Ptr);
-      INPUTGEN_DEBUG(std::cerr << "Getting object for " << toBits(Ptr)
-                               << " Masked " << toBits(Masked) << "\n");
-      LLIdxType Idx = getIdx(NodeStorage, &Head), LastIdx;
-      LLNodeTy *LLNode = nullptr;
-      do {
-        LLNode = getAt(NodeStorage, Idx);
-        for (unsigned I = 0; I < LLNode->NumChildren; I++) {
-          if (LLNode->PtrMatch[I] == Masked)
-            return LLNode->getChild(I)->accessObject(Info, Ptr, NodeStorage);
-        }
-        LastIdx = Idx;
-        Idx = LLNode->NextIdx;
-      } while (Idx != InvalidChildIdx);
-      addChild(Info, NodeStorage, LastIdx, LLNode, Ptr)
-          ->accessObject(Info, Ptr, NodeStorage);
-    }
-    void report(IRVector<uint8_t> &NodeStorage) {
-      std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Linked List" << "\n";
-      LLIdxType Idx = getIdx(NodeStorage, &Head);
-      do {
-        std::cerr << o(sizeof(uintptr_t) * 8 - TopBit) << "Node" << "\n";
-        LLNodeTy *LLNode = getAt(NodeStorage, Idx);
-        for (unsigned I = 0; I < LLNode->NumChildren; I++) {
-          std::cerr << o(sizeof(uintptr_t) * 8 - TopBit)
-                    << toBitsFixed<NumBits>(LLNode->PtrMatch[I]) << std::endl;
-          LLNode->getChild(I)->report(NodeStorage);
-        }
-        Idx = LLNode->NextIdx;
-      } while (Idx != InvalidChildIdx);
-    }
-  };
-
-  template <unsigned NumBits, template <unsigned> typename ChildTy>
-  struct AArrayNode {
-    template <unsigned TopBit>
-    struct SNode : ArrayNode<NumBits, ChildTy, TopBit> {
-      using ArrayNode<NumBits, ChildTy, TopBit>::ArrayNode;
-    };
-  };
-  template <unsigned NumBits, unsigned NumChildrenPerNode,
-            template <unsigned> typename ChildTy>
-  struct ALinkedListNode {
-    template <unsigned TopBit>
-    struct SNode
-        : LinkedListNode<NumBits, NumChildrenPerNode, ChildTy, TopBit> {
-      using LinkedListNode<NumBits, NumChildrenPerNode, ChildTy,
-                           TopBit>::LinkedListNode;
-    };
-  };
-  // clang-format off
-  using TreeType =
-    ALinkedListNode<41, 3,
-      Leaf
-      >::SNode<
-    sizeof(uintptr_t) * 8>;
-  // clang-format on
-  using LocalObjectTy = typename TreeType::LocalObjectTy;
-
-  std::vector<std::pair<bool, VoidPtrTy>> Ptrs;
-  IRVector<uint8_t> NodeStorage;
-
-  TreeType *getTree() {
-    return reinterpret_cast<TreeType *>(NodeStorage.data());
-  }
-
-  void access(VoidPtrTy Ptr, size_t Size) {
-    // TODO need to take into account Size
-    getTree()->accessObject(ObjectAddressingInfo, Ptr, NodeStorage);
-    INPUTGEN_DEBUG(report());
-  }
-
-  void writeArray(VoidPtrTy Ptr, uint32_t Size) {
-    for (auto ItPtr = Ptr; ItPtr < Size + Ptr; ItPtr++)
-      access(Ptr, 1);
-  }
-  void readArray(VoidPtrTy Ptr, uint32_t Size) {
-    for (auto ItPtr = Ptr; ItPtr < Size + Ptr; ItPtr++)
-      access(Ptr, 1);
-  }
-  template <typename T> void write(VoidPtrTy Ptr, T Val, uint32_t Size) {
-    static constexpr size_t TySize = sizeof(T);
-    assert(Size == TySize);
-    access(Ptr, TySize);
-    if constexpr (std::is_pointer<T>::value)
-      Ptrs.push_back({true, Ptr});
-  }
-
-  template <typename T>
-  void read(VoidPtrTy Ptr, VoidPtrTy Base, uint32_t Size) {
-    static constexpr size_t TySize = sizeof(T);
-    assert(Size == TySize);
-    access(Ptr, TySize);
-    if constexpr (std::is_pointer<T>::value)
-      Ptrs.push_back({false, Ptr});
-  }
-
-  IRVector<std::unique_ptr<DumpObjectTy>> DumpObjects;
-
-  void getObjects(IRVector<DumpObjectTy *> &Objects) {
-    for (auto &Input : ObjectAddressingInfo.Inputs) {
-      // FIXME need to fill in the pointers
-      // FIXME use appropriate make_unique
-      DumpObjects.push_back(std::make_unique<DumpObjectTy>(Input));
-      Objects.push_back(DumpObjects.back().get());
-    }
-  }
-
-  void report() {
-    std::cerr << "Object addressing data structure:\n";
-    getTree()->report(NodeStorage);
-    std::cerr << "Num pointer accesses: " << Ptrs.size() << "\n";
-  }
-
-  InputRecordPageObjectAddressing(AllocatorTy &Allocator)
-      : ObjectAddressingInfo(Allocator) {
-    NodeStorage.resize(sizeof(TreeType));
-    new (getTree()) TreeType();
-  }
-
-  InputRecordPageObjectAddressing(AllocatorTy &Allocator,
-                                  IRVector<uint8_t> NodeStorage)
-      : ObjectAddressingInfo(Allocator), NodeStorage(NodeStorage) {}
+struct MemoryChunkTy {
+  VoidPtrTy Location;
+  VoidPtrTy Memory;
+  size_t Size;
 };
 
-using IRObjectTy = typename InputRecordPageObjectAddressing::DumpObjectTy;
+struct RecordDumpObjectTy {
+  MemoryChunkTy &Input;
+
+  RecordDumpObjectTy(MemoryChunkTy &I) : Input(I) {}
+
+  std::vector<intptr_t> Ptrs;
+  std::unordered_map<intptr_t, uint32_t> FPtrs;
+  auto &getPtrs() { return Ptrs; }
+  auto &getFPtrs() { return FPtrs; }
+
+  bool isGlobalPtrInObject(VoidPtrTy GlobalPtr) {
+    // FIXME  terrible performance
+    VoidPtrTy BasePtr = getBasePtr();
+    return BasePtr <= GlobalPtr && BasePtr + Input.Size > GlobalPtr;
+  }
+  VoidPtrTy getBasePtr() { return Input.Location; }
+  OffsetTy getLocalPtr(VoidPtrTy GlobalPtr) { return GlobalPtr - getBasePtr(); }
+  VoidPtrTy getGlobalPtr(OffsetTy LocalPtr) { return getBasePtr() + LocalPtr; }
+
+  VoidPtrTy getOutputMemoryPtr() { return Input.Location; }
+  size_t getOutputMemorySize() { return Input.Size; }
+  AlignedMemoryChunk getAlignedInputMemory() {
+    return {
+        Input.Memory, (intptr_t)Input.Size, 0, (intptr_t)Input.Size, 0, 0, 0};
+  }
+};
 
 struct InputGenObjectAddressing : public ObjectAddressing {
   ~InputGenObjectAddressing(){};
@@ -1079,7 +647,7 @@ struct InputGenObjectAddressing : public ObjectAddressing {
   }
 
   uintptr_t getMaxObjectSize() const override { return MaxObjectSize; }
-  VoidPtrTy getLowestObjPtr() const override { return nullptr; }
+  OffsetTy getLowestObjOffset() const override { return 0; }
   uintptr_t getSize() { return Size; };
   uintptr_t getMaxObjectNum() { return MaxObjectNum; }
   uintptr_t getMaxObjectSize() { return MaxObjectSize; }

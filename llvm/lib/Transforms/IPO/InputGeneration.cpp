@@ -123,10 +123,10 @@ static cl::opt<std::string, true> ClOutputFilename(
     cl::location(InputGenOutputFilename));
 
 static cl::opt<bool>
-    ClProvideBranchHints("input-gen-provide-branch-hints",
-                         cl::desc("Provide information on values used by "
-                                  "branches to the input gen runtime"),
-                         cl::Hidden, cl::init(true));
+    ClProvideRTInfo("input-gen-provide-rt-info",
+                    cl::desc("Provide information on values used by "
+                             "branches to the input gen runtime"),
+                    cl::Hidden, cl::init(true));
 
 static cl::opt<bool>
     ClInstrumentFunctionPtrs("input-gen-instrument-function-ptrs",
@@ -588,7 +588,7 @@ void InputGenInstrumenter::emitMemoryAccessCallback(
   SmallVector<Value *, 7> Args = {Ptr, Val,
                                   ConstantInt::get(Int32Ty, AllocSize), Base,
                                   ConstantInt::get(Int32Ty, Kind)};
-  auto Hints = getBranchHints(ValueToReplace, IRB);
+  auto Hints = getRTInfo(ValueToReplace, IRB);
   Args.insert(Args.end(), Hints.begin(), Hints.end());
   if (isa<PointerType>(AccessTy) && AccessTy->getPointerAddressSpace())
     AccessTy = AccessTy->getPointerTo();
@@ -886,16 +886,15 @@ void InputGenInstrumenter::initializeCallbacks(Module &M) {
   Type *Types[] = {Int1Ty,   Int8Ty, Int16Ty, Int32Ty,  Int64Ty,
                    Int128Ty, PtrTy,  FloatTy, DoubleTy, X86_FP80Ty};
   for (Type *Ty : Types) {
-    InputGenMemoryAccessCallback[Ty] = M.getOrInsertFunction(
-        Prefix + "access_" + ::getTypeName(Ty), VoidTy, PtrTy, Int64Ty, Int32Ty,
-        PtrTy, Int32Ty, PtrTy, Int32Ty);
-    StubValueGenCallback[Ty] = M.getOrInsertFunction(
-        Prefix + "stub_" + ::getTypeName(Ty), Ty, PtrTy, Int32Ty);
-    ArgGenCallback[Ty] = M.getOrInsertFunction(
-        Prefix + "arg_" + ::getTypeName(Ty), Ty, PtrTy, Int32Ty);
-    ArgRecordCallback[Ty] =
-        M.getOrInsertFunction(Prefix + "arg_record_" + ::getTypeName(Ty),
-                              VoidTy, Int64Ty, PtrTy, Int32Ty);
+    InputGenMemoryAccessCallback[Ty] =
+        M.getOrInsertFunction(Prefix + "access_" + ::getTypeName(Ty), VoidTy,
+                              PtrTy, Int64Ty, Int32Ty, PtrTy, Int32Ty, PtrTy);
+    StubValueGenCallback[Ty] =
+        M.getOrInsertFunction(Prefix + "stub_" + ::getTypeName(Ty), Ty, PtrTy);
+    ArgGenCallback[Ty] =
+        M.getOrInsertFunction(Prefix + "arg_" + ::getTypeName(Ty), Ty, PtrTy);
+    ArgRecordCallback[Ty] = M.getOrInsertFunction(
+        Prefix + "arg_record_" + ::getTypeName(Ty), VoidTy, Int64Ty, PtrTy);
   }
 
   InputGenMemmove =
@@ -1018,7 +1017,7 @@ void InputGenInstrumenter::stubDeclaration(Module &M, Function &F) {
 
   if (RTy->isVoidTy())
     return;
-  if (!ClProvideBranchHints)
+  if (!ClProvideRTInfo)
     return;
 
   // To generate branch hints we need to generate the value at the call site
@@ -1528,231 +1527,10 @@ void InputGenInstrumenter::createGlobalCalls(Module &M, IRBuilder<> &IRB) {
   }
 }
 
-using BranchHint = inputgen::BranchHint;
-struct BranchHintInfo {
-  BranchHint BH;
-  BasicBlock *BB;
-};
-
-static void findAllBranchValues(Value *V,
-                                SmallVector<BranchHintInfo> &BranchHints,
-                                std::function<bool(Value *)> DominatesCallback,
-                                const BlockFrequencyInfo &BFI) {
-  auto GetBlockProfileCount = [&](Instruction &I, uint32_t Idx) -> uint64_t {
-    SmallVector<uint32_t> Weights;
-    if (isa<UnreachableInst>(I.getSuccessor(Idx)->getTerminator()))
-      return 100UL;
-    if (!extractBranchWeights(I, Weights))
-      return 0UL;
-    if (Weights.size() <= Idx)
-      return 0UL;
-    return Weights[Idx];
-  };
-  for (auto *U : V->users()) {
-    if (auto *BI = dyn_cast<BranchInst>(U)) {
-      auto *Cond = BI->getCondition();
-      assert(Cond == V);
-      BranchHint BHTrue = {BranchHint::EQ, true,
-                           ConstantInt::get(Cond->getType(), 1),
-                           GetBlockProfileCount(*BI, 0), -1};
-      BranchHint BHFalse = {BranchHint::NE, true,
-                            ConstantInt::get(Cond->getType(), 1),
-                            GetBlockProfileCount(*BI, 1), -1};
-      BranchHints.push_back({BHTrue, BI->getSuccessor(0)});
-      BranchHints.push_back({BHFalse, BI->getSuccessor(1)});
-    } else if (auto *Cmp = dyn_cast<CmpInst>(U)) {
-      auto *LHS = Cmp->getOperand(0);
-      auto *RHS = Cmp->getOperand(1);
-      Value *Other;
-      if (V == LHS)
-        Other = RHS;
-      else if (V == RHS)
-        Other = LHS;
-      else
-        llvm_unreachable("???");
-
-      BranchHint::KindTy Kind = BranchHint::Invalid;
-      bool Signed = true;
-
-      auto GetNegated = [](BranchHint::KindTy Kind) {
-        switch (Kind) {
-        case BranchHint::EQ:
-          return BranchHint::NE;
-        case BranchHint::NE:
-          return BranchHint::EQ;
-        case BranchHint::LT:
-          return BranchHint::GE;
-        case BranchHint::GT:
-          return BranchHint::LE;
-        case BranchHint::LE:
-          return BranchHint::GT;
-        case BranchHint::GE:
-          return BranchHint::LT;
-        case BranchHint::Invalid:
-          return BranchHint::Invalid;
-        };
-      };
-
-      switch (Cmp->getPredicate()) {
-      case CmpInst::FCMP_OEQ:
-      case CmpInst::FCMP_UEQ:
-      case CmpInst::ICMP_EQ:
-        Kind = BranchHint::EQ;
-        break;
-      case CmpInst::FCMP_OGT:
-      case CmpInst::FCMP_UGT:
-      case CmpInst::ICMP_UGT:
-        Signed = false;
-        [[fallthrough]];
-      case CmpInst::ICMP_SGT:
-        Kind = BranchHint::GT;
-        break;
-      case CmpInst::FCMP_OGE:
-      case CmpInst::FCMP_UGE:
-      case CmpInst::ICMP_UGE:
-        Signed = false;
-        [[fallthrough]];
-      case CmpInst::ICMP_SGE:
-        Kind = BranchHint::GE;
-        break;
-      case CmpInst::FCMP_OLT:
-      case CmpInst::FCMP_ULT:
-      case CmpInst::ICMP_ULT:
-        Signed = false;
-        [[fallthrough]];
-      case CmpInst::ICMP_SLT:
-        Kind = BranchHint::LT;
-        break;
-      case CmpInst::FCMP_OLE:
-      case CmpInst::FCMP_ULE:
-      case CmpInst::ICMP_ULE:
-        Signed = false;
-        [[fallthrough]];
-      case CmpInst::ICMP_SLE:
-        Kind = BranchHint::LE;
-        break;
-      case CmpInst::FCMP_ONE:
-      case CmpInst::FCMP_UNE:
-      case CmpInst::ICMP_NE:
-        Kind = BranchHint::NE;
-        break;
-      default:
-        Kind = BranchHint::Invalid;
-        break;
-      }
-
-      if (DominatesCallback(Other)) {
-        for (auto *CmpUser : Cmp->users()) {
-          if (auto *BI = dyn_cast<BranchInst>(CmpUser)) {
-            BranchHint BHTrue = {Kind, Signed, Other,
-                                 GetBlockProfileCount(*BI, 0), -1};
-            BranchHint BHFalse = {GetNegated(Kind), Signed, Other,
-                                  GetBlockProfileCount(*BI, 1), -1};
-            BranchHints.push_back({BHTrue, BI->getSuccessor(0)});
-            BranchHints.push_back({BHFalse, BI->getSuccessor(1)});
-          }
-        }
-      }
-    }
-  }
-}
-
-std::array<Value *, 2> InputGenInstrumenter::getEmptyBranchHints() {
-  IRBuilder<> IRB(M.getContext());
-  return {Constant::getNullValue(IRB.getPtrTy()), IRB.getInt32(0)};
-}
-
-std::array<Value *, 2>
-InputGenInstrumenter::getBranchHints(Value *V, IRBuilderBase &IRB,
-                                     ValueToValueMapTy *VMap) {
-  if (!ClProvideBranchHints || !V)
-    return getEmptyBranchHints();
-
-  assert(((!isa<Argument>(V) && !VMap) || (isa<Argument>(V) && VMap)) &&
-         "Need to provide arg mapping only when getting branch hints for arg");
-
-  Function *F;
-  if (auto *Arg = dyn_cast<Argument>(V))
-    F = Arg->getParent();
-  else if (auto *I = dyn_cast<Instruction>(V))
-    F = I->getFunction();
-  else
-    llvm_unreachable(
-        "Branch hint called for value other than instruction or argument");
-
-  FunctionAnalysisManager &FAM =
-      MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
-  const DominatorTree &DT = FAM.getResult<DominatorTreeAnalysis>(*F);
-  const BlockFrequencyInfo &BFI = FAM.getResult<BlockFrequencyAnalysis>(*F);
-
-  std::function<bool(Value *)> DominatesCallback;
-  if (auto *Arg = dyn_cast<Argument>(V))
-    DominatesCallback = [Arg](Value *Other) -> bool {
-      // Arguments that appear earlier dominate (as we have already generated
-      // them
-      if (auto *OtherArg = dyn_cast<Argument>(Other))
-        return OtherArg->getArgNo() < Arg->getArgNo();
-      // Otherwise only constants and globals can dominate an argument
-      return isa<Constant>(Other) || isa<GlobalValue>(Other);
-    };
-  else if (auto *I = dyn_cast<Instruction>(V))
-    DominatesCallback = [&DT, I](Value *Other) -> bool {
-      return DT.dominates(Other, I->getIterator());
-    };
-  else
-    llvm_unreachable(
-        "Branch hint called for value other than instruction or argument");
-
-  SmallVector<BranchHintInfo> BranchHints;
-
-  findAllBranchValues(V, BranchHints, DominatesCallback, BFI);
-  std::sort(BranchHints.begin(), BranchHints.end(),
-            [](BranchHintInfo &A, BranchHintInfo &B) {
-              return A.BH.Frequency < B.BH.Frequency;
-            });
-
-  for (unsigned I = 0; I < BranchHints.size(); I++) {
-    for (unsigned J = 0; J < BranchHints.size(); J++) {
-      if (DT.properlyDominates(BranchHints[I].BB, BranchHints[J].BB) &&
-          (BranchHints[J].BH.Dominator == -1 ||
-           DT.properlyDominates(BranchHints[BranchHints[J].BH.Dominator].BB,
-                                BranchHints[I].BB)))
-        BranchHints[J].BH.Dominator = I;
-    }
-  }
-
-  IRBuilder<> IRBEntry(F->getContext());
-  IRBEntry.SetInsertPointPastAllocas(IRB.GetInsertPoint()->getFunction());
-
-  Value *Length = IRB.getInt32(BranchHints.size());
-  Value *Array;
-  if (BranchHints.size() == 0) {
-    Array = Constant::getNullValue(IRB.getPtrTy());
-  } else {
-    auto *StructTy = StructType::get(
-        F->getContext(), {IRB.getInt32Ty(), IRB.getInt8Ty(), IRB.getPtrTy(),
-                          IRB.getInt64Ty(), IRB.getInt32Ty()});
-    Array = IRBEntry.CreateAlloca(StructTy, Length);
-    for (unsigned I = 0; I < BranchHints.size(); I++) {
-      const auto &BH = BranchHints[I].BH;
-      Value *Struct = UndefValue::get(StructTy);
-      auto *ValAlloca = IRBEntry.CreateAlloca(BH.Val->getType());
-      Value *ToStore = BH.Val;
-      if (VMap && isa<Argument>(ToStore)) {
-        ToStore = (*VMap)[ToStore];
-        assert(ToStore);
-      }
-      IRB.CreateStore(ToStore, ValAlloca);
-      int Idx = 0;
-      Struct = IRB.CreateInsertValue(Struct, IRB.getInt32(BH.Kind), Idx++);
-      Struct = IRB.CreateInsertValue(Struct, IRB.getInt8(BH.Signed), Idx++);
-      Struct = IRB.CreateInsertValue(Struct, ValAlloca, Idx++);
-      Struct = IRB.CreateInsertValue(Struct, IRB.getInt64(BH.Frequency), Idx++);
-      Struct = IRB.CreateInsertValue(Struct, IRB.getInt32(BH.Dominator), Idx++);
-      IRB.CreateStore(Struct, IRB.CreateConstGEP1_64(StructTy, Array, I));
-    }
-  }
-  return {Array, Length};
+std::array<Value *, 1>
+InputGenInstrumenter::getRTInfo(Value *V, IRBuilderBase &IRB,
+                                ValueToValueMapTy *VMap) {
+  return {Constant::getNullValue(IRB.getPtrTy())};
 }
 
 void InputGenInstrumenter::recordValueUsingCallbacks(Module &M,
@@ -1789,7 +1567,7 @@ void InputGenInstrumenter::recordValueUsingCallbacks(Module &M,
       IRB.CreateIntrinsic(VoidTy, Intrinsic::trap, {});
     } else {
       SmallVector<Value *, 3> Args{getValueForInterface(IRB, V)};
-      auto BHs = getBranchHints(nullptr, IRB, nullptr);
+      auto BHs = getRTInfo(nullptr, IRB, nullptr);
       Args.insert(Args.end(), BHs.begin(), BHs.end());
       IRB.CreateCall(Fn, Args);
     }
@@ -1843,8 +1621,7 @@ Value *InputGenInstrumenter::constructTypeUsingCallbacks(
       return UndefValue::get(T);
     } else {
       return IRB.CreateAddrSpaceCast(
-          IRB.CreateCall(Fn, getBranchHints(ValueToReplace, IRB, VMap)),
-          OrigTy);
+          IRB.CreateCall(Fn, getRTInfo(ValueToReplace, IRB, VMap)), OrigTy);
     }
   }
 }

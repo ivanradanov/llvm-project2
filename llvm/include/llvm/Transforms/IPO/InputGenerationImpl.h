@@ -118,9 +118,8 @@ public:
   std::optional<InterestingMemoryAccess>
   isInterestingMemoryAccess(Instruction *I) const;
 
-  std::array<Value *, 2> getBranchHints(Value *V, IRBuilderBase &IRB,
-                                        ValueToValueMapTy *VMap = nullptr);
-  std::array<Value *, 2> getEmptyBranchHints();
+  std::array<Value *, 1> getRTInfo(Value *V, IRBuilderBase &IRB,
+                                   ValueToValueMapTy *VMap = nullptr);
   void declareProbeStackFuncs(Module &M);
   void instrumentCmp(ICmpInst *Cmp);
   void instrumentUnreachable(UnreachableInst *Unreachable);
