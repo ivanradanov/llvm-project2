@@ -78,6 +78,7 @@ def construct_minimized_file(output_file, rt, embedded_input, minimized_func):
         print(embedded_input, file=output_file)
         print('// =========== EMBEDDED INPUT END ===========\n', file=output_file)
         print('#define INPUT_REPLAY_EMBEDDED_INPUT\n', file=output_file)
+    print('#define INPUT_REPLAY_EMBEDDED_SOURCE\n', file=output_file)
     print(rt_post, file=output_file)
 
 

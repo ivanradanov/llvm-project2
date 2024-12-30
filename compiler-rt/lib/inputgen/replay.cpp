@@ -65,8 +65,13 @@ template <typename T> T getNewValue() {
 }
 
 extern "C" {
+#ifdef INPUT_REPLAY_EMBEDDED_SOURCE
+VoidPtrTy __inputrun_function_pointers[] = {};
+uint32_t __inputrun_num_function_pointers = 0;
+#else
 extern VoidPtrTy __inputrun_function_pointers[];
 extern uint32_t __inputrun_num_function_pointers;
+#endif
 
 void __inputrun_unreachable(int32_t No, const char *Name) {
   printf("Reached unreachable %i due to '%s'\n", No, Name ? Name : "n/a");
@@ -153,54 +158,48 @@ struct InputRecordObjectTracker {
   }
 };
 
-#ifdef INPUT_REPLAY_EMBEDDED_INPUT
-VoidPtrTy __inputrun_function_pointers[] = {};
-#endif
+static std::optional<std::string> getOpt(int argc, char **argv,
+                                         std::string opt) {
+  char **end = argv + argc;
+  char **found = std::find(argv, end, opt);
+  if (found == end || found + 1 == end)
+    return {};
+  return *(found + 1);
+}
 
 int main(int argc, char **argv) {
 #ifdef INPUT_REPLAY_EMBEDDED_INPUT
-
   std::string Str((char *)__inputgen_embedded_input,
                   __inputgen_embedded_input_len);
   std::istringstream Input(Str, std::ios::binary);
-  std::string FuncName = ("__inputrun_entry");
-
+  std::cerr << "Replay embedded input" << std::endl;
 #else
-  if (argc != 4 && argc != 5 && argc != 2) {
-    std::cerr << "Wrong usage." << std::endl;
-    return 1;
+  auto InputName = getOpt(argc, argv, "--input");
+  if (!InputName) {
+    std::cerr << "`--input' option not specified." << std::endl;
+    exit(1);
   }
+  std::cerr << "Replay " << *InputName << std::endl;
 
-  char *InputName = argv[1];
-  std::string FuncName = ("__inputrun_entry");
-  if (argc == 4) {
-    std::string Type = argv[2];
-    if (Type == "--name") {
-      FuncName += "___inputgen_renamed_";
-      FuncName += argv[3];
-    } else {
-      std::cerr << "Wrong usage." << std::endl;
-      abort();
-    }
+  std::ifstream Input(*InputName, std::ios::in | std::ios::binary);
+#endif
+
+#ifdef INPUT_REPLAY_EMBEDDED_SOURCE
+#else
+  auto FuncNameOpt = getOpt(argc, argv, "--entry-func");
+  std::string FuncName;
+  if (!FuncNameOpt) {
+    std::cerr << "`--entry-func' option not specified, using default "
+                 "`__inputrun_entry'"
+              << std::endl;
+    FuncName = "__inputrun_entry";
+  } else {
+    FuncName = *FuncNameOpt;
   }
-  if (argc == 5) {
-    std::string Type = argv[2];
-    if (Type == "--file") {
-      FuncName += "___inputgen_renamed_";
-      FuncName += getFunctionNameFromFile(argv[3], argv[4]);
-    } else {
-      std::cerr << "Wrong usage." << std::endl;
-      abort();
-    }
-  }
-
-  printf("Replay %s\n", InputName);
-
-  INPUTGEN_TIMER_START(IRInitialization);
-
-  std::ifstream Input(InputName, std::ios::in | std::ios::binary);
 
 #endif
+
+  INPUTGEN_TIMER_START(IRInitialization);
 
   auto Magic = readV<decltype(InputGenMagicNumber)>(Input);
   if (Magic != InputGenMagicNumber) {
@@ -412,7 +411,7 @@ int main(int argc, char **argv) {
 
   typedef void (*EntryFnType)(char *);
 
-#ifdef INPUT_REPLAY_EMBEDDED_INPUT
+#ifdef INPUT_REPLAY_EMBEDDED_SOURCE
   EntryFnType EntryFn = __inputrun_entry;
 #else
   void *Handle = dlopen(NULL, RTLD_NOW);
@@ -436,7 +435,7 @@ int main(int argc, char **argv) {
   EntryFn(ccast(ArgsMemory));
   INPUTGEN_TIMER_END(IRRun);
 
-#ifndef INPUT_REPLAY_EMBEDDED_INPUT
+#ifndef INPUT_REPLAY_EMBEDDED_SOURCE
   dlclose(Handle);
 #endif
 

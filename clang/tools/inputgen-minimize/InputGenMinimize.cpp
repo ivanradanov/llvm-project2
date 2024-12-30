@@ -35,6 +35,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace clang::driver;
 using namespace clang::tooling;
@@ -44,6 +45,57 @@ static cl::OptionCategory InputGenMinimizeCat("inputgen-minimize options");
 
 namespace {
 using namespace clang;
+
+class DeclPrinter : public ASTConsumer,
+                    public RecursiveASTVisitor<DeclPrinter> {
+  typedef RecursiveASTVisitor<DeclPrinter> base;
+
+public:
+  raw_ostream &Out;
+  DeclPrinter(raw_ostream &Out) : Out(Out) {}
+
+  bool TraverseDecl(Decl *D) {
+    llvm::errs() << "Traversing\n";
+    D->dumpColor();
+    auto res = base::TraverseDecl(D);
+    if (D->isFunctionOrFunctionTemplate())
+      printSource(D);
+    return res;
+  }
+
+  bool VisitStmt(Stmt *S) {
+    llvm::errs() << "Visit\n";
+    return true;
+  }
+
+  bool VisitCallExpr(CallExpr *E) {
+    Decl *FD = E->getCalleeDecl();
+    TraverseDecl(FD);
+    // TODO if we don't have access to the body there are a couple of options:
+    //
+    //   1. There are multiple decl's and we dont have the one with the body?
+    //
+    //   2. The definition is in another file? We would like integration with
+    //   compile_commands.json and to be able to track those down.
+    //
+    //   3. The definition is in an external library - in that case we would
+    //   like to generate the correct #include for it or just print the
+    //   declaration.
+    return true;
+  }
+
+private:
+  void printSource(Decl *D) {
+    // TODO if possible try to omit the inputgen attr
+    PrintingPolicy Policy(D->getASTContext().getLangOpts());
+    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
+
+    // For some reason we don't get newline or semicolon after printinf a
+    // declaration
+    if (!D->hasBody())
+      Out << ";\n";
+  }
+};
 
 class ASTMinimizer : public ASTConsumer,
                      public RecursiveASTVisitor<ASTMinimizer> {
@@ -91,6 +143,11 @@ public:
     return true;
   }
 
+  void PrintWithDeps(Decl *D) {
+    DeclPrinter P(Out);
+    P.TraverseDecl(D);
+  }
+
   bool TraverseDecl(Decl *D) {
     if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
       if (FD->hasAttr<InputGenEntryAttr>()) {
@@ -101,7 +158,7 @@ public:
         }
         Out << "\n";
         Out << "// =========== RECORDED FUNCTION BEGIN ===========\n";
-        print(D);
+        PrintWithDeps(D);
         Out << "// =========== RECORDED FUNCTION END ===========\n";
         Out << "\n";
         Out << "// =========== GENERATED ENTRY POINT BEGIN ===========\n";

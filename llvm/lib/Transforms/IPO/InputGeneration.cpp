@@ -635,7 +635,7 @@ void createProfileFileNameVar(Module &M, Triple &TT,
 bool InputGenInstrumenter::instrumentClEntryPoint(Module &M) {
   Function *EntryPoint = nullptr;
   for (auto &F : M) {
-    if (F.hasFnAttribute("inputgen_entry")) {
+    if (F.hasFnAttribute(llvm::Attribute::InputGenEntry)) {
       if (EntryPoint)
         llvm::errs() << "Multiple inputgen entry points found, ignoring "
                      << EntryPoint->getName() << "\n";

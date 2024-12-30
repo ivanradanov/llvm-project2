@@ -21,22 +21,25 @@
 
 #define N 10
 
+int bar(int a, int b) {
+    return a + b;
+}
+
 __attribute__((inputgen_entry))
 int foo(int *a, int *b, int *c, int n) {
   int sum = 0;
   for (int i = 0; i < n; i++) {
-    c[i] = a[i] + b[i] * n;
+    c[i] = bar(a[i], b[i] * n);
     sum += c[i];
   }
   printf("Sum: %d\n", sum);
   return sum;
 }
 
-int b[N];
-
 int main() {
   int *a = (int *)malloc(N * sizeof(*a));
-  int *c = (int *)alloca(N * sizeof(*c));
+  int *b = (int *)malloc(N * sizeof(*b));
+  int *c = (int *)malloc(N * sizeof(*c));
 
   for (int i = 0; i < N; i++) {
     a[i] = b[i] = i % 10;
@@ -46,5 +49,7 @@ int main() {
   printf("Output: %d\n", d);
 
   free(a);
+  free(b);
+  free(c);
   return 0;
 }

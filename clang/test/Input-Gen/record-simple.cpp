@@ -1,8 +1,17 @@
 // RUN: mkdir -p %t
 // RUN: %clangxx -g -O2 %s -mllvm --input-gen-mode=record -o %t/record.a.out -linputgen.record
 // RUN: %clangxx -g -O2 %s -mllvm --input-gen-mode=replay -rdynamic -o %t/replay.a.out -linputgen.replay
+// RUN: rm %t/input.bin || true
 // RUN: INPUT_RECORD_FILENAME=%t/input.bin %t/record.a.out | FileCheck %s
-// RUN: %t/replay.a.out %t/input.bin | FileCheck %s
+// RUN: %t/replay.a.out --input %t/input.bin | FileCheck %s
+
+// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --embed-input-file %t/input.bin --output-file %t/minimized.cpp
+// RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
+// RUN: %t/minimized.a.out | FileCheck %s
+
+// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --output-file %t/minimized.cpp
+// RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
+// RUN: %t/minimized.a.out --input %t/input.bin | FileCheck %s
 
 // CHECK: Sum: 495
 
@@ -12,8 +21,6 @@
 
 #define N 10
 
-// FIXME we should make sure the function is noinline without requiring the
-// programmer to do this
 __attribute__((inputgen_entry))
 int foo(int *a, int *b, int *c, int n) {
   int sum = 0;
