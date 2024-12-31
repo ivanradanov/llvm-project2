@@ -133,6 +133,7 @@ public:
     HandledTypes.insert(T);
     INPUTGEN_DEBUG(llvm::errs() << "Used Type\n"; T->dump(););
 
+    // TODO is that all types that can have decls?
     if (const TypedefType *TT = T->getAs<TypedefType>()) {
       GatherDeps(TT->getDecl());
     } else if (const RecordType *TT = T->getAs<RecordType>()) {
@@ -140,19 +141,6 @@ public:
     } else if (const EnumType *TT = T->getAs<EnumType>()) {
       GatherDeps(TT->getDecl());
     }
-    // else if (const PointerType *TT = T->getAs<PointerType>()) {
-    //   InsertType(TT->getPointeeType().getTypePtr());
-    // } else if (const ReferenceType *TT = T->getAs<ReferenceType>()) {
-    //   InsertType(TT->getPointeeType().getTypePtr());
-    //   // } else if (const ArrayType *TT = T->getAs<ArrayType>()) {
-    //   //   InsertType(TT->getElementType().getTypePtr());
-    // } else if (const ElaboratedType *TT = T->getAs<ElaboratedType>()) {
-    //   InsertType(TT->getNamedType());
-    // } else if (const FunctionProtoType *TT = T->getAs<FunctionProtoType>()) {
-    //   InsertType(TT->getReturnType());
-    //   for (auto &TT : TT->getParamTypes())
-    //     InsertType(TT);
-    // }
   }
 
   bool VisitType(Type *T) {
