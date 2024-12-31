@@ -55,6 +55,10 @@ using namespace clang;
       return false;                                                            \
   } while (false)
 
+#define INPUTGEN_DEBUG(CODE)                                                   \
+  do {                                                                         \
+  } while (0)
+
 class DepGatherer : public ASTConsumer,
                     public RecursiveASTVisitor<DepGatherer> {
   typedef RecursiveASTVisitor<DepGatherer> base;
@@ -80,7 +84,7 @@ public:
     for (auto &Parent : Parents) {
       if (const Decl *D = Parent.get<Decl>()) {
         if (ShouldTraverse(D))
-          base::TraverseDecl(const_cast<Decl *>(D));
+          GatherDeps(const_cast<Decl *>(D));
         else
           Deps.insert(D);
       }
@@ -93,8 +97,7 @@ public:
     if (!InsertDep(D))
       return true;
 
-    llvm::errs() << "Traversing\n";
-    D->dumpColor();
+    INPUTGEN_DEBUG(llvm::errs() << "Traversing\n"; D->dumpColor(););
 
     return base::TraverseDecl(D);
   }
@@ -116,21 +119,19 @@ public:
 
   bool GatherDeps(Decl *D) {
     for (Decl *RD : D->redecls()) {
-      llvm::errs() << "Redecl\n";
-      RD->dumpColor();
+      INPUTGEN_DEBUG(llvm::errs() << "Redecl\n"; RD->dumpColor(););
       TRY_TO(GatherDepsFromThisDecl(RD));
     }
     return true;
   }
 
   std::set<const Type *> HandledTypes;
-  void InsertType(QualType QT) { InsertType(QT.getTypePtr()); }
-  void InsertType(const Type *T) {
+  void GatherDeps(QualType QT) { GatherDeps(QT.getTypePtr()); }
+  void GatherDeps(const Type *T) {
     if (HandledTypes.count(T))
       return;
     HandledTypes.insert(T);
-    llvm::errs() << "Used Type\n";
-    T->dump();
+    INPUTGEN_DEBUG(llvm::errs() << "Used Type\n"; T->dump(););
 
     if (const TypedefType *TT = T->getAs<TypedefType>()) {
       GatherDeps(TT->getDecl());
@@ -155,8 +156,8 @@ public:
   }
 
   bool VisitType(Type *T) {
-    llvm::errs() << "Traverse Type\n";
-    T->dump();
+    INPUTGEN_DEBUG(llvm::errs() << "Traverse Type\n");
+    GatherDeps(T);
     return true;
   }
 
@@ -166,8 +167,7 @@ public:
   }
 
   bool VisitStmt(Stmt *S) {
-    llvm::errs() << "Visit\n";
-    S->dumpColor();
+    INPUTGEN_DEBUG(llvm::errs() << "Visit\n"; S->dumpColor(););
     return true;
   }
 
