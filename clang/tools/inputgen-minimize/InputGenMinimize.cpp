@@ -56,8 +56,11 @@ using namespace clang;
       return false;                                                            \
   } while (false)
 
+static constexpr bool EnableDebugging = false;
 #define INPUTGEN_DEBUG(CODE)                                                   \
   do {                                                                         \
+    if (EnableDebugging)                                                       \
+      CODE;                                                                    \
   } while (0)
 
 class DepGatherer : public ASTConsumer,
@@ -68,11 +71,11 @@ public:
   std::set<const Decl *> &Deps;
   DepGatherer(std::set<const Decl *> &Deps) : Deps(Deps) {}
 
-  // We should not be traversing the contents of namespace or translation
-  // units as we are trying to minimize their contents and we do not depend on
-  // their entirety.
+  // We should not be traversing the contents of namespace or translation units
+  // as we are trying to minimize their contents and we do not depend on their
+  // entirety. Notably it does not include RecordDecl (structs, classes).
   bool ShouldTraverse(const Decl *D) {
-    return !isa<NamespaceDecl, TranslationUnitDecl>(D);
+    return !isa<NamespaceDecl, LinkageSpecDecl, TranslationUnitDecl>(D);
   }
 
   bool InsertDep(Decl *D) {
@@ -103,6 +106,11 @@ public:
     return base::TraverseDecl(D);
   }
 
+  bool VisitMemberExpr(MemberExpr *E) {
+    GatherDeps(E->getMemberDecl());
+    return true;
+  }
+
   bool VisitTypedefDecl(TypedefDecl *D) {
     TRY_TO(TraverseType(D->getUnderlyingType()));
     return true;
@@ -113,7 +121,7 @@ public:
     return true;
   }
 
-  bool VisitDecls(Decl *D) {
+  bool VisitDecl(Decl *D) {
     TRY_TO(GatherDeps(D));
     return true;
   }
