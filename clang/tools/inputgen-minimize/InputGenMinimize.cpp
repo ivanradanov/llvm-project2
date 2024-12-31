@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/PrettyPrinter.h"
@@ -56,11 +57,12 @@ using namespace clang;
       return false;                                                            \
   } while (false)
 
-static constexpr bool EnableDebugging = false;
+static constexpr bool EnableDebugging = true;
 #define INPUTGEN_DEBUG(CODE)                                                   \
   do {                                                                         \
-    if (EnableDebugging)                                                       \
+    if (EnableDebugging) {                                                     \
       CODE;                                                                    \
+    }                                                                          \
   } while (0)
 
 class DepGatherer : public ASTConsumer,
@@ -78,22 +80,29 @@ public:
     return !isa<NamespaceDecl, LinkageSpecDecl, TranslationUnitDecl>(D);
   }
 
+  template <typename T> void InsertParents(T *Node, ASTContext &C) {
+    const auto &Parents = C.template getParents<T>(*Node);
+    for (auto &Parent : Parents) {
+      if (const Decl *D = Parent.template get<Decl>()) {
+        INPUTGEN_DEBUG(llvm::dbgs() << "Parent Decl\n"; D->dumpColor());
+        if (ShouldTraverse(D)) {
+          INPUTGEN_DEBUG(llvm::dbgs() << "Should Traverse\n");
+          GatherDeps(const_cast<Decl *>(D));
+        } else {
+          INPUTGEN_DEBUG(llvm::dbgs() << "No Traverse\n");
+          Deps.insert(D);
+        }
+        InsertParents(D, C);
+      }
+    }
+  }
+
   bool InsertDep(Decl *D) {
     if (Deps.count(D))
       return false;
-
     Deps.insert(D);
-
-    const auto &Parents = D->getASTContext().getParents<Decl>(*D);
-    for (auto &Parent : Parents) {
-      if (const Decl *D = Parent.get<Decl>()) {
-        if (ShouldTraverse(D))
-          GatherDeps(const_cast<Decl *>(D));
-        else
-          Deps.insert(D);
-      }
-    }
-
+    INPUTGEN_DEBUG(llvm::dbgs() << "Inserted\n"; D->dumpColor());
+    InsertParents(D, D->getASTContext());
     return true;
   }
 
