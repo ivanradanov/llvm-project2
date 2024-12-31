@@ -49,6 +49,12 @@ static llvm::cl::OptionCategory
 namespace {
 using namespace clang;
 
+#define TRY_TO(CALL_EXPR)                                                      \
+  do {                                                                         \
+    if (CALL_EXPR)                                                             \
+      return false;                                                            \
+  } while (false)
+
 class DepGatherer : public ASTConsumer,
                     public RecursiveASTVisitor<DepGatherer> {
   typedef RecursiveASTVisitor<DepGatherer> base;
@@ -57,9 +63,12 @@ public:
   std::set<const Decl *> &Deps;
   DepGatherer(std::set<const Decl *> &Deps) : Deps(Deps) {}
 
-  // Decl which cannot be broken up further. e.g. we can only include parts of
-  // a namespace that we need but we cannot only partially include a class
-  bool IsTopLevelDecl(const Decl *D) { return !D->getParentFunctionOrMethod(); }
+  // We should not be traversing the contents of namespace or translation
+  // units as we are trying to minimize their contents and we do not depend on
+  // their entirety.
+  bool ShouldTraverse(const Decl *D) {
+    return !isa<NamespaceDecl, TranslationUnitDecl>(D);
+  }
 
   bool InsertDep(Decl *D) {
     if (Deps.count(D))
@@ -68,11 +77,14 @@ public:
     Deps.insert(D);
 
     const auto &Parents = D->getASTContext().getParents<Decl>(*D);
-    for (auto &Parent : Parents)
-      if (const Decl *D = Parent.get<Decl>())
-        if (IsTopLevelDecl(D))
+    for (auto &Parent : Parents) {
+      if (const Decl *D = Parent.get<Decl>()) {
+        if (ShouldTraverse(D))
           TraverseDecl(const_cast<Decl *>(D));
-    Deps.insert(D);
+        else
+          Deps.insert(D);
+      }
+    }
 
     return true;
   }
@@ -87,6 +99,16 @@ public:
     return base::TraverseDecl(D);
   }
 
+  bool TraverseTypedefDecl(TypedefDecl *D) {
+    TRY_TO(TraverseType(D->getUnderlyingType()));
+    return base::TraverseTypedefDecl(D);
+  }
+
+  bool TraverseTypeAliasDecl(TypeAliasDecl *D) {
+    TRY_TO(TraverseType(D->getUnderlyingType()));
+    return base::TraverseTypeAliasDecl(D);
+  }
+
   bool TraverseDecl(Decl *D) {
     for (Decl *RD : D->redecls()) {
       llvm::errs() << "Redecl\n";
@@ -94,7 +116,7 @@ public:
       if (!TraverseDeclOnly(RD))
         return false;
     }
-    return true;
+    return base::TraverseDecl(D);
   }
 
   std::set<const Type *> HandledTypes;
@@ -112,37 +134,47 @@ public:
       TraverseDecl(TT->getDecl());
     } else if (const EnumType *TT = T->getAs<EnumType>()) {
       TraverseDecl(TT->getDecl());
-    } else if (const PointerType *TT = T->getAs<PointerType>()) {
-      InsertType(TT->getPointeeType().getTypePtr());
-    } else if (const ReferenceType *TT = T->getAs<ReferenceType>()) {
-      InsertType(TT->getPointeeType().getTypePtr());
-      // } else if (const ArrayType *TT = T->getAs<ArrayType>()) {
-      //   InsertType(TT->getElementType().getTypePtr());
-    } else if (const ElaboratedType *TT = T->getAs<ElaboratedType>()) {
-      InsertType(TT->getNamedType());
-    } else if (const FunctionProtoType *TT = T->getAs<FunctionProtoType>()) {
-      InsertType(TT->getReturnType());
-      for (auto &TT : TT->getParamTypes())
-        InsertType(TT);
     }
+    // else if (const PointerType *TT = T->getAs<PointerType>()) {
+    //   InsertType(TT->getPointeeType().getTypePtr());
+    // } else if (const ReferenceType *TT = T->getAs<ReferenceType>()) {
+    //   InsertType(TT->getPointeeType().getTypePtr());
+    //   // } else if (const ArrayType *TT = T->getAs<ArrayType>()) {
+    //   //   InsertType(TT->getElementType().getTypePtr());
+    // } else if (const ElaboratedType *TT = T->getAs<ElaboratedType>()) {
+    //   InsertType(TT->getNamedType());
+    // } else if (const FunctionProtoType *TT = T->getAs<FunctionProtoType>()) {
+    //   InsertType(TT->getReturnType());
+    //   for (auto &TT : TT->getParamTypes())
+    //     InsertType(TT);
+    // }
+  }
+
+  bool TraverseType(QualType QT) {
+    llvm::errs() << "Traverse Type\n";
+    QT.dump();
+    InsertType(QT);
+    return base::TraverseType(QT);
   }
 
   bool VisitValueDecl(ValueDecl *D) {
-    InsertType(D->getType());
-    return true;
+    TraverseType(D->getType());
+    return base::VisitValueDecl(D);
   }
 
   bool VisitStmt(Stmt *S) {
     llvm::errs() << "Visit\n";
-    return true;
+    S->dumpColor();
+    return base::VisitStmt(S);
   }
 
   bool VisitCallExpr(CallExpr *E) {
     Decl *FD = E->getCalleeDecl();
-    TraverseDecl(FD);
+    TRY_TO(TraverseDecl(FD));
     // TODO if we don't have access to the body there are a couple of options:
     //
-    //   1. There are multiple decl's and we dont have the one with the body?
+    //   1. There are multiple decl's and we dont have the one with the body? -
+    //   DONE
     //
     //   2. The definition is in another file? We would like integration with
     //   compile_commands.json and to be able to track those down.
@@ -154,7 +186,7 @@ public:
     //   Looks like there is a way to merge AST's together:
     //   https://clang.llvm.org/docs/LibASTImporter.html can we merge in all
     //   ASTs and then print out the extracted c/c++ from there?
-    return true;
+    return base::VisitCallExpr(E);
   }
 
 private:
@@ -174,7 +206,6 @@ public:
   void HandleTranslationUnit(ASTContext &Context) override {
     TUD = Context.getTranslationUnitDecl();
     TraverseDecl(TUD);
-    print(TUD);
   }
 
   bool shouldWalkTypesOfTypeLocs() const { return false; }
