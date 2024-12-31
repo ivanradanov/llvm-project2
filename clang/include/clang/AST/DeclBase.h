@@ -1235,7 +1235,8 @@ public:
   void print(raw_ostream &Out, unsigned Indentation = 0,
              bool PrintInstantiation = false) const;
   void print(raw_ostream &Out, const PrintingPolicy &Policy,
-             unsigned Indentation = 0, bool PrintInstantiation = false) const;
+             unsigned Indentation = 0, bool PrintInstantiation = false,
+             std::function<bool(const Decl *)> *Filter = nullptr) const;
   static void printGroup(Decl** Begin, unsigned NumDecls,
                          raw_ostream &Out, const PrintingPolicy &Policy,
                          unsigned Indentation = 0);
