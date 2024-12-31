@@ -98,7 +98,7 @@ public:
     if (!InsertDep(D))
       return true;
 
-    INPUTGEN_DEBUG(llvm::errs() << "Traversing\n"; D->dumpColor(););
+    INPUTGEN_DEBUG(llvm::dbgs() << "Traversing\n"; D->dumpColor(););
 
     return base::TraverseDecl(D);
   }
@@ -138,7 +138,7 @@ public:
       return true;
 
     for (Decl *RD : D->redecls()) {
-      INPUTGEN_DEBUG(llvm::errs() << "Redecl\n"; RD->dumpColor(););
+      INPUTGEN_DEBUG(llvm::dbgs() << "Redecl\n"; RD->dumpColor(););
       TRY_TO(GatherDepsFromThisDecl(RD));
     }
     return true;
@@ -150,7 +150,7 @@ public:
     if (HandledTypes.count(T))
       return;
     HandledTypes.insert(T);
-    INPUTGEN_DEBUG(llvm::errs() << "Used Type\n"; T->dump(););
+    INPUTGEN_DEBUG(llvm::dbgs() << "Used Type\n"; T->dump(););
 
     // TODO is that all types that can have decls?
     if (const TypedefType *TT = T->getAs<TypedefType>()) {
@@ -163,7 +163,7 @@ public:
   }
 
   bool VisitType(Type *T) {
-    INPUTGEN_DEBUG(llvm::errs() << "Traverse Type\n");
+    INPUTGEN_DEBUG(llvm::dbgs() << "Traverse Type\n");
     GatherDeps(T);
     return true;
   }
@@ -174,12 +174,12 @@ public:
   }
 
   bool VisitStmt(Stmt *S) {
-    INPUTGEN_DEBUG(llvm::errs() << "Visit\n"; S->dumpColor(););
+    INPUTGEN_DEBUG(llvm::dbgs() << "Visit\n"; S->dumpColor(););
     return true;
   }
 
   bool VisitDeclRefExpr(DeclRefExpr *E) {
-    llvm::errs() << "Visit DeclRefExpr\n";
+    INPUTGEN_DEBUG(llvm::dbgs() << "Visit DeclRefExpr\n");
     GatherDeps(E->getDecl());
     return true;
   }
