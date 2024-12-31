@@ -21,6 +21,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -117,7 +118,25 @@ public:
     return true;
   }
 
+  bool ShouldGatherDeps(Decl *D) {
+    SourceLocation Loc = D->getLocation();
+    auto &SM = D->getASTContext().getSourceManager();
+    auto FID = SM.getFileID(Loc);
+    if (FID.isInvalid())
+      return true;
+    const FileEntry *FE = SM.getFileEntryForID(FID);
+    if (!FE)
+      return true;
+    StringRef Name = FE->tryGetRealPathName();
+    if (Name.starts_with("/usr/include"))
+      return false;
+    return true;
+  }
+
   bool GatherDeps(Decl *D) {
+    if (!ShouldGatherDeps(D))
+      return true;
+
     for (Decl *RD : D->redecls()) {
       INPUTGEN_DEBUG(llvm::errs() << "Redecl\n"; RD->dumpColor(););
       TRY_TO(GatherDepsFromThisDecl(RD));
@@ -166,14 +185,13 @@ public:
   }
 
   bool VisitCallExpr(CallExpr *E) {
-    Decl *FD = E->getCalleeDecl();
-    // TRY_TO(GatherDeps(FD));
+    // TODO we would like to take care of indirect calls. we should probably
+    // either gather all functions matching the signature or instrument indirect
+    // calls and use a recording run to see which functions were used.
+
     //  TODO if we don't have access to the body there are a couple of options:
     //
-    //    1. There are multiple decl's and we dont have the one with the body? -
-    //    DONE
-    //
-    //    2. The definition is in another file? We would like integration with
+    //    1. The definition is in another file? We would like integration with
     //    compile_commands.json and to be able to track those down.
     //
     //    3. The definition is in an external library - in that case we would
