@@ -57,7 +57,7 @@ using namespace clang;
       return false;                                                            \
   } while (false)
 
-static constexpr bool EnableDebugging = true;
+static constexpr bool EnableDebugging = false;
 #define INPUTGEN_DEBUG(CODE)                                                   \
   do {                                                                         \
     if (EnableDebugging) {                                                     \
