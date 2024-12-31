@@ -51,7 +51,7 @@ using namespace clang;
 
 #define TRY_TO(CALL_EXPR)                                                      \
   do {                                                                         \
-    if (CALL_EXPR)                                                             \
+    if (!CALL_EXPR)                                                            \
       return false;                                                            \
   } while (false)
 
@@ -80,7 +80,7 @@ public:
     for (auto &Parent : Parents) {
       if (const Decl *D = Parent.get<Decl>()) {
         if (ShouldTraverse(D))
-          TraverseDecl(const_cast<Decl *>(D));
+          base::TraverseDecl(const_cast<Decl *>(D));
         else
           Deps.insert(D);
       }
@@ -89,7 +89,7 @@ public:
     return true;
   }
 
-  bool TraverseDeclOnly(Decl *D) {
+  bool GatherDepsFromThisDecl(Decl *D) {
     if (!InsertDep(D))
       return true;
 
@@ -99,24 +99,28 @@ public:
     return base::TraverseDecl(D);
   }
 
-  bool TraverseTypedefDecl(TypedefDecl *D) {
+  bool VisitTypedefDecl(TypedefDecl *D) {
     TRY_TO(TraverseType(D->getUnderlyingType()));
-    return base::TraverseTypedefDecl(D);
+    return true;
   }
 
-  bool TraverseTypeAliasDecl(TypeAliasDecl *D) {
+  bool VisitTypeAliasDecl(TypeAliasDecl *D) {
     TRY_TO(TraverseType(D->getUnderlyingType()));
-    return base::TraverseTypeAliasDecl(D);
+    return true;
   }
 
-  bool TraverseDecl(Decl *D) {
+  bool VisitDecls(Decl *D) {
+    TRY_TO(GatherDeps(D));
+    return true;
+  }
+
+  bool GatherDeps(Decl *D) {
     for (Decl *RD : D->redecls()) {
       llvm::errs() << "Redecl\n";
       RD->dumpColor();
-      if (!TraverseDeclOnly(RD))
-        return false;
+      TRY_TO(GatherDepsFromThisDecl(RD));
     }
-    return base::TraverseDecl(D);
+    return true;
   }
 
   std::set<const Type *> HandledTypes;
@@ -129,11 +133,11 @@ public:
     T->dump();
 
     if (const TypedefType *TT = T->getAs<TypedefType>()) {
-      TraverseDecl(TT->getDecl());
+      GatherDeps(TT->getDecl());
     } else if (const RecordType *TT = T->getAs<RecordType>()) {
-      TraverseDecl(TT->getDecl());
+      GatherDeps(TT->getDecl());
     } else if (const EnumType *TT = T->getAs<EnumType>()) {
-      TraverseDecl(TT->getDecl());
+      GatherDeps(TT->getDecl());
     }
     // else if (const PointerType *TT = T->getAs<PointerType>()) {
     //   InsertType(TT->getPointeeType().getTypePtr());
@@ -150,43 +154,48 @@ public:
     // }
   }
 
-  bool TraverseType(QualType QT) {
+  bool VisitType(Type *T) {
     llvm::errs() << "Traverse Type\n";
-    QT.dump();
-    InsertType(QT);
-    return base::TraverseType(QT);
+    T->dump();
+    return true;
   }
 
   bool VisitValueDecl(ValueDecl *D) {
-    TraverseType(D->getType());
+    TRY_TO(TraverseType(D->getType()));
     return base::VisitValueDecl(D);
   }
 
   bool VisitStmt(Stmt *S) {
     llvm::errs() << "Visit\n";
     S->dumpColor();
-    return base::VisitStmt(S);
+    return true;
+  }
+
+  bool VisitDeclRefExpr(DeclRefExpr *E) {
+    llvm::errs() << "Visit DeclRefExpr\n";
+    GatherDeps(E->getDecl());
+    return true;
   }
 
   bool VisitCallExpr(CallExpr *E) {
     Decl *FD = E->getCalleeDecl();
-    TRY_TO(TraverseDecl(FD));
-    // TODO if we don't have access to the body there are a couple of options:
+    // TRY_TO(GatherDeps(FD));
+    //  TODO if we don't have access to the body there are a couple of options:
     //
-    //   1. There are multiple decl's and we dont have the one with the body? -
-    //   DONE
+    //    1. There are multiple decl's and we dont have the one with the body? -
+    //    DONE
     //
-    //   2. The definition is in another file? We would like integration with
-    //   compile_commands.json and to be able to track those down.
+    //    2. The definition is in another file? We would like integration with
+    //    compile_commands.json and to be able to track those down.
     //
-    //   3. The definition is in an external library - in that case we would
-    //   like to generate the correct #include for it or just print the
-    //   declaration.
+    //    3. The definition is in an external library - in that case we would
+    //    like to generate the correct #include for it or just print the
+    //    declaration.
     //
-    //   Looks like there is a way to merge AST's together:
-    //   https://clang.llvm.org/docs/LibASTImporter.html can we merge in all
-    //   ASTs and then print out the extracted c/c++ from there?
-    return base::VisitCallExpr(E);
+    //    Looks like there is a way to merge AST's together:
+    //    https://clang.llvm.org/docs/LibASTImporter.html can we merge in all
+    //    ASTs and then print out the extracted c/c++ from there?
+    return true;
   }
 
 private:
@@ -241,7 +250,7 @@ public:
   void PrintWithDeps(Decl *D) {
     std::set<const Decl *> Deps;
     DepGatherer DG(Deps);
-    DG.TraverseDecl(D);
+    DG.GatherDeps(D);
 
     // TODO if possible try to omit the inputgen attr
     PrintingPolicy Policy(D->getASTContext().getLangOpts());
