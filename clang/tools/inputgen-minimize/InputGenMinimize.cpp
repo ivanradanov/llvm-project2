@@ -16,9 +16,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/Decl.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/AST/Type.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -40,9 +42,9 @@
 
 using namespace clang::driver;
 using namespace clang::tooling;
-using namespace llvm;
 
-static cl::OptionCategory InputGenMinimizeCat("inputgen-minimize options");
+static llvm::cl::OptionCategory
+    InputGenMinimizeCat("inputgen-minimize options");
 
 namespace {
 using namespace clang;
@@ -55,28 +57,79 @@ public:
   std::set<const Decl *> &Deps;
   DepGatherer(std::set<const Decl *> &Deps) : Deps(Deps) {}
 
-  void InsertDep(Decl *D) {
+  // Decl which cannot be broken up further. e.g. we can only include parts of
+  // a namespace that we need but we cannot only partially include a class
+  bool IsTopLevelDecl(const Decl *D) { return !D->getParentFunctionOrMethod(); }
+
+  bool InsertDep(Decl *D) {
     if (Deps.count(D))
-      return;
+      return false;
 
     Deps.insert(D);
 
     const auto &Parents = D->getASTContext().getParents<Decl>(*D);
     for (auto &Parent : Parents)
       if (const Decl *D = Parent.get<Decl>())
-        Deps.insert(D);
+        if (IsTopLevelDecl(D))
+          TraverseDecl(const_cast<Decl *>(D));
+    Deps.insert(D);
 
-    for (auto *RD : D->redecls())
-      InsertDep(RD);
+    return true;
   }
 
-  bool TraverseDecl(Decl *D) {
-    InsertDep(D);
+  bool TraverseDeclOnly(Decl *D) {
+    if (!InsertDep(D))
+      return true;
 
     llvm::errs() << "Traversing\n";
     D->dumpColor();
 
     return base::TraverseDecl(D);
+  }
+
+  bool TraverseDecl(Decl *D) {
+    for (Decl *RD : D->redecls()) {
+      llvm::errs() << "Redecl\n";
+      RD->dumpColor();
+      if (!TraverseDeclOnly(RD))
+        return false;
+    }
+    return true;
+  }
+
+  std::set<const Type *> HandledTypes;
+  void InsertType(QualType QT) { InsertType(QT.getTypePtr()); }
+  void InsertType(const Type *T) {
+    if (HandledTypes.count(T))
+      return;
+    HandledTypes.insert(T);
+    llvm::errs() << "Used Type\n";
+    T->dump();
+
+    if (const TypedefType *TT = T->getAs<TypedefType>()) {
+      TraverseDecl(TT->getDecl());
+    } else if (const RecordType *TT = T->getAs<RecordType>()) {
+      TraverseDecl(TT->getDecl());
+    } else if (const EnumType *TT = T->getAs<EnumType>()) {
+      TraverseDecl(TT->getDecl());
+    } else if (const PointerType *TT = T->getAs<PointerType>()) {
+      InsertType(TT->getPointeeType().getTypePtr());
+    } else if (const ReferenceType *TT = T->getAs<ReferenceType>()) {
+      InsertType(TT->getPointeeType().getTypePtr());
+      // } else if (const ArrayType *TT = T->getAs<ArrayType>()) {
+      //   InsertType(TT->getElementType().getTypePtr());
+    } else if (const ElaboratedType *TT = T->getAs<ElaboratedType>()) {
+      InsertType(TT->getNamedType());
+    } else if (const FunctionProtoType *TT = T->getAs<FunctionProtoType>()) {
+      InsertType(TT->getReturnType());
+      for (auto &TT : TT->getParamTypes())
+        InsertType(TT);
+    }
+  }
+
+  bool VisitValueDecl(ValueDecl *D) {
+    InsertType(D->getType());
+    return true;
   }
 
   bool VisitStmt(Stmt *S) {
@@ -126,7 +179,7 @@ public:
 
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
-  bool generateEntryPoint(FunctionDecl *FD) {
+  void generateEntryPoint(FunctionDecl *FD) {
     PrintingPolicy Policy(FD->getASTContext().getLangOpts());
     std::string Indent = "  ";
 
@@ -152,7 +205,6 @@ public:
     Out << ");\n";
 
     Out << "}\n";
-    return true;
   }
 
   void PrintWithDeps(Decl *D) {
