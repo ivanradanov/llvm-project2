@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/ParentMapContext.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Driver/Options.h"
@@ -46,21 +47,36 @@ static cl::OptionCategory InputGenMinimizeCat("inputgen-minimize options");
 namespace {
 using namespace clang;
 
-class DeclPrinter : public ASTConsumer,
-                    public RecursiveASTVisitor<DeclPrinter> {
-  typedef RecursiveASTVisitor<DeclPrinter> base;
+class DepGatherer : public ASTConsumer,
+                    public RecursiveASTVisitor<DepGatherer> {
+  typedef RecursiveASTVisitor<DepGatherer> base;
 
 public:
-  raw_ostream &Out;
-  DeclPrinter(raw_ostream &Out) : Out(Out) {}
+  std::set<const Decl *> &Deps;
+  DepGatherer(std::set<const Decl *> &Deps) : Deps(Deps) {}
+
+  void InsertDep(Decl *D) {
+    if (Deps.count(D))
+      return;
+
+    Deps.insert(D);
+
+    const auto &Parents = D->getASTContext().getParents<Decl>(*D);
+    for (auto &Parent : Parents)
+      if (const Decl *D = Parent.get<Decl>())
+        Deps.insert(D);
+
+    for (auto *RD : D->redecls())
+      InsertDep(RD);
+  }
 
   bool TraverseDecl(Decl *D) {
+    InsertDep(D);
+
     llvm::errs() << "Traversing\n";
     D->dumpColor();
-    auto res = base::TraverseDecl(D);
-    if (D->isFunctionOrFunctionTemplate())
-      printSource(D);
-    return res;
+
+    return base::TraverseDecl(D);
   }
 
   bool VisitStmt(Stmt *S) {
@@ -81,20 +97,14 @@ public:
     //   3. The definition is in an external library - in that case we would
     //   like to generate the correct #include for it or just print the
     //   declaration.
+    //
+    //   Looks like there is a way to merge AST's together:
+    //   https://clang.llvm.org/docs/LibASTImporter.html can we merge in all
+    //   ASTs and then print out the extracted c/c++ from there?
     return true;
   }
 
 private:
-  void printSource(Decl *D) {
-    // TODO if possible try to omit the inputgen attr
-    PrintingPolicy Policy(D->getASTContext().getLangOpts());
-    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
-
-    // For some reason we don't get newline or semicolon after printinf a
-    // declaration
-    if (!D->hasBody())
-      Out << ";\n";
-  }
 };
 
 class ASTMinimizer : public ASTConsumer,
@@ -107,9 +117,11 @@ public:
   ASTMinimizer(std::unique_ptr<raw_ostream> Out)
       : Out(Out ? *Out : llvm::outs()), OwnedOut(std::move(Out)) {}
 
+  TranslationUnitDecl *TUD;
   void HandleTranslationUnit(ASTContext &Context) override {
-    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
-    TraverseDecl(D);
+    TUD = Context.getTranslationUnitDecl();
+    TraverseDecl(TUD);
+    print(TUD);
   }
 
   bool shouldWalkTypesOfTypeLocs() const { return false; }
@@ -144,8 +156,17 @@ public:
   }
 
   void PrintWithDeps(Decl *D) {
-    DeclPrinter P(Out);
-    P.TraverseDecl(D);
+    std::set<const Decl *> Deps;
+    DepGatherer DG(Deps);
+    DG.TraverseDecl(D);
+
+    // TODO if possible try to omit the inputgen attr
+    PrintingPolicy Policy(D->getASTContext().getLangOpts());
+    std::function<bool(const Decl *)> Filter = [&Deps](const Decl *D) -> bool {
+      return Deps.count(D);
+    };
+    TUD->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/false,
+               &Filter);
   }
 
   bool TraverseDecl(Decl *D) {
