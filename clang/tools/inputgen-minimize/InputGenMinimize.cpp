@@ -23,6 +23,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Driver/Options.h"
 #include "clang/Driver/Types.h"
@@ -42,6 +43,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Option/OptTable.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
@@ -552,7 +554,7 @@ llvm::Error ParseSource(const std::string &Path, CompilerInstance &CI,
 
 llvm::Expected<CIAndOrigins> Parse(const std::string &Path,
                                    llvm::MutableArrayRef<CIAndOrigins> Imports,
-                                   bool ShouldDumpAST, bool ShouldDumpIR) {
+                                   raw_ostream *Out) {
   CIAndOrigins CI{init_convenience::BuildCompilerInstance()};
   auto ST = std::make_unique<SelectorTable>();
   auto BC = std::make_unique<Builtin::Context>();
@@ -564,10 +566,8 @@ llvm::Expected<CIAndOrigins> Parse(const std::string &Path,
 
   std::vector<std::unique_ptr<ASTConsumer>> ASTConsumers;
 
-  if (ShouldDumpAST)
-    ASTConsumers.push_back(CreateASTDumper(nullptr /*Dump to stdout.*/, "",
-                                           true, false, false, false,
-                                           clang::ADOF_Default));
+  if (Out)
+    ASTConsumers.push_back(CreateASTPrinter(nullptr, ""));
 
   CI.getDiagnosticClient().BeginSourceFile(
       CI.getCompilerInstance().getLangOpts(),
@@ -619,7 +619,7 @@ int main(int argc, const char **argv) {
 
   std::vector<CIAndOrigins> ImportCIs;
   for (auto I : OptionsParser.getSourcePathList()) {
-    llvm::Expected<CIAndOrigins> ImportCI = Parse(I, {}, false, false);
+    llvm::Expected<CIAndOrigins> ImportCI = Parse(I, {}, nullptr);
     if (auto E = ImportCI.takeError()) {
       llvm::errs() << "error: " << llvm::toString(std::move(E)) << "\n";
       exit(-1);
@@ -639,7 +639,26 @@ int main(int argc, const char **argv) {
   if (res)
     return res;
 
-  llvm::outs() << MinimizeFactory.getGeneratedEntry();
+  clang::FileManager FM({});
+
+  int FD;
+  SmallString<128> Filename;
+  if (std::error_code EC = llvm::sys::fs::createTemporaryFile(
+          "entry-temp", "cpp", FD, Filename)) {
+    llvm::errs() << "Error: " << EC.message() << "\n";
+    return 1;
+  }
+
+  llvm::raw_fd_ostream O(FD, true);
+  O << MinimizeFactory.getGeneratedEntry();
+  O.close();
+
+  llvm::Expected<CIAndOrigins> ExpressionCI =
+      Parse(Filename.c_str(), ImportCIs, &llvm::outs());
+  if (auto E = ExpressionCI.takeError()) {
+    llvm::errs() << "error: " << llvm::toString(std::move(E)) << "\n";
+    exit(-1);
+  }
 
   return 0;
 }
