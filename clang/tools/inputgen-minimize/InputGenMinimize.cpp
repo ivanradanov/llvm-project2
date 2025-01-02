@@ -234,10 +234,10 @@ class ASTMinimizer : public ASTConsumer,
                      public RecursiveASTVisitor<ASTMinimizer> {
   typedef RecursiveASTVisitor<ASTMinimizer> base;
 
-  bool Done = false;
+  bool &Done;
 
 public:
-  ASTMinimizer(raw_ostream &Out) : Out(Out) {}
+  ASTMinimizer(raw_ostream &Out, bool &Done) : Done(Done), Out(Out) {}
 
   TranslationUnitDecl *TUD;
   void HandleTranslationUnit(ASTContext &Context) override {
@@ -330,8 +330,8 @@ private:
   raw_ostream &Out;
 };
 
-std::unique_ptr<ASTConsumer> CreateASTMinimizer(raw_ostream &Out) {
-  return std::make_unique<ASTMinimizer>(Out);
+std::unique_ptr<ASTConsumer> CreateASTMinimizer(raw_ostream &Out, bool &Done) {
+  return std::make_unique<ASTMinimizer>(Out, Done);
 }
 
 namespace init_convenience {
@@ -588,12 +588,13 @@ class MinimizeActionFactory {
 private:
   std::string OutStr;
   llvm::raw_string_ostream Out;
+  bool Done = false;
 
 public:
   const std::string &getGeneratedEntry() { return Out.str(); };
   MinimizeActionFactory() : Out(OutStr) {}
   std::unique_ptr<clang::ASTConsumer> newASTConsumer() {
-    return CreateASTMinimizer(Out);
+    return CreateASTMinimizer(Out, Done);
   }
 };
 
