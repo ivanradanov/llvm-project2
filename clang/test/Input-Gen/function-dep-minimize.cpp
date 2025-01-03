@@ -9,9 +9,7 @@ using int_h = int;
 using int_x = int;
 using int_a = int_x;
 typedef int int_y;
-typedef int_y int_b;
 typedef int int_unused;
-using int_unused2 = int;
 
 namespace one {
     struct UnusedStruct {
@@ -19,13 +17,17 @@ namespace one {
             return a + b;
         }
     };
-    class UnusedClass {
-        int ucfoo(int a, int_h b) {
+    struct Struct3 {
+        int s3foo(int a, int_h b) {
             return a + b;
         }
     };
-    struct Struct3 {
-        int s3foo(int a, int_h b) {
+}
+typedef int_y int_b;
+using int_unused2 = int;
+namespace one {
+    class UnusedClass {
+        int ucfoo(int a, int_h b) {
             return a + b;
         }
     };

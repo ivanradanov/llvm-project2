@@ -17,6 +17,7 @@
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/ASTDumperUtils.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/ExternalASTMerger.h"
 #include "clang/AST/ParentMapContext.h"
@@ -72,6 +73,38 @@ static constexpr bool EnableDebugging = false;
       CODE;                                                                    \
     }                                                                          \
   } while (0)
+
+class OrderedASTPrinter : public ASTConsumer,
+                          public RecursiveASTVisitor<OrderedASTPrinter> {
+  typedef RecursiveASTVisitor<OrderedASTPrinter> base;
+
+  raw_ostream &Out;
+
+public:
+  OrderedASTPrinter(raw_ostream &Out) : Out(Out) {}
+
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
+    TraverseDecl(D);
+  }
+
+  bool shouldWalkTypesOfTypeLocs() const { return false; }
+
+private:
+  void print(Decl *D) {
+    PrintingPolicy Policy(D->getASTContext().getLangOpts());
+    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
+  }
+
+public:
+  bool VisitDecl(Decl *D) {
+
+    llvm::errs() << "VISITING\n";
+    D->dumpColor();
+    D->getSourceRange().dump(D->getASTContext().getSourceManager());
+    return true;
+  }
+};
 
 class DepGatherer : public ASTConsumer,
                     public RecursiveASTVisitor<DepGatherer> {
@@ -566,8 +599,12 @@ llvm::Expected<CIAndOrigins> Parse(const std::string &Path,
 
   std::vector<std::unique_ptr<ASTConsumer>> ASTConsumers;
 
-  if (Out)
+  if (Out) {
     ASTConsumers.push_back(CreateASTPrinter(nullptr, ""));
+    ASTConsumers.push_back(CreateASTDumper(nullptr, "", true, false, false,
+                                           false, clang::ADOF_Default));
+    ASTConsumers.push_back(std::make_unique<OrderedASTPrinter>(llvm::outs()));
+  }
 
   CI.getDiagnosticClient().BeginSourceFile(
       CI.getCompilerInstance().getLangOpts(),
