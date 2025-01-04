@@ -4,6 +4,10 @@
 // RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --output-file %t/minimized.cpp
 // RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 
+#include "Inputs/external_func.h"
+
+#include "Inputs/function-dep.h"
+
 using int_h = int;
 
 using int_x = int;
@@ -19,7 +23,7 @@ namespace one {
     };
     struct Struct3 {
         int s3foo(int a, int_h b) {
-            return a + b;
+            return foo_in_header(a, b);
         }
     };
 }
@@ -37,7 +41,7 @@ namespace one {
         public:
             int c1pub;
         int c2foo(int a, int_h b) {
-            return a + b;
+            return external_foo(a, b);
         }
     };
     class Class1 {
