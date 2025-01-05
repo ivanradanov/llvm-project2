@@ -19,6 +19,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDumperUtils.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclBase.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExternalASTMerger.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/PrettyPrinter.h"
@@ -74,6 +76,89 @@ static constexpr bool EnableDebugging = false;
     }                                                                          \
   } while (0)
 
+class ContextSplitter : public ASTConsumer,
+                        public RecursiveASTVisitor<ContextSplitter> {
+  typedef RecursiveASTVisitor<ContextSplitter> base;
+
+  raw_ostream &Out;
+
+public:
+  ContextSplitter(raw_ostream &Out) : Out(Out) {}
+
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
+    TraverseDecl(D);
+  }
+
+  bool shouldWalkTypesOfTypeLocs() const { return false; }
+
+private:
+  void print(Decl *D) {
+    PrintingPolicy Policy(D->getASTContext().getLangOpts());
+    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
+  }
+
+  void SplitNested(Decl *D) {
+    DeclContext *DC = dyn_cast<DeclContext>(D);
+    if (!DC)
+      return;
+
+    DeclContext::decl_iterator It = DC->decls_begin();
+    if (It == DC->decls_end())
+      return;
+    SmallVector<Decl *> NestedDs;
+    for (auto *NestedD : DC->decls())
+      NestedDs.push_back(NestedD);
+    for (auto *NestedD : NestedDs) {
+      if (auto *ND = dyn_cast<NamespaceDecl>(NestedD)) {
+        llvm::errs() << "BEFORE SPLIT\n";
+        D->dumpColor();
+        llvm::errs() << "SPLITTING\n";
+        ND->dumpColor();
+        Split(ND);
+        llvm::errs() << "AFTER SPLIT\n";
+        D->dumpColor();
+      }
+    }
+  }
+
+  void Split(NamespaceDecl *D) {
+    SmallVector<Decl *> NestedDs;
+    for (auto *NestedD : D->decls())
+      NestedDs.push_back(NestedD);
+    if (NestedDs.empty())
+      return;
+    for (auto *NestedD : llvm::drop_begin(NestedDs)) {
+      NamespaceDecl *NewD = NamespaceDecl::Create(
+          D->getASTContext(), D->getDeclContext(), D->isInlineNamespace(),
+          D->getBeginLoc(), D->getEndLoc(), D->getIdentifier(), D,
+          D->isNested());
+      D->removeDecl(NestedD);
+      NestedD->setLexicalDeclContext(NewD);
+      NewD->addDeclInternal(NestedD);
+      D->getDeclContext()->addDeclInternal(NewD);
+    }
+  }
+
+public:
+  bool TraverseDecl(Decl *D) {
+    if (!base::TraverseDecl(D))
+      return false;
+    llvm::errs() << "TRAVERSING\n";
+    D->dumpColor();
+    D->getSourceRange().dump(D->getASTContext().getSourceManager());
+    SplitNested(D);
+    return true;
+  }
+  bool VisitDecl(Decl *D) {
+
+    llvm::errs() << "VISITING\n";
+    D->dumpColor();
+    D->getSourceRange().dump(D->getASTContext().getSourceManager());
+    return true;
+  }
+};
+
 class OrderedASTPrinter : public ASTConsumer,
                           public RecursiveASTVisitor<OrderedASTPrinter> {
   typedef RecursiveASTVisitor<OrderedASTPrinter> base;
@@ -82,6 +167,38 @@ class OrderedASTPrinter : public ASTConsumer,
 
 public:
   OrderedASTPrinter(raw_ostream &Out) : Out(Out) {}
+
+  void HandleTranslationUnit(ASTContext &Context) override {
+    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
+    TraverseDecl(D);
+  }
+
+  bool shouldWalkTypesOfTypeLocs() const { return false; }
+
+private:
+  void print(Decl *D) {
+    PrintingPolicy Policy(D->getASTContext().getLangOpts());
+    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
+  }
+
+public:
+  bool VisitDecl(Decl *D) {
+
+    llvm::errs() << "VISITING\n";
+    D->dumpColor();
+    D->getSourceRange().dump(D->getASTContext().getSourceManager());
+    return true;
+  }
+};
+
+class BOrderedASTPrinter : public ASTConsumer,
+                           public RecursiveASTVisitor<BOrderedASTPrinter> {
+  typedef RecursiveASTVisitor<BOrderedASTPrinter> base;
+
+  raw_ostream &Out;
+
+public:
+  BOrderedASTPrinter(raw_ostream &Out) : Out(Out) {}
 
   void HandleTranslationUnit(ASTContext &Context) override {
     TranslationUnitDecl *D = Context.getTranslationUnitDecl();
@@ -567,6 +684,7 @@ void AddExternalSource(CIAndOrigins &CI,
     Sources.emplace_back(Import.getASTContext(), Import.getFileManager(),
                          Import.getOriginMap());
   auto ES = std::make_unique<ExternalASTMerger>(Target, Sources);
+  ES->SetLogStream(llvm::dbgs());
   CI.getASTContext().setExternalSource(ES.release());
   CI.getASTContext().getTranslationUnitDecl()->setHasExternalVisibleStorage();
 }
@@ -603,7 +721,10 @@ llvm::Expected<CIAndOrigins> Parse(const std::string &Path,
     ASTConsumers.push_back(CreateASTPrinter(nullptr, ""));
     ASTConsumers.push_back(CreateASTDumper(nullptr, "", true, false, false,
                                            false, clang::ADOF_Default));
-    ASTConsumers.push_back(std::make_unique<OrderedASTPrinter>(llvm::outs()));
+    ASTConsumers.push_back(std::make_unique<ContextSplitter>(llvm::errs()));
+    ASTConsumers.push_back(CreateASTPrinter(nullptr, ""));
+    ASTConsumers.push_back(CreateASTDumper(nullptr, "", true, false, false,
+                                           false, clang::ADOF_Default));
   }
 
   CI.getDiagnosticClient().BeginSourceFile(
