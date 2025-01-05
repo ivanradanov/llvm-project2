@@ -52,6 +52,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Host.h"
+#include <type_traits>
 
 using namespace clang::driver;
 using namespace clang::tooling;
@@ -110,6 +111,7 @@ private:
     for (auto *NestedD : DC->decls())
       NestedDs.push_back(NestedD);
     for (auto *NestedD : NestedDs) {
+      // TODO also need to do handle
       if (auto *ND = dyn_cast<NamespaceDecl>(NestedD)) {
         llvm::errs() << "BEFORE SPLIT\n";
         D->dumpColor();
@@ -118,24 +120,41 @@ private:
         Split(ND);
         llvm::errs() << "AFTER SPLIT\n";
         D->dumpColor();
+      } else if (auto *LD = dyn_cast<LinkageSpecDecl>(NestedD)) {
+        Split(LD);
       }
     }
   }
 
-  void Split(NamespaceDecl *D) {
+  template <typename T> void Split(T *D) {
     SmallVector<Decl *> NestedDs;
     for (auto *NestedD : D->decls())
       NestedDs.push_back(NestedD);
     if (NestedDs.empty())
       return;
     for (auto *NestedD : llvm::drop_begin(NestedDs)) {
-      NamespaceDecl *NewD = NamespaceDecl::Create(
-          D->getASTContext(), D->getDeclContext(), D->isInlineNamespace(),
-          D->getBeginLoc(), D->getEndLoc(), D->getIdentifier(), D,
-          D->isNested());
+      DeclContext *NewDC;
+      Decl *NewD;
+      if constexpr (std::is_same<T, NamespaceDecl>::value) {
+        auto *NewND = NamespaceDecl::Create(
+            D->getASTContext(), D->getDeclContext(), D->isInlineNamespace(),
+            D->getBeginLoc(), D->getLocation(), D->getIdentifier(), D,
+            D->isNested());
+        NewD = NewND;
+        NewDC = NewND;
+      } else if constexpr (std::is_same<T, LinkageSpecDecl>::value) {
+        LinkageSpecDecl *LD = D;
+        auto *NewLD = LinkageSpecDecl::Create(
+            D->getASTContext(), LD->getDeclContext(), LD->getExternLoc(),
+            LD->getLocation(), LD->getLanguage(), LD->hasBraces());
+        NewD = NewLD;
+        NewDC = NewLD;
+      } else {
+        static_assert(0);
+      }
       D->removeDecl(NestedD);
-      NestedD->setLexicalDeclContext(NewD);
-      NewD->addDeclInternal(NestedD);
+      NestedD->setLexicalDeclContext(NewDC);
+      NewDC->addDeclInternal(NestedD);
       D->getDeclContext()->addDeclInternal(NewD);
     }
   }
