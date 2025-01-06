@@ -22,6 +22,7 @@
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExternalASTMerger.h"
+#include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecursiveASTVisitor.h"
@@ -113,13 +114,7 @@ private:
     for (auto *NestedD : NestedDs) {
       // TODO also need to do handle
       if (auto *ND = dyn_cast<NamespaceDecl>(NestedD)) {
-        llvm::errs() << "BEFORE SPLIT\n";
-        D->dumpColor();
-        llvm::errs() << "SPLITTING\n";
-        ND->dumpColor();
         Split(ND);
-        llvm::errs() << "AFTER SPLIT\n";
-        D->dumpColor();
       } else if (auto *LD = dyn_cast<LinkageSpecDecl>(NestedD)) {
         Split(LD);
       }
@@ -163,82 +158,78 @@ public:
   bool TraverseDecl(Decl *D) {
     if (!base::TraverseDecl(D))
       return false;
-    llvm::errs() << "TRAVERSING\n";
-    D->dumpColor();
-    D->getSourceRange().dump(D->getASTContext().getSourceManager());
     SplitNested(D);
     return true;
   }
-  bool VisitDecl(Decl *D) {
-
-    llvm::errs() << "VISITING\n";
-    D->dumpColor();
-    D->getSourceRange().dump(D->getASTContext().getSourceManager());
-    return true;
-  }
 };
 
-class OrderedASTPrinter : public ASTConsumer,
-                          public RecursiveASTVisitor<OrderedASTPrinter> {
-  typedef RecursiveASTVisitor<OrderedASTPrinter> base;
+// FIXME this approach does not work when the same static function is defined in
+// multiple TUs
+class ReorderDecls : public ASTConsumer,
+                     public RecursiveASTVisitor<ReorderDecls> {
+  typedef RecursiveASTVisitor<ReorderDecls> base;
 
-  raw_ostream &Out;
+  ExternalASTMerger &EAM;
 
 public:
-  OrderedASTPrinter(raw_ostream &Out) : Out(Out) {}
+  ReorderDecls(ExternalASTMerger &EAM) : EAM(EAM) {}
 
+  struct Reorderable {
+    Decl *Top;
+    Decl *Bottom;
+  };
   void HandleTranslationUnit(ASTContext &Context) override {
-    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
-    TraverseDecl(D);
-  }
+    TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
+    std::vector<Reorderable> Rs;
+    for (auto *D : TU->decls()) {
+      Decl *Top = D;
+      while (true) {
+        auto *DC = dyn_cast<DeclContext>(D);
+        if (!DC)
+          break;
+        if (!isa<NamespaceDecl, LinkageSpecDecl>(D))
+          break;
+        if (DC->decls_empty())
+          break;
+        assert(std::next(DC->decls_begin()) == DC->decls_end());
+        D = *DC->decls_begin();
+      }
+      Decl *Bottom = D;
+      Rs.push_back({Top, Bottom});
+    }
+    std::stable_sort(
+        Rs.begin(), Rs.end(), [&](const Reorderable &A, const Reorderable &B) {
+          auto getDeclAndCtx = [&](const Reorderable &R) {
+            Decl *Decl = EAM.FindOriginalDecl(R.Bottom);
+            ASTContext *Ctx = nullptr;
+            if (Decl)
+              Ctx = &Decl->getASTContext();
+            return std::make_tuple(Decl, Ctx);
+          };
+          auto [ADecl, ACtx] = getDeclAndCtx(A);
+          auto [BDecl, BCtx] = getDeclAndCtx(B);
 
-  bool shouldWalkTypesOfTypeLocs() const { return false; }
+          // Always put the functions in the generated entry TU last
+          if (!ADecl && BDecl)
+            return false;
+          if (!BDecl && ADecl)
+            return true;
 
-private:
-  void print(Decl *D) {
-    PrintingPolicy Policy(D->getASTContext().getLangOpts());
-    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
-  }
+          if (!ADecl || !BDecl)
+            return true;
 
-public:
-  bool VisitDecl(Decl *D) {
-
-    llvm::errs() << "VISITING\n";
-    D->dumpColor();
-    D->getSourceRange().dump(D->getASTContext().getSourceManager());
-    return true;
-  }
-};
-
-class BOrderedASTPrinter : public ASTConsumer,
-                           public RecursiveASTVisitor<BOrderedASTPrinter> {
-  typedef RecursiveASTVisitor<BOrderedASTPrinter> base;
-
-  raw_ostream &Out;
-
-public:
-  BOrderedASTPrinter(raw_ostream &Out) : Out(Out) {}
-
-  void HandleTranslationUnit(ASTContext &Context) override {
-    TranslationUnitDecl *D = Context.getTranslationUnitDecl();
-    TraverseDecl(D);
-  }
-
-  bool shouldWalkTypesOfTypeLocs() const { return false; }
-
-private:
-  void print(Decl *D) {
-    PrintingPolicy Policy(D->getASTContext().getLangOpts());
-    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
-  }
-
-public:
-  bool VisitDecl(Decl *D) {
-
-    llvm::errs() << "VISITING\n";
-    D->dumpColor();
-    D->getSourceRange().dump(D->getASTContext().getSourceManager());
-    return true;
+          if (ACtx < BCtx)
+            return true;
+          SourceLocation ALoc = ADecl->getBeginLoc();
+          SourceLocation BLoc = BDecl->getBeginLoc();
+          if (ALoc.isInvalid() || BLoc.isInvalid())
+            return ALoc.getPtrEncoding() < BLoc.getPtrEncoding();
+          return ACtx->getSourceManager().isBeforeInTranslationUnit(ALoc, BLoc);
+        });
+    for (auto R : Rs)
+      TU->removeDecl(R.Top);
+    for (auto R : Rs)
+      TU->addDeclInternal(R.Top);
   }
 };
 
@@ -694,8 +685,9 @@ struct CIAndOrigins {
   CompilerInstance &getCompilerInstance() { return *CI; }
 };
 
-void AddExternalSource(CIAndOrigins &CI,
-                       llvm::MutableArrayRef<CIAndOrigins> Imports) {
+ExternalASTMerger *
+AddExternalSource(CIAndOrigins &CI,
+                  llvm::MutableArrayRef<CIAndOrigins> Imports) {
   ExternalASTMerger::ImporterTarget Target(
       {CI.getASTContext(), CI.getFileManager()});
   llvm::SmallVector<ExternalASTMerger::ImporterSource, 3> Sources;
@@ -703,9 +695,11 @@ void AddExternalSource(CIAndOrigins &CI,
     Sources.emplace_back(Import.getASTContext(), Import.getFileManager(),
                          Import.getOriginMap());
   auto ES = std::make_unique<ExternalASTMerger>(Target, Sources);
-  ES->SetLogStream(llvm::dbgs());
+  ExternalASTMerger *ESPtr = ES.get();
+  INPUTGEN_DEBUG(ES->SetLogStream(llvm::dbgs()));
   CI.getASTContext().setExternalSource(ES.release());
   CI.getASTContext().getTranslationUnitDecl()->setHasExternalVisibleStorage();
+  return ESPtr;
 }
 
 llvm::Error ParseSource(const std::string &Path, CompilerInstance &CI,
@@ -731,19 +725,18 @@ llvm::Expected<CIAndOrigins> Parse(const std::string &Path,
   std::unique_ptr<ASTContext> AST =
       init_convenience::BuildASTContext(CI.getCompilerInstance(), *ST, *BC);
   CI.getCompilerInstance().setASTContext(AST.release());
+  ExternalASTMerger *EAM = nullptr;
   if (Imports.size())
-    AddExternalSource(CI, Imports);
+    EAM = AddExternalSource(CI, Imports);
 
   std::vector<std::unique_ptr<ASTConsumer>> ASTConsumers;
 
   if (Out) {
-    ASTConsumers.push_back(CreateASTPrinter(nullptr, ""));
-    ASTConsumers.push_back(CreateASTDumper(nullptr, "", true, false, false,
-                                           false, clang::ADOF_Default));
     ASTConsumers.push_back(std::make_unique<ContextSplitter>(llvm::errs()));
+    if (EAM) {
+      ASTConsumers.push_back(std::make_unique<ReorderDecls>(*EAM));
+    }
     ASTConsumers.push_back(CreateASTPrinter(nullptr, ""));
-    ASTConsumers.push_back(CreateASTDumper(nullptr, "", true, false, false,
-                                           false, clang::ADOF_Default));
   }
 
   CI.getDiagnosticClient().BeginSourceFile(
