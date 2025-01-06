@@ -15,7 +15,7 @@ def get_minimized_func(f):
     stdout = subprocess.PIPE
     args = [
         'inputgen-minimize',
-        f,
+        *f,
     ]
 
     proc = subprocess.Popen(
@@ -85,7 +85,7 @@ def construct_minimized_file(output_file, rt, embedded_input, minimized_func):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--source-file', required=True)
+    parser.add_argument('filenames', nargs='*')
     parser.add_argument('--output-file', '-o')
     parser.add_argument('--embed-input-file')
 
@@ -98,7 +98,7 @@ def main():
     else:
         embedded_input = None
 
-    minimized_func = get_minimized_func(args.source_file)
+    minimized_func = get_minimized_func(args.filenames)
 
     with open(replay_runtime, 'r') as f:
         rt = f.read()

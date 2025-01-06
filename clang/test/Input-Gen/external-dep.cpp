@@ -1,4 +1,7 @@
-// RUN: inputgen-minimize %s Inputs/external_func.cpp
+// RUN: mkdir -p %t
+
+// RUN: inputgen-minimize %s %S/Inputs/external_func.cpp > %t/minimized.cpp
+// RUN: %clangxx -c %t/minimized.cpp -o %t/minimized.o
 
 #include "Inputs/external_func.h"
 

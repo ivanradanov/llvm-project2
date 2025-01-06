@@ -81,6 +81,7 @@ list(APPEND CLANG_TEST_DEPS
   clang-offload-bundler
   clang-offload-packager
   clang-sycl-linker
+  inputgen-minimize
   diagtool
   hmaptool
   )

@@ -1,4 +1,7 @@
-// RUN: inputgen-minimize %s
+// RUN: mkdir -p %t
+
+// RUN: inputgen-minimize %s > %t/minimized.cpp
+// RUN: %clangxx -c %t/minimized.cpp -o %t/minimized.o
 
 extern "C" {
     int fc(int a) {

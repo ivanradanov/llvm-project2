@@ -82,10 +82,8 @@ class ContextSplitter : public ASTConsumer,
                         public RecursiveASTVisitor<ContextSplitter> {
   typedef RecursiveASTVisitor<ContextSplitter> base;
 
-  raw_ostream &Out;
-
 public:
-  ContextSplitter(raw_ostream &Out) : Out(Out) {}
+  ContextSplitter() {}
 
   void HandleTranslationUnit(ASTContext &Context) override {
     TranslationUnitDecl *D = Context.getTranslationUnitDecl();
@@ -95,11 +93,6 @@ public:
   bool shouldWalkTypesOfTypeLocs() const { return false; }
 
 private:
-  void print(Decl *D) {
-    PrintingPolicy Policy(D->getASTContext().getLangOpts());
-    D->print(Out, Policy, /*Indentation=*/0, /*PrintInstantiation=*/true);
-  }
-
   void SplitNested(Decl *D) {
     DeclContext *DC = dyn_cast<DeclContext>(D);
     if (!DC)
@@ -220,6 +213,9 @@ public:
 
           if (ACtx < BCtx)
             return true;
+          if (ACtx > BCtx)
+            return false;
+
           SourceLocation ALoc = ADecl->getBeginLoc();
           SourceLocation BLoc = BDecl->getBeginLoc();
           if (ALoc.isInvalid() || BLoc.isInvalid())
@@ -732,7 +728,7 @@ llvm::Expected<CIAndOrigins> Parse(const std::string &Path,
   std::vector<std::unique_ptr<ASTConsumer>> ASTConsumers;
 
   if (Out) {
-    ASTConsumers.push_back(std::make_unique<ContextSplitter>(llvm::errs()));
+    ASTConsumers.push_back(std::make_unique<ContextSplitter>());
     if (EAM) {
       ASTConsumers.push_back(std::make_unique<ReorderDecls>(*EAM));
     }

@@ -5,11 +5,11 @@
 // RUN: INPUT_RECORD_FILENAME=%t/input.bin %t/record.a.out | FileCheck %s
 // RUN: %t/replay.a.out --input %t/input.bin | FileCheck %s
 
-// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --embed-input-file %t/input.bin --output-file %t/minimized.cpp
+// RUN: %S/../../../scripts/inputgen_minimize.py %s --embed-input-file %t/input.bin --output-file %t/minimized.cpp
 // RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 // RUN: %t/minimized.a.out | FileCheck %s
 
-// RUN: %S/../../../scripts/inputgen_minimize.py --source-file %s --output-file %t/minimized.cpp
+// RUN: %S/../../../scripts/inputgen_minimize.py %s --output-file %t/minimized.cpp
 // RUN: %clangxx %t/minimized.cpp -o %t/minimized.a.out
 // RUN: %t/minimized.a.out --input %t/input.bin | FileCheck %s
 
