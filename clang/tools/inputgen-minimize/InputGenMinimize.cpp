@@ -764,6 +764,53 @@ public:
   }
 };
 
+class AddExternalSourceAction : public ToolAction {
+
+  std::vector<CIAndOrigins> &ImportCIs;
+
+public:
+  ~AddExternalSourceAction() override = default;
+  AddExternalSourceAction(std::vector<CIAndOrigins> &ImportCIs)
+      : ImportCIs(ImportCIs) {}
+  bool runInvocation(std::shared_ptr<CompilerInvocation> Invocation,
+                     FileManager *Files,
+                     std::shared_ptr<PCHContainerOperations> PCHContainerOps,
+                     DiagnosticConsumer *DiagConsumer) override {
+    // Create a compiler instance to handle the actual work.
+    std::unique_ptr<CompilerInstance> Compiler =
+        std::make_unique<CompilerInstance>(std::move(PCHContainerOps));
+    Compiler->setInvocation(std::move(Invocation));
+    Compiler->setFileManager(Files);
+
+    // Create the compiler's actual diagnostics engine.
+    Compiler->createDiagnostics(Files->getVirtualFileSystem(), DiagConsumer,
+                                /*ShouldOwnClient=*/false);
+    if (!Compiler->hasDiagnostics())
+      return false;
+
+    Compiler->createSourceManager(*Files);
+
+    CIAndOrigins CI{std::move(Compiler)};
+    CI.getDiagnosticClient().BeginSourceFile(
+        CI.getCompilerInstance().getLangOpts(),
+        &CI.getCompilerInstance().getPreprocessor());
+    if (CI.getDiagnosticClient().getNumErrors())
+      return false;
+
+    if (llvm::Error PE = ParseSource(Path, CI.getCompilerInstance(), Consumers))
+      return std::move(PE);
+    CI.getDiagnosticClient().EndSourceFile();
+    if (CI.getDiagnosticClient().getNumErrors())
+      return llvm::make_error<llvm::StringError>(
+          "Errors occurred while parsing the expression.", std::error_code());
+
+    // TODO do we need this?
+    // Files->clearStatCache();
+    ImportCIs.push_back(std::move(CI));
+    return true;
+  }
+};
+
 } // namespace
 
 int main(int argc, const char **argv) {
@@ -784,14 +831,6 @@ int main(int argc, const char **argv) {
   CommonOptionsParser &OptionsParser = ExpectedParser.get();
 
   std::vector<CIAndOrigins> ImportCIs;
-  for (auto I : OptionsParser.getSourcePathList()) {
-    llvm::Expected<CIAndOrigins> ImportCI = Parse(I, {}, nullptr);
-    if (auto E = ImportCI.takeError()) {
-      llvm::errs() << "error: " << llvm::toString(std::move(E)) << "\n";
-      exit(-1);
-    }
-    ImportCIs.push_back(std::move(*ImportCI));
-  }
 
   ClangTool Tool(OptionsParser.getCompilations(),
                  OptionsParser.getSourcePathList());
@@ -801,11 +840,15 @@ int main(int argc, const char **argv) {
 
   FrontendFactory = newFrontendActionFactory(&MinimizeFactory);
 
+  AddExternalSourceAction AESA(ImportCIs);
+
   int res = Tool.run(FrontendFactory.get());
   if (res)
     return res;
 
-  clang::FileManager FM({});
+  res = Tool.run(&AESA);
+  if (res)
+    return res;
 
   int FD;
   SmallString<128> Filename;
