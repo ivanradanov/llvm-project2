@@ -33,6 +33,7 @@
 #include "clang/Driver/Types.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticBuffer.h"
 #include "clang/Parse/ParseAST.h"
@@ -764,6 +765,46 @@ public:
   }
 };
 
+class ExternalSourceFrontendAction : public ASTFrontendAction {
+public:
+  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
+                                                 StringRef InFile) override {
+    SourceManager &SM = CI.getSourceManager();
+    auto FE = CI.getFileManager().getFileRef(InFile);
+    if (!FE) {
+      llvm::consumeError(FE.takeError());
+      return nullptr;
+    }
+    SM.setMainFileID(SM.createFileID(*FE, SourceLocation(), SrcMgr::C_User));
+    return std::make_unique<clang::ASTConsumer>();
+  }
+  void ExecuteAction() override {
+    clang::CompilerInstance *Compiler = &getCompilerInstance();
+    assert(!Compiler->hasSema() && "CI already has Sema");
+
+    // Set up our hooks into sema and parse the AST.
+    if (hasCodeCompletionSupport() &&
+        !Compiler->getFrontendOpts().CodeCompletionAt.FileName.empty())
+      Compiler->createCodeCompletionConsumer();
+
+    clang::CodeCompleteConsumer *CompletionConsumer = nullptr;
+    if (Compiler->hasCodeCompletionConsumer())
+      CompletionConsumer = &Compiler->getCodeCompletionConsumer();
+
+    Compiler->createSema(getTranslationUnitKind(), CompletionConsumer);
+
+    clang::ParseAST(Compiler->getSema(), Compiler->getFrontendOpts().ShowStats,
+                    Compiler->getFrontendOpts().SkipFunctionBodies);
+  }
+  void EndSourceFile() override {
+    CompilerInstance &CI = getCompilerInstance();
+
+    // Inform the diagnostic client we are done with this source file.
+    CI.getDiagnosticClient().EndSourceFile();
+  }
+  ~ExternalSourceFrontendAction() = default;
+};
+
 class AddExternalSourceAction : public ToolAction {
 
   std::vector<CIAndOrigins> &ImportCIs;
@@ -782,6 +823,9 @@ public:
     Compiler->setInvocation(std::move(Invocation));
     Compiler->setFileManager(Files);
 
+    std::unique_ptr<FrontendAction> ScopedToolAction =
+        std::make_unique<ExternalSourceFrontendAction>();
+
     // Create the compiler's actual diagnostics engine.
     Compiler->createDiagnostics(Files->getVirtualFileSystem(), DiagConsumer,
                                 /*ShouldOwnClient=*/false);
@@ -790,24 +834,14 @@ public:
 
     Compiler->createSourceManager(*Files);
 
+    const bool Success = Compiler->ExecuteAction(*ScopedToolAction);
+
+    Files->clearStatCache();
+
     CIAndOrigins CI{std::move(Compiler)};
-    CI.getDiagnosticClient().BeginSourceFile(
-        CI.getCompilerInstance().getLangOpts(),
-        &CI.getCompilerInstance().getPreprocessor());
-    if (CI.getDiagnosticClient().getNumErrors())
-      return false;
-
-    if (llvm::Error PE = ParseSource(Path, CI.getCompilerInstance(), Consumers))
-      return std::move(PE);
-    CI.getDiagnosticClient().EndSourceFile();
-    if (CI.getDiagnosticClient().getNumErrors())
-      return llvm::make_error<llvm::StringError>(
-          "Errors occurred while parsing the expression.", std::error_code());
-
-    // TODO do we need this?
-    // Files->clearStatCache();
     ImportCIs.push_back(std::move(CI));
-    return true;
+
+    return Success;
   }
 };
 
