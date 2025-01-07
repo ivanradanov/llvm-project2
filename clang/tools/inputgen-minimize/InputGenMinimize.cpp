@@ -79,6 +79,20 @@ static constexpr bool EnableDebugging = false;
     }                                                                          \
   } while (0)
 
+// FIXME need to check if the following works in c++
+//
+// namespace one {
+//   foo();
+// }
+// namespace two {
+//   using namespace one; // <-- does this retain effect in the second namespace
+//   two
+// }
+// namespace two {
+//   bar() {
+//     foo();
+//   }
+// }
 class ContextSplitter : public ASTConsumer,
                         public RecursiveASTVisitor<ContextSplitter> {
   typedef RecursiveASTVisitor<ContextSplitter> base;
@@ -172,6 +186,13 @@ public:
     Decl *Top;
     Decl *Bottom;
   };
+  bool isInSystemHeader(Decl *D) {
+    SourceManager &SM = D->getASTContext().getSourceManager();
+    bool Res = SM.isInSystemHeader(D->getBeginLoc());
+    INPUTGEN_DEBUG(llvm::dbgs() << "isInSystemHeader " << Res << "\n";
+                   D->dumpColor(); D->getBeginLoc().dump(SM););
+    return Res;
+  }
   void HandleTranslationUnit(ASTContext &Context) override {
     TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
     std::vector<Reorderable> Rs;
@@ -225,9 +246,108 @@ public:
         });
     for (auto R : Rs)
       TU->removeDecl(R.Top);
-    for (auto R : Rs)
-      TU->addDeclInternal(R.Top);
+    for (auto R : Rs) {
+      // TODO need to generate the appropriate #includes for this
+      if (!isInSystemHeader(R.Bottom))
+        TU->addDeclInternal(R.Top);
+    }
   }
+};
+
+std::string CleanPath(StringRef PathRef) {
+  llvm::SmallString<128> Path(PathRef);
+  llvm::sys::path::remove_dots(Path, /*remove_dot_dot=*/true);
+  // FIXME: figure out why this is necessary.
+  llvm::sys::path::native(Path);
+  return std::string(Path);
+}
+
+// Make the Path absolute using the current working directory of the given
+// SourceManager if the Path is not an absolute path.
+//
+// The Path can be a path relative to the build directory, or retrieved from
+// the SourceManager.
+std::string MakeAbsolutePath(const SourceManager &SM, StringRef Path) {
+  llvm::SmallString<128> AbsolutePath(Path);
+  if (std::error_code EC =
+          SM.getFileManager().getVirtualFileSystem().makeAbsolute(AbsolutePath))
+    llvm::errs() << "Warning: could not make absolute file: '" << EC.message()
+                 << '\n';
+  // Handle symbolic link path cases.
+  // We are trying to get the real file path of the symlink.
+  auto Dir = SM.getFileManager().getOptionalDirectoryRef(
+      llvm::sys::path::parent_path(AbsolutePath.str()));
+  if (Dir) {
+    StringRef DirName = SM.getFileManager().getCanonicalName(*Dir);
+    // FIXME: getCanonicalName might fail to get real path on VFS.
+    if (llvm::sys::path::is_absolute(DirName)) {
+      SmallString<128> AbsoluteFilename;
+      llvm::sys::path::append(AbsoluteFilename, DirName,
+                              llvm::sys::path::filename(AbsolutePath.str()));
+      return CleanPath(AbsoluteFilename);
+    }
+  }
+  return CleanPath(AbsolutePath);
+}
+struct InputGenMinimizeTool {
+  void addIncludes(llvm::StringRef IncludeHeader, bool IsAngled,
+                   llvm::StringRef SearchPath, llvm::StringRef FileName,
+                   CharSourceRange IncludeFilenameRange,
+                   const SourceManager &SM) {
+    SmallString<128> HeaderWithSearchPath;
+    llvm::sys::path::append(HeaderWithSearchPath, SearchPath, IncludeHeader);
+    std::string AbsoluteIncludeHeader =
+        MakeAbsolutePath(SM, HeaderWithSearchPath);
+    std::string IncludeLine =
+        IsAngled ? ("#include <" + IncludeHeader + ">\n").str()
+                 : ("#include \"" + IncludeHeader + "\"\n").str();
+
+    INPUTGEN_DEBUG(llvm::dbgs() << "INCLUDE" << AbsoluteIncludeHeader << "\n"
+                                << IncludeLine);
+
+    // std::string AbsoluteOldHeader =
+    // makeAbsolutePath(Context->Spec.OldHeader); std::string
+    // AbsoluteCurrentFile = MakeAbsolutePath(SM, FileName); if
+    // (AbsoluteOldHeader == AbsoluteCurrentFile) {
+    //   // Find old.h includes "old.h".
+    //   if (AbsoluteOldHeader == AbsoluteIncludeHeader) {
+    //     OldHeaderIncludeRangeInHeader = IncludeFilenameRange;
+    //     return;
+    //   }
+    //   HeaderIncludes.push_back(IncludeLine);
+    // } else if (makeAbsolutePath(Context->Spec.OldCC) == AbsoluteCurrentFile)
+    // {
+    //   // Find old.cc includes "old.h".
+    //   if (AbsoluteOldHeader == AbsoluteIncludeHeader) {
+    //     OldHeaderIncludeRangeInCC = IncludeFilenameRange;
+    //     return;
+    //   }
+    //   CCIncludes.push_back(IncludeLine);
+    // }
+  }
+};
+
+class FindAllIncludes : public PPCallbacks {
+public:
+  explicit FindAllIncludes(SourceManager *SM, InputGenMinimizeTool &IGMT)
+      : SM(*SM), IGMT(IGMT) {}
+
+  void InclusionDirective(SourceLocation HashLoc, const Token & /*IncludeTok*/,
+                          StringRef FileName, bool IsAngled,
+                          CharSourceRange FilenameRange,
+                          OptionalFileEntryRef /*File*/, StringRef SearchPath,
+                          StringRef /*RelativePath*/,
+                          const Module * /*SuggestedModule*/,
+                          bool /*ModuleImported*/,
+                          SrcMgr::CharacteristicKind /*FileType*/) override {
+    if (auto FileEntry = SM.getFileEntryRefForID(SM.getFileID(HashLoc)))
+      IGMT.addIncludes(FileName, IsAngled, SearchPath, FileEntry->getName(),
+                       FilenameRange, SM);
+  }
+
+private:
+  const SourceManager &SM;
+  InputGenMinimizeTool &IGMT;
 };
 
 class DepGatherer : public ASTConsumer,
@@ -766,9 +886,14 @@ public:
 };
 
 class ExternalSourceFrontendAction : public ASTFrontendAction {
+  InputGenMinimizeTool &IGMT;
+
 public:
+  ExternalSourceFrontendAction(InputGenMinimizeTool &IGMT) : IGMT(IGMT) {}
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef InFile) override {
+    CI.getPreprocessor().addPPCallbacks(
+        std::make_unique<FindAllIncludes>(&CI.getSourceManager(), IGMT));
     SourceManager &SM = CI.getSourceManager();
     auto FE = CI.getFileManager().getFileRef(InFile);
     if (!FE) {
@@ -808,11 +933,13 @@ public:
 class AddExternalSourceAction : public ToolAction {
 
   std::vector<CIAndOrigins> &ImportCIs;
+  InputGenMinimizeTool &IGMT;
 
 public:
   ~AddExternalSourceAction() override = default;
-  AddExternalSourceAction(std::vector<CIAndOrigins> &ImportCIs)
-      : ImportCIs(ImportCIs) {}
+  AddExternalSourceAction(std::vector<CIAndOrigins> &ImportCIs,
+                          InputGenMinimizeTool &IGMT)
+      : ImportCIs(ImportCIs), IGMT(IGMT) {}
   bool runInvocation(std::shared_ptr<CompilerInvocation> Invocation,
                      FileManager *Files,
                      std::shared_ptr<PCHContainerOperations> PCHContainerOps,
@@ -824,7 +951,7 @@ public:
     Compiler->setFileManager(Files);
 
     std::unique_ptr<FrontendAction> ScopedToolAction =
-        std::make_unique<ExternalSourceFrontendAction>();
+        std::make_unique<ExternalSourceFrontendAction>(IGMT);
 
     // Create the compiler's actual diagnostics engine.
     Compiler->createDiagnostics(Files->getVirtualFileSystem(), DiagConsumer,
@@ -864,8 +991,6 @@ int main(int argc, const char **argv) {
   }
   CommonOptionsParser &OptionsParser = ExpectedParser.get();
 
-  std::vector<CIAndOrigins> ImportCIs;
-
   ClangTool Tool(OptionsParser.getCompilations(),
                  OptionsParser.getSourcePathList());
 
@@ -874,7 +999,9 @@ int main(int argc, const char **argv) {
 
   FrontendFactory = newFrontendActionFactory(&MinimizeFactory);
 
-  AddExternalSourceAction AESA(ImportCIs);
+  std::vector<CIAndOrigins> ImportCIs;
+  InputGenMinimizeTool IGMT;
+  AddExternalSourceAction AESA(ImportCIs, IGMT);
 
   int res = Tool.run(FrontendFactory.get());
   if (res)
