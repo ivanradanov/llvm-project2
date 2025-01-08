@@ -250,6 +250,7 @@ public:
       // TODO need to generate the appropriate #includes for this
       if (!isInSystemHeader(R.Bottom))
         TU->addDeclInternal(R.Top);
+      // TODO not sure if dropping these is bad?
     }
   }
 };
