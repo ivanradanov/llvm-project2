@@ -106,6 +106,7 @@
 #include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/Transform/IR/TransformAttrs.h"
@@ -113,6 +114,8 @@
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
 #include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/Transforms/TransformInterpreterUtils.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -1726,6 +1729,26 @@ LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
       /*flags=*/nullptr,
       /*linkLibs=*/nullptr);
   gpuModule.setTargetsAttr(moduleBuilder.getArrayAttr({target}));
+
+  DataLayoutSpecInterface dataLayout = {};
+  // Set index type size to 32 bits
+  {
+    llvm::DenseMap<TypeAttr, DataLayoutEntryInterface> typeEntries;
+    auto type = IndexType::get(ctx);
+    auto key = TypeAttr::get(type);
+    uint64_t size = 32;
+    auto params = IntegerAttr::get(mlir::IntegerType::get(ctx, 64), size);
+    typeEntries.try_emplace(key, DataLayoutEntryAttr::get(type, params));
+    SmallVector<DataLayoutEntryInterface> entries;
+    entries.reserve(typeEntries.size());
+    for (const auto &it : typeEntries)
+      entries.push_back(it.second);
+    dataLayout = DataLayoutSpecAttr::get(ctx, entries);
+  }
+  gpuModule->setAttr(
+      LLVM::LLVMDialect::getDataLayoutAttrName(),
+      deviceModule->getAttr(LLVM::LLVMDialect::getDataLayoutAttrName()));
+  gpuModule->setAttr(DLTIDialect::kDataLayoutAttrName, dataLayout);
 
   for (auto launchFunc : launchFuncs) {
     auto launchFuncUses = launchFunc.getSymbolUses(hostModule);
