@@ -1118,7 +1118,8 @@ void transform(LLVM::LLVMFuncOp f) {
     isl_schedule_dump(newSchedule.get());
   });
 
-  auto applied = scop->applySchedule(newSchedule.copy(), psi.lrs.copy(), f);
+  /// XXX do not hardcode 32
+  auto applied = scop->applySchedule(newSchedule.copy(), psi.lrs.copy(), f, 32);
 // FIXME we are getting some double frees/invalid read/writes due to these...
 #if 0
   isl_schedule_constraints_free(sc);
@@ -1378,7 +1379,7 @@ struct GPUAffineOptPass : impl::GPUAffineOptPassBase<GPUAffineOptPass> {
       // TODO need to tweak options.indexBitwidth in some cases? consult
       // LowerGpuOpsToNVVMOpsPass
       options.useBarePtrCallConv = true;
-      unsigned indexBitwidth = 64;
+      unsigned indexBitwidth = 32;
       if (indexBitwidth != kDeriveIndexBitwidthFromDataLayout)
         options.overrideIndexBitwidth(indexBitwidth);
 

@@ -19,6 +19,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
@@ -189,6 +190,7 @@ FailureOr<ConvertedKernel> convertGPUKernelToParallel(Operation *gpuKernelFunc,
 
   // TODO assert all are the same
   // TODO get this from datalayout, should be same as index
+  // it should be the host index size
   Type boundType = rewriter.getI64Type();
 
   constexpr unsigned additionalArgs = 7;
@@ -561,15 +563,38 @@ LogicalResult convertGPUCallToLaunch(gpu::CallOp callOp,
   };
   rewriter.setInsertionPoint(callOp);
   SmallVector<Operation *> clonedToHost;
+  auto clone = [&](Operation *op) {
+    // This is a workaround. The device may use index of a different width than
+    // the host and it may be in the middle of lowering so some unrealized casts
+    // (e.g. i32 to index) which don't match the lowering on the host. This
+    // happens because we do some lowering in the gpu-affine-opt but not
+    // entirely (we leave the scf.parallel's which still take index instead of
+    // i32/i64)
+    if (auto ucc = dyn_cast<UnrealizedConversionCastOp>(op)) {
+      if (ucc.getInputs().size() == 1 && ucc.getOutputs().size() == 1) {
+        auto in = ucc.getInputs()[0];
+        auto out = ucc.getOutputs()[0];
+        if (in.getType() == rewriter.getIndexType() ||
+            out.getType() == rewriter.getIndexType()) {
+          auto newOut = rewriter.create<arith::IndexCastOp>(
+              op->getLoc(), out.getType(), toHost.lookupOrDefault(in));
+          toHost.map(out, newOut);
+          return;
+        }
+      }
+    }
+    Operation *cloned = rewriter.clone(*op, toHost);
+    clonedToHost.push_back(cloned);
+  };
   for (auto *op : gridPar.before) {
     assertIsMemEffectFree(op);
-    clonedToHost.push_back(rewriter.clone(*op, toHost));
+    clone(op);
   }
   for (auto *op : blockPar.before) {
     assertIsMemEffectFree(op);
     if (llvm::all_of(op->getOperands(),
                      [&](Value v) { return toHost.lookupOrNull(v); }))
-      clonedToHost.push_back(rewriter.clone(*op, toHost));
+      clone(op);
   }
   for (auto *op : gridPar.after)
     assertIsMemEffectFree(op);

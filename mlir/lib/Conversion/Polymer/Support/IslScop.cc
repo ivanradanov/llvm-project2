@@ -714,11 +714,15 @@ IslScop::MemRefToId *IslScop::getMemRefIdMap() { return &memRefIdMap; }
 namespace polymer {
 class IslMLIRBuilder {
 public:
+  // To be initialized by user
   OpBuilder &b;
   IRMapping funcMapping;
   IslScop &scop;
+  unsigned integerBitWidth = 64;
+  // To be initialized by user end
+
   Location loc = b.getUnknownLoc();
-  typedef llvm::MapVector<isl_id *, Value> IDToValueTy;
+  using IDToValueTy = llvm::MapVector<isl_id *, Value>;
   IDToValueTy IDToValue{};
 
   // How many to create
@@ -1092,12 +1096,15 @@ public:
 
     return V;
   }
+  IntegerType getMaxType() {
+    return IntegerType::get(b.getContext(), integerBitWidth);
+  }
   IntegerType getType(__isl_keep isl_ast_expr *Expr) {
     // XXX: We assume i64 is large enough. This is often true, but in general
     //      incorrect. Also, on 32bit architectures, it would be beneficial to
     //      use a smaller type. We can and should directly derive this
     //      information during code generation.
-    return IntegerType::get(b.getContext(), 64);
+    return getMaxType();
   }
   Value createInt(__isl_take isl_ast_expr *Expr) {
     assert(isl_ast_expr_get_type(Expr) == isl_ast_expr_int &&
@@ -1439,7 +1446,7 @@ public:
     IntegerType MaxType;
     if (MaxTypeI.isa<IndexType>())
       // TODO This is temporary and we should get the target system index here
-      MaxType = b.getI64Type();
+      MaxType = getMaxType();
     else
       MaxType = MaxTypeI.cast<IntegerType>();
     unsigned MaxWidth = MaxType.getWidth();
@@ -1447,7 +1454,7 @@ public:
       Type Ty = Args[I]->getType();
       if (Ty.isa<IndexType>())
         // TODO This is temporary and we should get the target system index here
-        Ty = b.getI64Type();
+        Ty = getMaxType();
       if (Ty.cast<IntegerType>().getWidth() > MaxWidth) {
         MaxType = Ty.cast<IntegerType>();
         MaxWidth = MaxType.getWidth();
@@ -1633,7 +1640,8 @@ void IslScop::cleanup(Operation *func) {
 
 IslScop::ApplyScheduleRes
 IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
-                       __isl_take isl_union_map *lrs, Operation *originalFunc) {
+                       __isl_take isl_union_map *lrs, Operation *originalFunc,
+                       unsigned integerBitWidth) {
   IRMapping oldToNewMapping;
   OpBuilder moduleBuilder(originalFunc);
   Operation *f =
@@ -1676,7 +1684,7 @@ IslScop::applySchedule(__isl_take isl_schedule *newSchedule,
   setIslOptions(getIslCtx());
   isl_ast_build *build = isl_ast_build_alloc(getIslCtx());
   build = isl_ast_build_set_live_range_span(build, lrs);
-  IslMLIRBuilder bc = {b, oldToNewMapping, *this};
+  IslMLIRBuilder bc = {b, oldToNewMapping, *this, integerBitWidth};
   isl_ast_node *node =
       isl_ast_build_node_from_schedule(build, isl_schedule_copy(newSchedule));
   LLVM_DEBUG({

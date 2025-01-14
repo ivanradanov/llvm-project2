@@ -299,7 +299,8 @@ public:
   };
   ApplyScheduleRes applySchedule(__isl_take isl_schedule *newSchedule,
                                  __isl_take isl_union_map *lrs,
-                                 mlir::Operation *originalFunc);
+                                 mlir::Operation *originalFunc,
+                                 unsigned integerBitWidth);
   void cleanup(mlir::Operation *);
 
   isl_ctx *getIslCtx() const { return IslCtx.get(); }
