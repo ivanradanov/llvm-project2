@@ -1086,23 +1086,6 @@ void transform(LLVM::LLVMFuncOp f) {
   r = isl_options_set_schedule_serialize_sccs(scop->getIslCtx(), 1);
   assert(r == isl_stat_ok);
 
-  isl::schedule newSchedule =
-      isl::manage(isl_schedule_constraints_compute_schedule(
-          isl_schedule_constraints_copy(sc)));
-  LLVM_DEBUG({
-    llvm::dbgs() << "New Schedule:\n";
-    isl_schedule_dump(newSchedule.get());
-  });
-
-  // TODO we want to collect statistics and emit remarks about this kind of
-  // stuff
-  if (newSchedule.is_null())
-    return;
-
-  newSchedulesComputed++;
-
-  // TODO add a round-trip mode where we codegen the original schedule
-
   PrepScheduleInfo psi;
   psi.unallocatedArrays = psi.allArrays =
       isl::manage(isl_schedule_constraints_get_array_size(sc)).domain();
@@ -1111,12 +1094,33 @@ void transform(LLVM::LLVMFuncOp f) {
   psi.lrs = isl::manage(isl_schedule_constraints_get_live_range_span(sc));
   psi.asyncDeps = isl::manage_copy(ps->dep_async);
 
-  newSchedule = prepareScheduleForGPU(newSchedule, psi);
+  isl::schedule newSchedule;
+  if (getenv("GPU_AFFINE_OPT_ROUNDTRIP")) {
+    newSchedule = scop->getScheduleTree();
+  } else {
+    newSchedule = isl::manage(isl_schedule_constraints_compute_schedule(
+        isl_schedule_constraints_copy(sc)));
+    LLVM_DEBUG({
+      llvm::dbgs() << "New Schedule:\n";
+      isl_schedule_dump(newSchedule.get());
+    });
 
-  LLVM_DEBUG({
-    llvm::dbgs() << "New Schedule Prepared for GPU:\n";
-    isl_schedule_dump(newSchedule.get());
-  });
+    // TODO we want to collect statistics and emit remarks about this kind of
+    // stuff
+    if (newSchedule.is_null())
+      return;
+
+    newSchedulesComputed++;
+
+    // TODO add a round-trip mode where we codegen the original schedule
+
+    newSchedule = prepareScheduleForGPU(newSchedule, psi);
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "New Schedule Prepared for GPU:\n";
+      isl_schedule_dump(newSchedule.get());
+    });
+  }
 
   /// XXX do not hardcode 32
   auto applied = scop->applySchedule(newSchedule.copy(), psi.lrs.copy(), f, 32);
