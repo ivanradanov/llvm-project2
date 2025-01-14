@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
@@ -74,11 +75,18 @@ public:
     registry.addExtensions<LoadDependentDialectExtension>();
   }
 
-  LogicalResult initialize(MLIRContext *context) final {
+  void runOnOperation() final {
+    MLIRContext *context = &getContext();
+
+    const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
+    auto dl = dataLayoutAnalysis.getAtOrAbove(getOperation());
+    LowerToLLVMOptions options(&getContext(), dl);
+    auto typeConverter =
+        std::make_shared<LLVMTypeConverter>(&getContext(), options);
+
     RewritePatternSet tempPatterns(context);
     auto target = std::make_shared<ConversionTarget>(*context);
     target->addLegalDialect<LLVM::LLVMDialect>();
-    auto typeConverter = std::make_shared<LLVMTypeConverter>(context);
 
     if (!filterDialects.empty()) {
       // Test mode: Populate only patterns from the specified dialects. Produce
@@ -86,14 +94,20 @@ public:
       // interface.
       for (std::string &dialectName : filterDialects) {
         Dialect *dialect = context->getLoadedDialect(dialectName);
-        if (!dialect)
-          return emitError(UnknownLoc::get(context))
-                 << "dialect not loaded: " << dialectName << "\n";
+        if (!dialect) {
+          emitError(UnknownLoc::get(context))
+              << "dialect not loaded: " << dialectName << "\n";
+          signalPassFailure();
+          return;
+        }
         auto *iface = dyn_cast<ConvertToLLVMPatternInterface>(dialect);
-        if (!iface)
-          return emitError(UnknownLoc::get(context))
-                 << "dialect does not implement ConvertToLLVMPatternInterface: "
-                 << dialectName << "\n";
+        if (!iface) {
+          emitError(UnknownLoc::get(context))
+              << "dialect does not implement ConvertToLLVMPatternInterface: "
+              << dialectName << "\n";
+          signalPassFailure();
+          return;
+        }
         iface->populateConvertToLLVMConversionPatterns(*target, *typeConverter,
                                                        tempPatterns);
       }
@@ -115,10 +129,7 @@ public:
         std::make_unique<FrozenRewritePatternSet>(std::move(tempPatterns));
     this->target = target;
     this->typeConverter = typeConverter;
-    return success();
-  }
 
-  void runOnOperation() final {
     if (failed(applyPartialConversion(getOperation(), *target, *patterns)))
       signalPassFailure();
   }
