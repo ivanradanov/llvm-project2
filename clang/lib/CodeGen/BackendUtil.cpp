@@ -1952,7 +1952,9 @@ LogicalResult lowerToLLVM(mlir::ModuleOp MlirModule) {
     abort();
   }
   if (mlir::failed(pm.run(MlirModule))) {
-    llvm::errs() << "Mlir passes failed";
+    llvm::errs() << "Mlir passes failed\n";
+    LLVM_DEBUG(llvm::dbgs() << "Post-lower-to-llvm MLIR\n"
+                            << *MlirModule << "\n");
     abort();
   }
   LLVM_DEBUG(llvm::dbgs() << "Post-lower-to-llvm MLIR\n"
