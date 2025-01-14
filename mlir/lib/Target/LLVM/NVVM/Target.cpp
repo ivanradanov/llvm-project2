@@ -407,10 +407,13 @@ NVPTXSerializer::compileToBinary(const std::string &ptxCode) {
     return emitLogError("`ptxas`");
 
 #define DEBUG_TYPE "serialize-to-binary-ptxas-verbose"
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> toolStderr =
-      llvm::MemoryBuffer::getFile(logFile->first);
-  if (toolStderr)
-    emitError(loc) << "ptxas statistics:\n" << toolStderr->get()->getBuffer();
+  LLVM_DEBUG({
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> toolStderr =
+        llvm::MemoryBuffer::getFile(logFile->first);
+    if (toolStderr)
+      emitRemark(loc) << "ptxas statistics:\n"
+                      << toolStderr->get()->getBuffer();
+  });
 #undef DEBUG_TYPE
 
 #define DEBUG_TYPE "dump-sass"
