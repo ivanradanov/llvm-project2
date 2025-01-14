@@ -91,6 +91,7 @@ typedef enum {
 	isl_bool_false = 0,
 	isl_bool_true = 1
 } isl_bool;
+isl_stat isl_stat_non_error_bool(isl_bool b);
 isl_bool isl_bool_not(isl_bool b);
 isl_bool isl_bool_ok(int b);
 typedef int	isl_size;
@@ -258,8 +259,16 @@ int isl_ctx_last_error_line(isl_ctx *ctx);
 void isl_ctx_reset_error(isl_ctx *ctx);
 void isl_ctx_set_error(isl_ctx *ctx, enum isl_error error);
 
+#define ISL_MAX_CACHES 1
+
 #if defined(__cplusplus)
 }
 #endif
+
+#define ISL_DEBUG(code)                                                        \
+	do {                                                                       \
+		if (getenv("ISL_DEBUG"))                                               \
+			code;                                                              \
+	} while (0)
 
 #endif

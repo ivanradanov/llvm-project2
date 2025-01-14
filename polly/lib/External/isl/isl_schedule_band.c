@@ -10,13 +10,14 @@
  * B.P. 105 - 78153 Le Chesnay, France
  */
 
-#include <string.h>
-#include <isl/val.h>
-#include <isl/space.h>
+#include <isl/id_to_id.h>
 #include <isl/map.h>
 #include <isl/schedule_node.h>
+#include <isl/space.h>
+#include <isl/val.h>
 #include <isl_schedule_band.h>
 #include <isl_schedule_private.h>
+#include <string.h>
 
 isl_ctx *isl_schedule_band_get_ctx(__isl_keep isl_schedule_band *band)
 {
@@ -64,6 +65,7 @@ __isl_give isl_schedule_band *isl_schedule_band_from_multi_union_pw_aff(
 
 	band->n = dim;
 	band->coincident = isl_calloc_array(ctx, int, band->n);
+	band->array_expansion = isl_calloc_array(ctx, isl_id_to_id *, band->n);
 	band->mupa = mupa;
 	space = isl_space_params_alloc(ctx, 0);
 	band->ast_build_options = isl_union_set_empty(space);
@@ -99,6 +101,14 @@ __isl_give isl_schedule_band *isl_schedule_band_dup(
 	dup->coincident = isl_alloc_array(ctx, int, band->n);
 	if (band->n && !dup->coincident)
 		return isl_schedule_band_free(dup);
+
+	dup->n = band->n;
+	dup->array_expansion =
+		isl_alloc_array(ctx, typeof(band->array_expansion[0]), band->n);
+	if (band->n && !dup->array_expansion)
+		return isl_schedule_band_free(dup);
+	memcpy(dup->array_expansion, band->array_expansion,
+		   sizeof(band->array_expansion[0]) * band->n);
 
 	for (i = 0; i < band->n; ++i)
 		dup->coincident[i] = band->coincident[i];
@@ -244,6 +254,19 @@ isl_bool isl_schedule_band_member_get_coincident(
 	return isl_bool_ok(band->coincident[pos]);
 }
 
+isl_id_to_id *
+isl_schedule_band_member_get_array_expansion(__isl_keep isl_schedule_band *band,
+											 int pos) {
+	if (!band)
+		return NULL;
+
+	if (pos < 0 || pos >= band->n)
+		isl_die(isl_schedule_band_get_ctx(band), isl_error_invalid,
+				"invalid member position", return NULL);
+
+	return isl_id_to_id_copy(band->array_expansion[pos]);
+}
+
 /* Mark the given scheduling dimension as being coincident or not
  * according to "coincident".
  */
@@ -264,6 +287,24 @@ __isl_give isl_schedule_band *isl_schedule_band_member_set_coincident(
 			return isl_schedule_band_free(band));
 
 	band->coincident[pos] = coincident;
+
+	return band;
+}
+
+__isl_give isl_schedule_band *isl_schedule_band_member_set_array_expansion(
+	__isl_take isl_schedule_band *band, int pos,
+	__isl_take isl_id_to_id *array_expansion) {
+	if (!band)
+		return NULL;
+	band = isl_schedule_band_cow(band);
+	if (!band)
+		return NULL;
+
+	if (pos < 0 || pos >= band->n)
+		isl_die(isl_schedule_band_get_ctx(band), isl_error_invalid,
+				"invalid member position", return isl_schedule_band_free(band));
+
+	band->array_expansion[pos] = array_expansion;
 
 	return band;
 }

@@ -208,7 +208,7 @@ __isl_give isl_ast_build *isl_ast_build_dup(__isl_keep isl_ast_build *build)
 	dup->strides = isl_vec_copy(build->strides);
 	dup->offsets = isl_multi_aff_copy(build->offsets);
 	dup->executed = isl_union_map_copy(build->executed);
-	dup->single_valued = build->single_valued;
+	dup->executed_ea = isl_union_map_copy(build->executed_ea);
 	dup->options = isl_union_map_copy(build->options);
 	dup->at_each_domain = build->at_each_domain;
 	dup->at_each_domain_user = build->at_each_domain_user;
@@ -223,6 +223,8 @@ __isl_give isl_ast_build *isl_ast_build_dup(__isl_keep isl_ast_build *build)
 	dup->create_leaf = build->create_leaf;
 	dup->create_leaf_user = build->create_leaf_user;
 	dup->node = isl_schedule_node_copy(build->node);
+	if (build->live_range_span)
+		dup->live_range_span = isl_union_map_copy(build->live_range_span);
 	if (build->loop_type) {
 		int i;
 
@@ -235,13 +237,13 @@ __isl_give isl_ast_build *isl_ast_build_dup(__isl_keep isl_ast_build *build)
 			dup->loop_type[i] = build->loop_type[i];
 	}
 
-	if (!dup->iterators || !dup->domain || !dup->generated ||
-	    !dup->pending || !dup->values ||
-	    !dup->strides || !dup->offsets || !dup->options ||
-	    (build->internal2input && !dup->internal2input) ||
-	    (build->executed && !dup->executed) ||
-	    (build->value && !dup->value) ||
-	    (build->node && !dup->node))
+	if (!dup->iterators || !dup->domain || !dup->generated || !dup->pending ||
+		!dup->values || !dup->strides || !dup->offsets || !dup->options ||
+		(build->internal2input && !dup->internal2input) ||
+		(build->executed && !dup->executed) ||
+		(build->executed_ea && !dup->executed_ea) ||
+		(build->value && !dup->value) || (build->node && !dup->node) ||
+		(build->live_range_span && !dup->live_range_span))
 		return isl_ast_build_free(dup);
 
 	return dup;
@@ -320,7 +322,9 @@ __isl_null isl_ast_build *isl_ast_build_free(
 	isl_multi_aff_free(build->offsets);
 	isl_multi_aff_free(build->schedule_map);
 	isl_union_map_free(build->executed);
+	isl_union_map_free(build->executed_ea);
 	isl_union_map_free(build->options);
+	isl_union_map_free(build->live_range_span);
 	isl_schedule_node_free(build->node);
 	free(build->loop_type);
 	isl_set_free(build->isolated);
@@ -1026,6 +1030,25 @@ error:
 	return NULL;
 }
 
+/* Replace build->live_range_span by "live_range_span".
+ */
+__isl_give isl_ast_build *isl_ast_build_set_live_range_span(
+	__isl_take isl_ast_build *build, __isl_take isl_union_map *live_range_span)
+{
+	build = isl_ast_build_cow(build);
+	if (!build)
+		goto error;
+
+	isl_union_map_free(build->live_range_span);
+	build->live_range_span = live_range_span;
+
+	return build;
+error:
+	isl_ast_build_free(build);
+	isl_union_map_free(live_range_span);
+	return NULL;
+}
+
 /* Replace build->executed by "executed".
  */
 __isl_give isl_ast_build *isl_ast_build_set_executed(
@@ -1042,6 +1065,23 @@ __isl_give isl_ast_build *isl_ast_build_set_executed(
 error:
 	isl_ast_build_free(build);
 	isl_union_map_free(executed);
+	return NULL;
+}
+
+__isl_give isl_ast_build *isl_ast_build_set_executed_ea(
+	__isl_take isl_ast_build *build, __isl_take isl_union_map *executed_ea)
+{
+	build = isl_ast_build_cow(build);
+	if (!build)
+		goto error;
+
+	isl_union_map_free(build->executed_ea);
+	build->executed_ea = executed_ea;
+
+	return build;
+error:
+	isl_ast_build_free(build);
+	isl_union_map_free(executed_ea);
 	return NULL;
 }
 
@@ -2439,21 +2479,4 @@ __isl_give isl_set *isl_ast_build_eliminate(
 	domain = isl_ast_build_eliminate_inner(build, domain);
 	domain = isl_ast_build_eliminate_divs(build, domain);
 	return domain;
-}
-
-/* Replace build->single_valued by "sv".
- */
-__isl_give isl_ast_build *isl_ast_build_set_single_valued(
-	__isl_take isl_ast_build *build, int sv)
-{
-	if (!build)
-		return build;
-	if (build->single_valued == sv)
-		return build;
-	build = isl_ast_build_cow(build);
-	if (!build)
-		return build;
-	build->single_valued = sv;
-
-	return build;
 }

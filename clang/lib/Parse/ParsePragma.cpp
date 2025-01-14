@@ -12,14 +12,17 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/PragmaKinds.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/TokenKinds.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/Token.h"
 #include "clang/Parse/LoopHint.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/EnterExpressionEvaluationContext.h"
+#include "clang/Sema/ParsedAttr.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaCUDA.h"
 #include "clang/Sema/SemaCodeCompletion.h"
@@ -30,6 +33,24 @@
 using namespace clang;
 
 namespace {
+
+struct PragmaTransformApplyHandler : public PragmaHandler {
+  explicit PragmaTransformApplyHandler() : PragmaHandler("transform_apply") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaTransformImportHandler : public PragmaHandler {
+  explicit PragmaTransformImportHandler() : PragmaHandler("transform_import") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaTransformLabelHandler : public PragmaHandler {
+  explicit PragmaTransformLabelHandler() : PragmaHandler("transform_label") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
 
 struct PragmaAlignHandler : public PragmaHandler {
   explicit PragmaAlignHandler() : PragmaHandler("align") {}
@@ -418,6 +439,15 @@ void markAsReinjectedForRelexing(llvm::MutableArrayRef<clang::Token> Toks) {
 }  // end namespace
 
 void Parser::initializePragmaHandlers() {
+  TransformImportHandler = std::make_unique<PragmaTransformImportHandler>();
+  PP.AddPragmaHandler(TransformImportHandler.get());
+
+  TransformApplyHandler = std::make_unique<PragmaTransformApplyHandler>();
+  PP.AddPragmaHandler(TransformApplyHandler.get());
+
+  TransformLabelHandler = std::make_unique<PragmaTransformLabelHandler>();
+  PP.AddPragmaHandler(TransformLabelHandler.get());
+
   AlignHandler = std::make_unique<PragmaAlignHandler>();
   PP.AddPragmaHandler(AlignHandler.get());
 
@@ -572,6 +602,12 @@ void Parser::initializePragmaHandlers() {
 
 void Parser::resetPragmaHandlers() {
   // Remove the pragma handlers we installed.
+  PP.RemovePragmaHandler(TransformImportHandler.get());
+  TransformImportHandler.reset();
+  PP.RemovePragmaHandler(TransformApplyHandler.get());
+  TransformApplyHandler.reset();
+  PP.RemovePragmaHandler(TransformLabelHandler.get());
+  TransformLabelHandler.reset();
   PP.RemovePragmaHandler(AlignHandler.get());
   AlignHandler.reset();
   PP.RemovePragmaHandler("GCC", GCCVisibilityHandler.get());
@@ -750,6 +786,14 @@ void Parser::HandlePragmaMSStruct() {
       reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
   Actions.ActOnPragmaMSStruct(Kind);
   ConsumeAnnotationToken();
+}
+
+void Parser::HandlePragmaTransformLabel() {
+  assert(Tok.is(tok::annot_pragma_transform_label));
+  llvm::errs() << NextToken().getIdentifierInfo()->getName();
+  ConsumeAnnotationToken();
+  ConsumeAnyToken();
+  ExpectAndConsume(tok::eod);
 }
 
 void Parser::HandlePragmaAlign() {
@@ -2438,6 +2482,137 @@ static void ParseAlignPragma(Preprocessor &PP, Token &FirstTok,
   Toks[0].setAnnotationEndLoc(EndLoc);
   Toks[0].setAnnotationValue(reinterpret_cast<void*>(
                              static_cast<uintptr_t>(Kind)));
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+}
+
+// #pragma transform_apply <func>(<arg1>, <arg2>, ...)
+void PragmaTransformApplyHandler::HandlePragma(Preprocessor &PP,
+                                               PragmaIntroducer Introducer,
+                                               Token &TransformTok) {
+
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaTransformApplyInfo;
+  Info->TransformApply = TransformTok;
+
+  Token FuncName;
+  PP.Lex(FuncName);
+  if (FuncName.isNot(tok::identifier)) {
+    PP.Diag(FuncName.getLocation(), diag::warn_pragma_expected_identifier)
+        << "transform_apply";
+    return;
+  }
+  Info->Func = FuncName;
+
+  Token Tok;
+
+  PP.Lex(Tok);
+  if (Tok.isNot(tok::l_paren)) {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_lparen)
+        << "transform_apply";
+    return;
+  }
+
+  bool LastArg = false;
+  while (1) {
+    PP.Lex(Tok);
+    if (Tok.is(tok::eod))
+      break;
+    if (Tok.is(tok::r_paren))
+      break;
+    if (LastArg) {
+      if (Tok.is(tok::comma)) {
+        LastArg = false;
+        continue;
+      } else {
+        PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_comma)
+            << "transform_apply";
+        return;
+      }
+    } else {
+      if (Tok.is(tok::identifier)) {
+        Info->Args.push_back(Tok);
+        LastArg = true;
+        continue;
+      } else {
+        PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier)
+            << "transform_apply";
+        return;
+      }
+    }
+  };
+
+  if (LastArg && Tok.isNot(tok::r_paren)) {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_rparen)
+        << "transform_apply";
+    return;
+  }
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Token &Tok0 = Toks[0];
+  Tok0.startToken();
+  Tok0.setKind(tok::annot_pragma_transform_apply);
+  Tok0.setLocation(TransformTok.getLocation());
+  Tok0.setAnnotationEndLoc(TransformTok.getLocation());
+  Tok0.setAnnotationValue(Info);
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+
+  return;
+}
+
+// #pragma transform_import
+void PragmaTransformImportHandler::HandlePragma(Preprocessor &PP,
+                                                PragmaIntroducer Introducer,
+                                                Token &TransformTok) {
+  Token Tok;
+  PP.Lex(Tok);
+  if (Tok.isNot(tok::eod))
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << "transform_import";
+
+  SourceLocation TransformLoc = TransformTok.getLocation();
+
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaTransformLabelInfo;
+  Info->TransformLabel = TransformTok;
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Token &Tok0 = Toks[0];
+  Tok0.startToken();
+  Tok0.setKind(tok::annot_pragma_transform_import);
+  Tok0.setLocation(TransformLoc);
+  Tok0.setAnnotationEndLoc(TransformLoc);
+  Tok0.setAnnotationValue(Info);
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+}
+
+// #pragma transform_label <label>
+void PragmaTransformLabelHandler::HandlePragma(Preprocessor &PP,
+                                               PragmaIntroducer Introducer,
+                                               Token &TransformTok) {
+  SourceLocation TransformLoc = TransformTok.getLocation();
+  Token Identifier;
+  PP.Lex(Identifier);
+
+  if (Identifier.isNot(tok::identifier)) {
+    PP.Diag(Identifier.getLocation(), diag::warn_pragma_expected_identifier)
+        << "label";
+    return;
+  }
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaTransformLabelInfo;
+  Info->TransformLabel = TransformTok;
+  Info->Identfier = Identifier;
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Token &Tok0 = Toks[0];
+  Tok0.startToken();
+  Tok0.setKind(tok::annot_pragma_transform_label);
+  Tok0.setLocation(TransformLoc);
+  Tok0.setAnnotationEndLoc(TransformLoc);
+  Tok0.setAnnotationValue(Info);
   PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
                       /*IsReinject=*/false);
 }

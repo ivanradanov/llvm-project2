@@ -340,10 +340,83 @@ def ConvertComplexToStandard : Pass<"convert-complex-to-standard"> {
 }
 
 //===----------------------------------------------------------------------===//
+// GPULaunchToCall
+//===----------------------------------------------------------------------===//
+
+def GPUParallelToLaunchPass : Pass<"gpu-parallel-to-launch", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createGPUParallelToLaunchPass()";
+}
+
+def GPULaunchToParallelPass : Pass<"gpu-launch-to-parallel", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createGPULaunchToParallelPass()";
+}
+
+def OutlineGPUJitRegionsPass : Pass<"outline-gpu-jit-regions", "ModuleOp"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createOutlineGPUJitRegionsPass()";
+}
+
+def GPUAffineOptPass : Pass<"gpu-affine-opt"> {
+  let summary = "";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "func::FuncDialect",
+    "arith::ArithDialect",
+    "affine::AffineDialect",
+    "nvgpu::NVGPUDialect",
+    "memref::MemRefDialect",
+    "vector::VectorDialect",
+  ];
+  let constructor = "mlir::createGPUAffineOptPass()";
+}
+
+def ReshapeMemrefsPass : Pass<"reshape-memrefs"> {
+  let summary = "";
+  let dependentDialects = [
+    "affine::AffineDialect",
+    "memref::MemRefDialect",
+  ];
+  let constructor = "mlir::createReshapeMemrefsPass()";
+}
+
+def PromoteScfWhilePass : Pass<"promote-scf-while"> {
+  let summary = "";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "affine::AffineDialect",
+  ];
+  let constructor = "mlir::createPromoteScfWhilePass()";
+}
+
+def LLVMToAffineAccessPass : Pass<"llvm-to-affine-access"> {
+  let summary = "";
+  let dependentDialects = [
+    "memref::MemRefDialect",
+    "affine::AffineDialect",
+    "vector::VectorDialect",
+  ];
+  let constructor = "mlir::createLLVMToAffineAccessPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // LLVMToArith
 //===----------------------------------------------------------------------===//
 
-def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith", "ModuleOp"> {
+def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith"> {
   let summary = "Convert LLVM arith operations to the Arith dialect";
   let dependentDialects = ["arith::ArithDialect"];
   let constructor = "mlir::createConvertLLVMToArithPass()";
@@ -353,7 +426,7 @@ def ConvertLLVMToArithPass : Pass<"convert-llvm-to-arith", "ModuleOp"> {
 // LLVMToControlFlow
 //===----------------------------------------------------------------------===//
 
-def ConvertLLVMToControlFlowPass : Pass<"convert-llvm-to-cf", "ModuleOp"> {
+def ConvertLLVMToControlFlowPass : Pass<"convert-llvm-to-cf"> {
   let summary = "Convert LLVM cf operations to the ControlFlow dialect";
   let dependentDialects = ["cf::ControlFlowDialect"];
   let constructor = "mlir::createConvertLLVMToControlFlowPass()";
@@ -870,7 +943,11 @@ def FinalizeMemRefToLLVMConversionPass :
            "bool",
            /*default=*/"false",
            "Use generic allocation and deallocation functions instead of the "
-           "classic 'malloc', 'aligned_alloc' and 'free' functions">
+           "classic 'malloc', 'aligned_alloc' and 'free' functions">,
+    Option<"useCStyleMemRef", "use-c-style-memref",
+           "bool",
+           /*default=*/"false",
+           "Use c-style memref lowering">
   ];
 }
 
@@ -1454,7 +1531,11 @@ def ConvertVectorToLLVMPass : Pass<"convert-vector-to-llvm"> {
     Option<"x86Vector", "enable-x86vector",
            "bool", /*default=*/"false",
            "Enables the use of X86Vector dialect while lowering the vector "
-	   "dialect.">
+	   "dialect.">,
+    Option<"useCStyleMemRef", "use-c-style-memref",
+           "bool",
+           /*default=*/"false",
+           "Use c-style memref lowering">
   ];
 }
 

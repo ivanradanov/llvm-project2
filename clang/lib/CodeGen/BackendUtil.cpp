@@ -17,7 +17,11 @@
 #include "clang/Frontend/Utils.h"
 #include "clang/Lex/HeaderSearchOptions.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
@@ -26,9 +30,13 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/Frontend/Driver/CodeGenOptions.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSummaryIndex.h"
@@ -44,6 +52,7 @@
 #include "llvm/ProfileData/InstrProfCorrelator.h"
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Program.h"
@@ -57,6 +66,7 @@
 #include "llvm/TargetParser/SubtargetFeature.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/HipStdPar/HipStdPar.h"
+#include "llvm/Transforms/IPO/CUDALaunchFixUp.h"
 #include "llvm/Transforms/IPO/EmbedBitcodePass.h"
 #include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/IPO/ThinLTOBitcodeWriter.h"
@@ -83,11 +93,49 @@
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/JumpThreading.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Debugify.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+
+#include "mlir/Analysis/DataLayoutAnalysis.h"
+#include "mlir/Conversion/ArithToEmitC/ArithToEmitCPass.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/GPULaunchToCall/GPULaunchToCall.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
+#include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
+#include "mlir/Dialect/SCF/Transforms/Patterns.h"
+#include "mlir/Dialect/Transform/IR/TransformAttrs.h"
+#include "mlir/Dialect/Transform/IR/TransformOps.h"
+#include "mlir/Dialect/Transform/IR/TransformTypes.h"
+#include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.h"
+#include "mlir/Dialect/Transform/Transforms/TransformInterpreterUtils.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/Verifier.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllExtensions.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
+#include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Target/LLVMIR/Import.h"
+#include "mlir/Target/LLVMIR/ModuleImport.h"
+#include "mlir/Transforms/DialectConversion.h"
+
 #include <limits>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <tuple>
+
 using namespace clang;
 using namespace llvm;
 
@@ -118,13 +166,86 @@ static cl::opt<PGOOptions::ColdFuncOpt> ClPGOColdFuncAttr(
                clEnumValN(PGOOptions::ColdFuncOpt::OptNone, "optnone",
                           "Mark cold functions with optnone.")));
 
+static cl::opt<std::string>
+    ClTransformerPipeline("transformer-pipeline", cl::init("default"),
+                          cl::Hidden, cl::desc("Transformer pipeline to use"));
+
+static cl::opt<bool> ClTransformerEnable("transformer-enable", cl::init(false),
+                                         cl::Hidden,
+                                         cl::desc("Enable MLIR transformer"));
+
+// clang-format off
+static constexpr char DefaultPreMergeMlirPipeline[] =
+    //"builtin.module("
+    //"llvm.func("
+    "convert-llvm-to-cf,"
+    "convert-llvm-to-arith,"
+    "canonicalize,"
+    "lift-cf-to-scf,"
+    "canonicalize,"
+    "promote-scf-while,"
+    "canonicalize"
+    ;
+
+static constexpr char DefaultPostMergeMlirPipeline[] =
+    "canonicalize,"
+    // We need this to canonicalize the trunc(const) shared mem size
+    "convert-llvm-to-arith,"
+    "canonicalize,"
+    "cse,"
+    "gpu-launch-to-parallel,"
+    "cse,"
+    "canonicalize,"
+    "gpu-affine-opt"
+    //"llvm-to-affine-access,"
+    //"canonicalize"
+    ;
+static constexpr char DefaultLowerToLLVMPipeline[] =
+    "gpu-parallel-to-launch,"
+    "gpu.module("
+      "convert-gpu-to-nvvm,"
+      "convert-scf-to-cf,"
+      "convert-to-llvm,"
+      "reconcile-unrealized-casts"
+    "),"
+    "gpu-module-to-binary,"
+    "convert-scf-to-cf,"
+    "gpu-to-llvm,"
+    "convert-to-llvm"
+    ;
+// clang-format on
+
+static cl::opt<std::string>
+    ClMlirPreMergePipeline("transformer-pre-merge-mlir-pipeline",
+                           cl::init(DefaultPreMergeMlirPipeline), cl::Hidden,
+                           cl::desc("pre-merge MLIR pipeline"));
+
+static cl::opt<std::string>
+    ClMlirPostMergePipeline("transformer-post-merge-mlir-pipeline",
+                            cl::init(DefaultPostMergeMlirPipeline), cl::Hidden,
+                            cl::desc("post-merge MLIR pipeline"));
+
+static cl::opt<std::string>
+    ClMlirLowerToLLVMPipeline("transformer-lower-to-llvm-pipeline",
+                              cl::init(DefaultLowerToLLVMPipeline), cl::Hidden,
+                              cl::desc("lower to llvm pipeline"));
+
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
+
+extern cl::opt<bool> EmitMLIR;
+
 } // namespace llvm
 namespace clang {
 extern llvm::cl::opt<bool> ClSanitizeGuardChecks;
 }
 
 namespace {
+
+// TODO quick hack - this should actually check if we are post-merge, this
+// currently works for cuda/hip if the host is x86
+bool transformerIsTargetOffloadingModule(llvm::Module *M) {
+  return !llvm::Triple(M->getTargetTriple()).isX86();
+}
 
 // Default filename used for profile generation.
 std::string getDefaultProfileGenName() {
@@ -172,7 +293,7 @@ class EmitAssemblyHelper {
   std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef Path) {
     std::error_code EC;
     auto F = std::make_unique<llvm::ToolOutputFile>(Path, EC,
-                                                     llvm::sys::fs::OF_None);
+                                                    llvm::sys::fs::OF_None);
     if (EC) {
       Diags.Report(diag::err_fe_unable_to_open_output) << Path << EC.message();
       F.reset();
@@ -182,7 +303,8 @@ class EmitAssemblyHelper {
 
   void RunOptimizationPipeline(
       BackendAction Action, std::unique_ptr<raw_pwrite_stream> &OS,
-      std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC);
+      std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC,
+      bool TransformerEnabled, bool TransformerPreprocessing);
   void RunCodegenPipeline(BackendAction Action,
                           std::unique_ptr<raw_pwrite_stream> &OS,
                           std::unique_ptr<llvm::ToolOutputFile> &DwoOS);
@@ -205,13 +327,19 @@ class EmitAssemblyHelper {
            (CodeGenOpts.PrepareForThinLTO || shouldEmitRegularLTOSummary());
   }
 
+  bool shouldEmitMLIR;
+
 public:
   EmitAssemblyHelper(CompilerInstance &CI, llvm::Module *M,
                      IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS)
       : CI(CI), Diags(CI.getDiagnostics()), CodeGenOpts(CI.getCodeGenOpts()),
         TargetOpts(CI.getTargetOpts()), LangOpts(CI.getLangOpts()),
         TheModule(M), VFS(std::move(VFS)),
-        TargetTriple(TheModule->getTargetTriple()) {}
+        TargetTriple(TheModule->getTargetTriple()) {
+    shouldEmitMLIR =
+        ClTransformerEnable &&
+        (EmitMLIR || transformerIsTargetOffloadingModule(TheModule));
+  }
 
   ~EmitAssemblyHelper() {
     if (CodeGenOpts.DisableFree)
@@ -220,9 +348,13 @@ public:
 
   std::unique_ptr<TargetMachine> TM;
 
+  void RunTransformer();
+
   // Emit output using the new pass manager for the optimization pipeline.
   void emitAssembly(BackendAction Action, std::unique_ptr<raw_pwrite_stream> OS,
                     BackendConsumer *BC);
+
+  llvm::Module *getTheModule() { return TheModule; }
 };
 } // namespace
 
@@ -575,8 +707,7 @@ static void setCommandLineOpts(const CodeGenOptions &CodeGenOpts) {
   // FIXME: The command line parser below is not thread-safe and shares a global
   // state, so this call might crash or overwrite the options of another Clang
   // instance in the same process.
-  llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
-                                    BackendArgs.data());
+  llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1, BackendArgs.data());
 }
 
 void EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
@@ -806,7 +937,8 @@ static void addSanitizers(const Triple &TargetTriple,
 
 void EmitAssemblyHelper::RunOptimizationPipeline(
     BackendAction Action, std::unique_ptr<raw_pwrite_stream> &OS,
-    std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC) {
+    std::unique_ptr<llvm::ToolOutputFile> &ThinLinkOS, BackendConsumer *BC,
+    bool TransformerEnabled, bool TransformerPreprocessing) {
   std::optional<PGOOptions> PGOOpt;
 
   if (CodeGenOpts.hasProfileIRInstr())
@@ -878,12 +1010,13 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     TM->setPGOOption(PGOOpt);
 
   PipelineTuningOptions PTO;
-  PTO.LoopUnrolling = CodeGenOpts.UnrollLoops;
+  PTO.PreserveLoops = TransformerEnabled && TransformerPreprocessing;
+  PTO.LoopUnrolling = !PTO.PreserveLoops && CodeGenOpts.UnrollLoops;
   // For historical reasons, loop interleaving is set to mirror setting for loop
   // unrolling.
-  PTO.LoopInterleaving = CodeGenOpts.UnrollLoops;
-  PTO.LoopVectorization = CodeGenOpts.VectorizeLoop;
-  PTO.SLPVectorization = CodeGenOpts.VectorizeSLP;
+  PTO.LoopInterleaving = !PTO.PreserveLoops && CodeGenOpts.UnrollLoops;
+  PTO.LoopVectorization = !PTO.PreserveLoops && CodeGenOpts.VectorizeLoop;
+  PTO.SLPVectorization = !PTO.PreserveLoops && CodeGenOpts.VectorizeSLP;
   PTO.MergeFunctions = CodeGenOpts.MergeFunctions;
   // Only enable CGProfilePass when using integrated assembler, since
   // non-integrated assemblers don't recognize .cgprofile section.
@@ -907,29 +1040,31 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   SI.registerCallbacks(PIC, &MAM);
   PassBuilder PB(TM.get(), PTO, PGOOpt, &PIC);
 
-  // Handle the assignment tracking feature options.
-  switch (CodeGenOpts.getAssignmentTrackingMode()) {
-  case CodeGenOptions::AssignmentTrackingOpts::Forced:
-    PB.registerPipelineStartEPCallback(
-        [&](ModulePassManager &MPM, OptimizationLevel Level) {
-          MPM.addPass(AssignmentTrackingPass());
-        });
-    break;
-  case CodeGenOptions::AssignmentTrackingOpts::Enabled:
-    // Disable assignment tracking in LTO builds for now as the performance
-    // cost is too high. Disable for LLDB tuning due to llvm.org/PR43126.
-    if (!CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.PrepareForLTO &&
-        CodeGenOpts.getDebuggerTuning() != llvm::DebuggerKind::LLDB) {
+  if (!TransformerEnabled || !TransformerPreprocessing) {
+    // Handle the assignment tracking feature options.
+    switch (CodeGenOpts.getAssignmentTrackingMode()) {
+    case CodeGenOptions::AssignmentTrackingOpts::Forced:
       PB.registerPipelineStartEPCallback(
           [&](ModulePassManager &MPM, OptimizationLevel Level) {
-            // Only use assignment tracking if optimisations are enabled.
-            if (Level != OptimizationLevel::O0)
-              MPM.addPass(AssignmentTrackingPass());
+            MPM.addPass(AssignmentTrackingPass());
           });
+      break;
+    case CodeGenOptions::AssignmentTrackingOpts::Enabled:
+      // Disable assignment tracking in LTO builds for now as the performance
+      // cost is too high. Disable for LLDB tuning due to llvm.org/PR43126.
+      if (!CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.PrepareForLTO &&
+          CodeGenOpts.getDebuggerTuning() != llvm::DebuggerKind::LLDB) {
+        PB.registerPipelineStartEPCallback(
+            [&](ModulePassManager &MPM, OptimizationLevel Level) {
+              // Only use assignment tracking if optimisations are enabled.
+              if (Level != OptimizationLevel::O0)
+                MPM.addPass(AssignmentTrackingPass());
+            });
+      }
+      break;
+    case CodeGenOptions::AssignmentTrackingOpts::Disabled:
+      break;
     }
-    break;
-  case CodeGenOptions::AssignmentTrackingOpts::Disabled:
-    break;
   }
 
   // Enable verify-debuginfo-preserve-each for new PM.
@@ -986,40 +1121,47 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     const bool PrepareForThinLTO = CodeGenOpts.PrepareForThinLTO;
     const bool PrepareForLTO = CodeGenOpts.PrepareForLTO;
 
-    if (LangOpts.ObjCAutoRefCount) {
+    if (TransformerEnabled && TransformerPreprocessing) {
       PB.registerPipelineStartEPCallback(
           [](ModulePassManager &MPM, OptimizationLevel Level) {
-            if (Level != OptimizationLevel::O0)
-              MPM.addPass(
-                  createModuleToFunctionPassAdaptor(ObjCARCExpandPass()));
-          });
-      PB.registerPipelineEarlySimplificationEPCallback(
-          [](ModulePassManager &MPM, OptimizationLevel Level,
-             ThinOrFullLTOPhase) {
-            if (Level != OptimizationLevel::O0)
-              MPM.addPass(ObjCARCAPElimPass());
-          });
-      PB.registerScalarOptimizerLateEPCallback(
-          [](FunctionPassManager &FPM, OptimizationLevel Level) {
-            if (Level != OptimizationLevel::O0)
-              FPM.addPass(ObjCARCOptPass());
+            MPM.addPass(CUDALaunchFixUp());
           });
     }
+    if (!TransformerEnabled || TransformerPreprocessing) {
+      if (LangOpts.ObjCAutoRefCount) {
+        PB.registerPipelineStartEPCallback(
+            [](ModulePassManager &MPM, OptimizationLevel Level) {
+              if (Level != OptimizationLevel::O0)
+                MPM.addPass(
+                    createModuleToFunctionPassAdaptor(ObjCARCExpandPass()));
+            });
+        PB.registerPipelineEarlySimplificationEPCallback(
+            [](ModulePassManager &MPM, OptimizationLevel Level,
+              ThinOrFullLTOPhase) {
+              if (Level != OptimizationLevel::O0)
+                MPM.addPass(ObjCARCAPElimPass());
+            });
+        PB.registerScalarOptimizerLateEPCallback(
+            [](FunctionPassManager &FPM, OptimizationLevel Level) {
+              if (Level != OptimizationLevel::O0)
+                FPM.addPass(ObjCARCOptPass());
+            });
+      }
 
-    // If we reached here with a non-empty index file name, then the index
-    // file was empty and we are not performing ThinLTO backend compilation
-    // (used in testing in a distributed build environment).
-    bool IsThinLTOPostLink = !CodeGenOpts.ThinLTOIndexFile.empty();
-    // If so drop any the type test assume sequences inserted for whole program
-    // vtables so that codegen doesn't complain.
-    if (IsThinLTOPostLink)
-      PB.registerPipelineStartEPCallback(
-          [](ModulePassManager &MPM, OptimizationLevel Level) {
-            MPM.addPass(LowerTypeTestsPass(
-                /*ExportSummary=*/nullptr,
-                /*ImportSummary=*/nullptr,
-                /*DropTypeTests=*/lowertypetests::DropTestKind::Assume));
-          });
+      // If we reached here with a non-empty index file name, then the index
+      // file was empty and we are not performing ThinLTO backend compilation
+      // (used in testing in a distributed build environment).
+      bool IsThinLTOPostLink = !CodeGenOpts.ThinLTOIndexFile.empty();
+      // If so drop any the type test assume sequences inserted for whole program
+      // vtables so that codegen doesn't complain.
+      if (IsThinLTOPostLink)
+        PB.registerPipelineStartEPCallback(
+            [](ModulePassManager &MPM, OptimizationLevel Level) {
+              MPM.addPass(LowerTypeTestsPass(
+                  /*ExportSummary=*/nullptr,
+                  /*ImportSummary=*/nullptr,
+                  /*DropTypeTests=*/lowertypetests::DropTestKind::Assume));
+            });
 
     // Register callbacks to schedule sanitizer passes at the appropriate part
     // of the pipeline.
@@ -1049,47 +1191,63 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
         FPM.addPass(BoundsCheckingPass(Options));
       });
 
-    // Don't add sanitizers if we are here from ThinLTO PostLink. That already
-    // done on PreLink stage.
-    if (!IsThinLTOPostLink) {
-      addSanitizers(TargetTriple, CodeGenOpts, LangOpts, PB);
-      addKCFIPass(TargetTriple, LangOpts, PB);
+      // Don't add sanitizers if we are here from ThinLTO PostLink. That already
+      // done on PreLink stage.
+      if (!IsThinLTOPostLink) {
+        addSanitizers(TargetTriple, CodeGenOpts, LangOpts, PB);
+        addKCFIPass(TargetTriple, LangOpts, PB);
+      }
+
+      if (std::optional<GCOVOptions> Options =
+              getGCOVOptions(CodeGenOpts, LangOpts))
+        PB.registerPipelineStartEPCallback(
+            [Options](ModulePassManager &MPM, OptimizationLevel Level) {
+              MPM.addPass(GCOVProfilerPass(*Options));
+            });
+      if (std::optional<InstrProfOptions> Options =
+              getInstrProfOptions(CodeGenOpts, LangOpts))
+        PB.registerPipelineStartEPCallback(
+            [Options](ModulePassManager &MPM, OptimizationLevel Level) {
+              MPM.addPass(InstrProfilingLoweringPass(*Options, false));
+            });
+
+      // TODO: Consider passing the MemoryProfileOutput to the pass builder via
+      // the PGOOptions, and set this up there.
+      if (!CodeGenOpts.MemoryProfileOutput.empty()) {
+        PB.registerOptimizerLastEPCallback([](ModulePassManager &MPM,
+                                              OptimizationLevel Level,
+                                              ThinOrFullLTOPhase) {
+          MPM.addPass(createModuleToFunctionPassAdaptor(MemProfilerPass()));
+          MPM.addPass(ModuleMemProfilerPass());
+        });
+      }
     }
 
-    if (std::optional<GCOVOptions> Options =
-            getGCOVOptions(CodeGenOpts, LangOpts))
-      PB.registerPipelineStartEPCallback(
-          [Options](ModulePassManager &MPM, OptimizationLevel Level) {
-            MPM.addPass(GCOVProfilerPass(*Options));
-          });
-    if (std::optional<InstrProfOptions> Options =
-            getInstrProfOptions(CodeGenOpts, LangOpts))
-      PB.registerPipelineStartEPCallback(
-          [Options](ModulePassManager &MPM, OptimizationLevel Level) {
-            MPM.addPass(InstrProfilingLoweringPass(*Options, false));
-          });
-
-    // TODO: Consider passing the MemoryProfileOutput to the pass builder via
-    // the PGOOptions, and set this up there.
-    if (!CodeGenOpts.MemoryProfileOutput.empty()) {
-      PB.registerOptimizerLastEPCallback([](ModulePassManager &MPM,
-                                            OptimizationLevel Level,
-                                            ThinOrFullLTOPhase) {
-        MPM.addPass(createModuleToFunctionPassAdaptor(MemProfilerPass()));
-        MPM.addPass(ModuleMemProfilerPass());
-      });
+    if (TransformerEnabled && TransformerPreprocessing) {
+      if (CodeGenOpts.FatLTO) {
+        llvm_unreachable("TODOA");
+      } else if (PrepareForThinLTO) {
+        llvm_unreachable("TODOB");
+      } else if (PrepareForLTO) {
+        llvm_unreachable("TODOC");
+      } else {
+        MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
+      }
     }
 
-    if (CodeGenOpts.FatLTO) {
-      MPM.addPass(PB.buildFatLTODefaultPipeline(
-          Level, PrepareForThinLTO,
-          PrepareForThinLTO || shouldEmitRegularLTOSummary()));
-    } else if (PrepareForThinLTO) {
-      MPM.addPass(PB.buildThinLTOPreLinkDefaultPipeline(Level));
-    } else if (PrepareForLTO) {
-      MPM.addPass(PB.buildLTOPreLinkDefaultPipeline(Level));
-    } else {
-      MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
+    if (!TransformerEnabled ||
+        (TransformerEnabled && !TransformerPreprocessing)) {
+      if (CodeGenOpts.FatLTO) {
+        MPM.addPass(PB.buildFatLTODefaultPipeline(
+            Level, PrepareForThinLTO,
+            PrepareForThinLTO || shouldEmitRegularLTOSummary()));
+      } else if (PrepareForThinLTO) {
+        MPM.addPass(PB.buildThinLTOPreLinkDefaultPipeline(Level));
+      } else if (PrepareForLTO) {
+        MPM.addPass(PB.buildLTOPreLinkDefaultPipeline(Level));
+      } else {
+        MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
+      }
     }
   }
 
@@ -1105,46 +1263,59 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   if (!actionRequiresCodeGen(Action) && CodeGenOpts.VerifyModule)
     MPM.addPass(VerifierPass());
 
-  if (Action == Backend_EmitBC || Action == Backend_EmitLL ||
-      CodeGenOpts.FatLTO) {
-    if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
-      if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
-        TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
-                                 CodeGenOpts.EnableSplitLTOUnit);
-      if (Action == Backend_EmitBC) {
-        if (!CodeGenOpts.ThinLinkBitcodeFile.empty()) {
-          ThinLinkOS = openOutputFile(CodeGenOpts.ThinLinkBitcodeFile);
-          if (!ThinLinkOS)
-            return;
-        }
-        MPM.addPass(ThinLTOBitcodeWriterPass(
-            *OS, ThinLinkOS ? &ThinLinkOS->os() : nullptr));
-      } else if (Action == Backend_EmitLL) {
-        MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
-                                    /*EmitLTOSummary=*/true));
-      }
-    } else {
-      // Emit a module summary by default for Regular LTO except for ld64
-      // targets
-      bool EmitLTOSummary = shouldEmitRegularLTOSummary();
-      if (EmitLTOSummary) {
-        if (!TheModule->getModuleFlag("ThinLTO") && !CodeGenOpts.UnifiedLTO)
-          TheModule->addModuleFlag(llvm::Module::Error, "ThinLTO", uint32_t(0));
+  if (!TransformerEnabled ||
+      (TransformerEnabled && !TransformerPreprocessing)) {
+    if (Action == Backend_EmitBC || Action == Backend_EmitLL ||
+        CodeGenOpts.FatLTO || shouldEmitMLIR) {
+      if (CodeGenOpts.PrepareForThinLTO && !CodeGenOpts.DisableLLVMPasses) {
         if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
           TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
-                                   uint32_t(1));
-      }
-      if (Action == Backend_EmitBC) {
-        MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
+                                   CodeGenOpts.EnableSplitLTOUnit);
+        if (Action == Backend_EmitBC) {
+          if (!CodeGenOpts.ThinLinkBitcodeFile.empty()) {
+            ThinLinkOS = openOutputFile(CodeGenOpts.ThinLinkBitcodeFile);
+            if (!ThinLinkOS)
+              return;
+          }
+          MPM.addPass(ThinLTOBitcodeWriterPass(
+              *OS, ThinLinkOS ? &ThinLinkOS->os() : nullptr));
+        } else if (Action == Backend_EmitLL) {
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                      /*EmitLTOSummary=*/true));
+        } else {
+          assert(shouldEmitMLIR);
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                      /*EmitLTOSummary=*/true));
+        }
+      } else {
+        // Emit a module summary by default for Regular LTO except for ld64
+        // targets
+        bool EmitLTOSummary = shouldEmitRegularLTOSummary();
+        if (EmitLTOSummary) {
+          if (!TheModule->getModuleFlag("ThinLTO") && !CodeGenOpts.UnifiedLTO)
+            TheModule->addModuleFlag(llvm::Module::Error, "ThinLTO",
+                                     uint32_t(0));
+          if (!TheModule->getModuleFlag("EnableSplitLTOUnit"))
+            TheModule->addModuleFlag(llvm::Module::Error, "EnableSplitLTOUnit",
+                                     uint32_t(1));
+        }
+        if (Action == Backend_EmitBC) {
+          MPM.addPass(BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists,
+                                        EmitLTOSummary));
+        } else if (Action == Backend_EmitLL) {
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
                                       EmitLTOSummary));
-      } else if (Action == Backend_EmitLL) {
-        MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
-                                    EmitLTOSummary));
+        } else {
+          assert(shouldEmitMLIR);
+          MPM.addPass(PrintModulePass(*OS, "", CodeGenOpts.EmitLLVMUseLists,
+                                      /*EmitLTOSummary=*/true));
+        }
       }
-    }
 
-    if (shouldEmitUnifiedLTOModueFlag())
-      TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO", uint32_t(1));
+      if (shouldEmitUnifiedLTOModueFlag())
+        TheModule->addModuleFlag(llvm::Module::Error, "UnifiedLTO",
+                                 uint32_t(1));
+    }
   }
 
   // FIXME: This should eventually be replaced by a first-class driver option.
@@ -1192,6 +1363,8 @@ void EmitAssemblyHelper::RunCodegenPipeline(
   case Backend_EmitAssembly:
   case Backend_EmitMCNull:
   case Backend_EmitObj:
+    if (shouldEmitMLIR)
+      return;
     CodeGenPasses.add(
         createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
     if (!CodeGenOpts.SplitDwarfOutput.empty()) {
@@ -1229,6 +1402,692 @@ void EmitAssemblyHelper::RunCodegenPipeline(
   }
 }
 
+#define DEBUG_TYPE "run-transformer"
+
+namespace {
+
+struct LocInfo {
+  StringRef File;
+  uint64_t Line, Col;
+};
+
+struct ForLocInfo {
+  StringRef Label;
+  LocInfo Start, End;
+};
+
+static StringRef getGlobalString(llvm::Value *v) {
+  return cast<llvm::ConstantDataSequential>(
+             cast<llvm::GlobalVariable>(v)->getInitializer())
+      ->getAsString();
+}
+
+using ForOpTy = mlir::affine::AffineForOp;
+
+std::map<std::string, SmallPtrSet<mlir::Operation *, 1>>
+buildLabelToOpMap(llvm::Module &M, mlir::ModuleOp MlirModule) {
+  StringRef Name = "__clang_transformer_for_locs";
+  llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  if (!GV)
+    return {};
+  auto *CA = cast<llvm::ConstantArray>(GV->getInitializer());
+  SmallVector<ForLocInfo> ForLocs;
+  for (auto &Op : CA->operands()) {
+    llvm::ConstantStruct *CS = cast<llvm::ConstantStruct>(Op.get());
+    StringRef Label = getGlobalString(CS->getOperand(0));
+    auto getLoc = [&](llvm::Value *V) -> LocInfo {
+      StringRef LocStartFile =
+          getGlobalString(cast<llvm::ConstantStruct>(V)->getOperand(0));
+      uint64_t LocLine =
+          cast<llvm::ConstantInt>(cast<llvm::ConstantStruct>(V)->getOperand(1))
+              ->getZExtValue();
+      uint64_t LocCol =
+          cast<llvm::ConstantInt>(cast<llvm::ConstantStruct>(V)->getOperand(2))
+              ->getZExtValue();
+      return {LocStartFile, LocLine, LocCol};
+    };
+    auto LocStart = getLoc(CS->getOperand(1));
+    auto LocEnd = getLoc(CS->getOperand(2));
+    LLVM_DEBUG({
+      llvm::errs() << Label << "\n";
+      llvm::errs() << LocStart.File << "\n";
+      llvm::errs() << LocStart.Line << "\n";
+      llvm::errs() << LocStart.Col << "\n";
+      llvm::errs() << LocEnd.File << "\n";
+      llvm::errs() << LocEnd.Line << "\n";
+      llvm::errs() << LocEnd.Col << "\n";
+    });
+    ForLocs.push_back({Label, LocStart, LocEnd});
+  }
+
+  using namespace mlir;
+
+  std::map<std::string, SmallPtrSet<mlir::Operation *, 1>> Map;
+  for (auto Loc : ForLocs)
+    Map[Loc.Label.str()] = {};
+  MlirModule->walk([&](ForOpTy forOp) {
+    LLVM_DEBUG(forOp->getLoc().dump());
+    Location loc = forOp->getLoc();
+    loc->walk([&](Location loc) {
+      if (FileLineColLoc flc = dyn_cast<FileLineColLoc>(loc)) {
+        LLVM_DEBUG({
+          llvm::errs() << "flc\n";
+          llvm::errs() << flc.getFilename() << "\n";
+          llvm::errs() << flc.getLine() << "\n";
+          llvm::errs() << flc.getColumn() << "\n";
+        });
+        for (auto Loc : ForLocs) {
+          // TODO we only get the filename from `pwd` here, whereas Loc.Start
+          // contains the absolute path, fix this
+          bool isSameFile = Loc.Start.File.ends_with(flc.getFilename());
+          if (isSameFile && Loc.Start.Line == flc.getLine() &&
+              Loc.Start.Col == flc.getColumn()) {
+            auto res = Map[Loc.Label.str()].insert(forOp);
+            if (res.second)
+              llvm::errs() << "info: found match for label " << Loc.Label
+                           << "\n";
+          }
+        }
+      }
+      return WalkResult::advance();
+    });
+  });
+
+  for (auto Loc : ForLocs)
+    if (Map[Loc.Label.str()].size() == 0)
+      llvm::errs() << "warning: unable to match label " << Loc.Label << "\n";
+
+  return Map;
+}
+
+struct ApplicationTy {
+  StringRef FuncName;
+  SmallVector<StringRef> Args;
+};
+
+SmallVector<ApplicationTy> collectApplications(llvm::Module &M) {
+  SmallVector<ApplicationTy> Applications;
+  StringRef Name = "__clang_transformer_apply_array";
+  llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  if (!GV)
+    return {};
+  auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
+  for (auto &GVA : Array->operands()) {
+    ApplicationTy Application;
+    StringRef Str = getGlobalString(GVA.get());
+    Application.FuncName = Str.take_while([&](char c) { return c != 0; });
+    Str = Str.drop_while([&](char c) { return c != 0; });
+    Str = Str.drop_front();
+    while (Str.size() != 0) {
+      Application.Args.push_back(
+          Str.take_while([&](char c) { return c != 0; }));
+      Str = Str.drop_while([&](char c) { return c != 0; });
+      Str = Str.drop_front();
+    };
+    Applications.push_back(Application);
+  }
+  return Applications;
+}
+
+void importAllTransformerSequences(llvm::Module &M,
+                                   mlir::ModuleOp transformModule) {
+  using namespace mlir;
+  OpBuilder builder(transformModule.getContext());
+  transformModule->setAttr("transform.with_named_sequence",
+                           builder.getUnitAttr());
+
+  StringRef Name = "__clang_transformer_import_array";
+  llvm::GlobalVariable *GV = M.getGlobalVariable(Name);
+  if (!GV)
+    return;
+  auto *Array = cast<llvm::ConstantArray>(GV->getInitializer());
+  for (auto &GVA : Array->operands()) {
+    StringRef Str = getGlobalString(GVA.get());
+    ParserConfig config(transformModule.getContext(),
+                        /*verifyAfterParse=*/false);
+    if (failed(mlir::parseSourceString(Str, transformModule.getBody(), config)))
+      llvm::errs() << "error: could not parse:\n" << Str << "\n";
+  }
+  transformModule->walk([&](transform::NamedSequenceOp seq) {
+    seq.setVisibility(mlir::SymbolTable::Visibility::Private);
+  });
+}
+
+std::unique_ptr<llvm::Module>
+CloneModuleInOtherContext(llvm::Module &M, llvm::LLVMContext &NewCtx) {
+  std::string BC;
+  llvm::raw_string_ostream BCOS(BC);
+  WriteBitcodeToFile(M, BCOS);
+  return ExitOnError("LLVM Module round trip failed")(parseBitcodeFile(
+      MemoryBufferRef(StringRef(BC.data(), BC.size()), "<cloned-module>"),
+      NewCtx));
+}
+
+void applyAll(
+    SmallVector<ApplicationTy> Applications, llvm::Module &M,
+    std::map<std::string, SmallPtrSet<mlir::Operation *, 1>> LabelToOp,
+    mlir::ModuleOp MlirModule, mlir::ModuleOp transformModule) {
+
+  llvm::Triple Triple(M.getTargetTriple());
+  // TODO need to compare against compiler host target triple and determine if
+  // it is executable
+  bool enableJit = Triple.isX86();
+
+  std::unique_ptr<orc::LLJIT> JIT;
+  if (enableJit) {
+    if (Error Err = orc::LLJITBuilder().create().moveInto(JIT)) {
+      logAllUnhandledErrors(std::move(Err), llvm::errs(),
+                            "JIT builder failed: ");
+      enableJit = false;
+    } else {
+      auto JITCtx = std::make_unique<LLVMContext>();
+      auto JITModule = CloneModuleInOtherContext(M, *JITCtx);
+      if (Error Err = JIT->addIRModule(llvm::orc::ThreadSafeModule(
+              std::move(JITModule), std::move(JITCtx)))) {
+        logAllUnhandledErrors(std::move(Err), llvm::errs(),
+                              "JIT add module failed: ");
+        enableJit = false;
+      }
+    }
+  }
+
+  using namespace mlir;
+
+  auto tryJITCall = [&](StringRef SymName, SmallVector<Operation *> Args) {
+    if (!enableJit)
+      return failure();
+
+    // TODO if we end up doing lambdas we need to make them `external` before
+    // jitting them as they are not accessible otherwise.
+    auto EntrySym = JIT->lookup(SymName);
+    if (!EntrySym) {
+      llvm::errs() << toString(EntrySym.takeError()) << "\n";
+      return failure();
+    }
+
+    // TODO temporary, we can actually generate a llvm ir function on the fly
+    // for this
+    //
+    // Currently (Operation *) and specific operation instances such as
+    // scf::ForOp are both `ptr`s in llvm ir. If this ever changes we are in
+    // trouble.
+    // TODO we can make sure we have ptr's in the arg list in EntrySym and make
+    // sure the number of arguments matches
+    // TODO we should also disallow functions that return values as that can
+    // break things
+    switch (Args.size()) {
+      // clang-format off
+    case 0: {
+      auto *Entry = EntrySym->toPtr<void()>();
+      Entry();
+      break;
+    }
+    case 1: {
+      auto *Entry = EntrySym->toPtr<void (*)(void *)>();
+      Entry(Args[0]);
+      break;
+    }
+    case 2: {
+      auto *Entry = EntrySym->toPtr<void (*)(void *, void *)>();
+      Entry(Args[0], Args[1]);
+      break;
+    }
+    case 3: {
+      auto *Entry = EntrySym->toPtr<void (*)(void *, void *, void *)>();
+      Entry(Args[0], Args[1], Args[2]);
+      break;
+    }
+    default:
+      llvm::report_fatal_error("exceeded max args");
+      // clang-format on
+    }
+    return success();
+  };
+
+  auto loc = MlirModule->getLoc();
+  auto &context = *transformModule.getContext();
+  OpBuilder builder(transformModule.getContext());
+  auto anyOp = transform::AnyOpType::get(&context);
+
+  unsigned i = 0;
+  for (const auto &Application : Applications) {
+    StringRef sym = Application.FuncName;
+    unsigned argNum = Application.Args.size();
+
+    SmallVector<Operation *> opArgs;
+    for (auto Arg : Application.Args) {
+      auto ops = LabelToOp[Arg.str()];
+      if (ops.size() == 0) {
+        llvm::errs() << "error in call to " << sym << ": no for with the label "
+                     << Arg << " found\n";
+        break;
+      }
+      if (ops.size() != 1) {
+        llvm::errs() << "error in call to " << sym
+                     << ": multiple fors with the same label (" << Arg
+                     << ") unsupported\n";
+        break;
+      }
+      opArgs.push_back(*ops.begin());
+    }
+
+    // We could not collect all arguments
+    if (opArgs.size() != argNum)
+      continue;
+
+    if (succeeded(tryJITCall(sym, opArgs)))
+      continue;
+
+    auto toInclude = dyn_cast_or_null<transform::NamedSequenceOp>(
+        transformModule.lookupSymbol(sym));
+    if (!toInclude) {
+      llvm::errs() << "error in call to " << Application.FuncName
+                   << ": no JIT function or sequence found\n";
+      continue;
+    }
+
+    if (argNum != toInclude.getNumArguments()) {
+      llvm::errs() << "error in call to " << Application.FuncName
+                   << ": wrong number of arguments\n";
+      continue;
+    }
+
+    RaggedArray<transform::MappedValue> extraMapping;
+    extraMapping.push_back(opArgs);
+
+    SmallVector<mlir::Type> seqTypes;
+    // For module op
+    seqTypes.push_back(anyOp);
+    // User provided ops
+    for (unsigned i = 0; i < argNum; i++)
+      seqTypes.push_back(toInclude.getArgument(i).getType());
+
+    builder.setInsertionPointToStart(&transformModule.getBodyRegion().front());
+    transform::NamedSequenceOp seq = builder.create<transform::NamedSequenceOp>(
+        loc, "__mlir_transformer" + std::to_string(i++),
+        TypeAttr::get(mlir::FunctionType::get(&context, seqTypes, TypeRange{})),
+        nullptr, nullptr, nullptr);
+    seq.setVisibility(mlir::SymbolTable::Visibility::Private);
+    builder.createBlock(&seq.getBody(), {}, seqTypes,
+                        SmallVector<Location>(argNum + 1, loc));
+    builder.create<transform::IncludeOp>(
+        loc, /* TODO should match the callee or we should just reject sequences
+                yielding any values (probably better to match) */
+        TypeRange(), SymbolRefAttr::get(toInclude.getSymNameAttr()),
+        transform::FailurePropagationMode::Propagate,
+        llvm::map_to_vector(
+            llvm::drop_begin(seq.getBody().getArguments()),
+            [&](BlockArgument ba) -> mlir::Value { return ba; }));
+    builder.create<transform::YieldOp>(loc, ValueRange());
+
+    llvm::errs() << "info: applying transformation " << sym << "\n";
+    if (failed(transform::applyTransforms(MlirModule, seq, extraMapping,
+                                          transform::TransformOptions(),
+                                          false))) {
+      llvm::errs() << "error: application failed\n";
+    }
+  }
+}
+
+constexpr char gpuModuleName[] = "__mlir_gpu_module";
+constexpr char kernelPrefix[] = "__mlir_launch_kernel_";
+
+LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
+                                  mlir::ModuleOp deviceModule) {
+  using namespace mlir;
+  if (hostModule->walk([](gpu::GPUModuleOp) { return WalkResult::interrupt(); })
+          .wasInterrupted()) {
+    return failure();
+  }
+  llvm::SmallVector<LLVM::LLVMFuncOp> launchFuncs;
+  hostModule->walk([&](LLVM::LLVMFuncOp funcOp) {
+    auto symName = funcOp.getName();
+    if (symName.starts_with(kernelPrefix))
+      launchFuncs.push_back(funcOp);
+  });
+
+  auto ctx = hostModule.getContext();
+
+  auto moduleBuilder = OpBuilder::atBlockBegin(hostModule.getBody());
+  auto gpuModule = moduleBuilder.create<gpu::GPUModuleOp>(
+      deviceModule->getLoc(), gpuModuleName);
+  gpuModule.getRegion().takeBody(deviceModule.getRegion());
+  // TODO get these target attrs from somewhere
+  auto target = moduleBuilder.getAttr<NVVM::NVVMTargetAttr>(
+      /*optLevel=*/2, /*triple=*/"nvptx64-nvidia-cuda", "sm_80", "+ptx60",
+      /*flags=*/nullptr,
+      /*linkLibs=*/nullptr);
+  gpuModule.setTargetsAttr(moduleBuilder.getArrayAttr({target}));
+
+  DataLayoutSpecInterface dataLayout = {};
+  // Set index type size to 32 bits
+  {
+    llvm::DenseMap<TypeAttr, DataLayoutEntryInterface> typeEntries;
+    auto type = IndexType::get(ctx);
+    auto key = TypeAttr::get(type);
+    uint64_t size = 32;
+    auto params = IntegerAttr::get(mlir::IntegerType::get(ctx, 64), size);
+    typeEntries.try_emplace(key, DataLayoutEntryAttr::get(type, params));
+    SmallVector<DataLayoutEntryInterface> entries;
+    entries.reserve(typeEntries.size());
+    for (const auto &it : typeEntries)
+      entries.push_back(it.second);
+    dataLayout = DataLayoutSpecAttr::get(ctx, entries);
+  }
+  gpuModule->setAttr(
+      LLVM::LLVMDialect::getDataLayoutAttrName(),
+      deviceModule->getAttr(LLVM::LLVMDialect::getDataLayoutAttrName()));
+  gpuModule->setAttr(DLTIDialect::kDataLayoutAttrName, dataLayout);
+
+  for (auto launchFunc : launchFuncs) {
+    auto launchFuncUses = launchFunc.getSymbolUses(hostModule);
+    for (auto use : *launchFuncUses) {
+      if (auto callOp = dyn_cast<LLVM::CallOp>(use.getUser())) {
+        auto loc = callOp->getLoc();
+        OpBuilder builder(callOp);
+        StringRef callee =
+            cast<LLVM::AddressOfOp>(
+                callOp.getCalleeOperands().front().getDefiningOp())
+                .getGlobalName();
+        int symbolLength = 0;
+        if (callee.consume_front("_Z"))
+          callee.consumeInteger(/*radix=*/10, symbolLength);
+        const char stubPrefix[] = "__device_stub__";
+        callee.consume_front(stubPrefix);
+
+        // LLVM::LLVMFuncOp gpuFuncOp =
+        // cast<LLVM::LLVMFuncOp>(deviceModule.lookupSymbol(callee));
+        std::string deviceSymbol;
+        if (symbolLength)
+          deviceSymbol = "_Z" +
+                         std::to_string(symbolLength - strlen(stubPrefix)) +
+                         callee.str();
+        else
+          deviceSymbol = callee;
+        SymbolRefAttr gpuFuncSymbol = SymbolRefAttr::get(
+            StringAttr::get(ctx, gpuModuleName),
+            {SymbolRefAttr::get(StringAttr::get(ctx, deviceSymbol.c_str()))});
+        auto deviceFunc = dyn_cast_or_null<LLVM::LLVMFuncOp>(
+            hostModule.lookupSymbol(gpuFuncSymbol));
+        if (!deviceFunc)
+          return deviceFunc.emitError();
+        deviceFunc->setAttr("gpu.kernel", builder.getUnitAttr());
+        deviceFunc->setAttr("nvvm.kernel", builder.getUnitAttr());
+        auto shMemSize = builder.create<LLVM::TruncOp>(
+            loc, builder.getI32Type(), callOp.getArgOperands()[7]);
+        auto stream = callOp.getArgOperands()[8];
+        // TODO stream is arg 8
+        llvm::SmallVector<mlir::Value> args;
+        for (unsigned i = 9; i < callOp.getArgOperands().size(); i++)
+          args.push_back(callOp.getArgOperands()[i]);
+        builder.create<gpu::LaunchFuncOp>(
+            loc, gpuFuncSymbol,
+            gpu::KernelDim3(
+                {builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[1]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[2]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[3])}),
+            gpu::KernelDim3(
+                {builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[4]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[5]),
+                 builder.create<LLVM::SExtOp>(loc, builder.getI64Type(),
+                                              callOp.getArgOperands()[6])}),
+            shMemSize, ValueRange(args), stream);
+        callOp->erase();
+      }
+    }
+  }
+  if (launchFuncs.size())
+    hostModule->setAttr("gpu.container_module", OpBuilder(ctx).getUnitAttr());
+  return success();
+}
+
+LogicalResult mergeInDeviceModule(llvm::Module &M, mlir::ModuleOp HostModule,
+                                  mlir::MLIRContext &context) {
+  using namespace mlir;
+  StringRef registerFuncName = "__cudaRegisterFatBinary";
+  llvm::Function *registerFunc = M.getFunction(registerFuncName);
+  if (!registerFunc)
+    return failure();
+
+  auto uses = registerFunc->uses();
+  if (uses.empty())
+    return failure();
+
+  llvm::ConstantStruct *Wrapper = nullptr;
+  for (auto &use : uses) {
+    if (Wrapper) {
+      llvm::errs() << "More than one device modules found\n";
+      abort();
+    }
+    if (auto CI = dyn_cast<llvm::CallInst>(use.getUser())) {
+      if (CI->getCalledFunction() == registerFunc) {
+        if (auto WrapperGV =
+                dyn_cast<llvm::GlobalVariable>(CI->getArgOperand(0))) {
+          Wrapper = dyn_cast<llvm::ConstantStruct>(WrapperGV->getInitializer());
+        }
+      }
+    }
+  }
+  if (!Wrapper) {
+    LLVM_DEBUG(llvm::dbgs() << "No device module found\n");
+    return failure();
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "FOUND  WRAPPER\n" << *Wrapper << "\n");
+
+  llvm::Constant *ModuleStringPtr = Wrapper->getOperand(2);
+  StringRef DeviceModuleString = getGlobalString(ModuleStringPtr);
+
+  LLVM_DEBUG(llvm::dbgs() << "MLIR Device Module\n"
+                          << DeviceModuleString << "\n");
+
+  // verification fails if we enable verifyAfterParse as the device module
+  // defines a data layout for f128 and the datalayout combining doesnt like
+  // when layout is define dfor builtin types
+  mlir::Block block;
+  mlir::ParserConfig config(&context,
+                            /*verifyAfterParse=*/false);
+  if (failed(mlir::parseSourceString(DeviceModuleString, &block, config))) {
+    llvm::errs() << "error: could not parse device module\n";
+    abort();
+  }
+  if (block.getOperations().size() != 1) {
+    llvm::errs() << "error: expected one op in parsed device module str\n";
+    abort();
+  }
+  return mergeDeviceIntoHost(HostModule, cast<mlir::ModuleOp>(block.front()));
+}
+
+void runDefaultPrePostMLIRPipelines(llvm::Module *TheModule,
+                                    mlir::ModuleOp MlirModule) {
+  using namespace mlir;
+
+  MLIRContext &context = *MlirModule->getContext();
+  LLVM_DEBUG(llvm::dbgs() << "Pre-preprocess MLIR\n" << *MlirModule << "\n");
+
+  {
+    mlir::PassManager pm(&context);
+    pm.enableVerifier(true);
+    (void)mlir::applyPassManagerCLOptions(pm);
+    LLVM_DEBUG(llvm::dbgs()
+               << "Pre Merge Pipeline: " << ClMlirPreMergePipeline << "\n");
+    if (mlir::failed(
+            mlir::parsePassPipeline(ClMlirPreMergePipeline.c_str(), pm))) {
+      llvm::errs() << "Invalid pipeline";
+      abort();
+    }
+    if (mlir::failed(pm.run(MlirModule))) {
+      llvm::errs() << "Mlir passes failed";
+      abort();
+    }
+    LLVM_DEBUG(llvm::dbgs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+  }
+
+  (void)mergeInDeviceModule(*TheModule, MlirModule, context);
+  LLVM_DEBUG(llvm::dbgs() << "Pre-preprocess MLIR with device\n"
+                          << *MlirModule << "\n");
+
+  if (!transformerIsTargetOffloadingModule(TheModule)) {
+    mlir::PassManager pm(&context);
+    pm.enableVerifier(true);
+    (void)mlir::applyPassManagerCLOptions(pm);
+    LLVM_DEBUG(llvm::dbgs()
+               << "Post Merge Pipeline: " << ClMlirPostMergePipeline << "\n");
+    if (mlir::failed(
+            mlir::parsePassPipeline(ClMlirPostMergePipeline.c_str(), pm))) {
+      llvm::errs() << "Invalid pipeline";
+      abort();
+    }
+    if (mlir::failed(pm.run(MlirModule))) {
+      llvm::errs() << "Mlir passes failed";
+      abort();
+    }
+    LLVM_DEBUG(llvm::dbgs() << "Post-preprocess MLIR\n" << *MlirModule << "\n");
+  }
+}
+
+void embedMlirModule(llvm::Module *TheModule, mlir::ModuleOp MlirModule) {
+  using namespace mlir;
+
+  std::string MlirString;
+  llvm::raw_string_ostream MlirStream(MlirString);
+  mlir::OpPrintingFlags Flags;
+  Flags.enableDebugInfo();
+  mlir::AsmState asmState(MlirModule, Flags);
+  MlirModule->print(MlirStream, asmState);
+  MlirStream.flush();
+
+  llvm::IRBuilder<> B(TheModule->getContext());
+  auto GV = B.CreateGlobalString(MlirString.c_str(), "__clang_mlir_output", 0,
+                                 TheModule, true);
+  GV->setSection("llvm.metadata");
+  appendToUsed(*TheModule, {GV});
+}
+
+LogicalResult lowerToLLVM(mlir::ModuleOp MlirModule) {
+  mlir::PassManager pm(MlirModule->getContext());
+  (void)mlir::applyPassManagerCLOptions(pm);
+
+  LLVM_DEBUG(llvm::dbgs() << "Lower LLVM Pipeline: "
+                          << ClMlirLowerToLLVMPipeline << "\n");
+  if (mlir::failed(
+          mlir::parsePassPipeline(ClMlirLowerToLLVMPipeline.c_str(), pm))) {
+    llvm::errs() << "Invalid lower llvm pipeline";
+    abort();
+  }
+  if (mlir::failed(pm.run(MlirModule))) {
+    llvm::errs() << "Mlir passes failed\n";
+    LLVM_DEBUG(llvm::dbgs() << "Post-lower-to-llvm MLIR\n"
+                            << *MlirModule << "\n");
+    abort();
+  }
+  LLVM_DEBUG(llvm::dbgs() << "Post-lower-to-llvm MLIR\n"
+                          << *MlirModule << "\n");
+  return success();
+}
+
+void postProcessMlirModule(llvm::Module *&TheModule,
+                           mlir::ModuleOp MlirModule) {
+  if (EmitMLIR || transformerIsTargetOffloadingModule(TheModule)) {
+    embedMlirModule(TheModule, MlirModule);
+  } else {
+    if (failed(lowerToLLVM(MlirModule)))
+      return;
+    auto NewModule =
+        mlir::translateModuleToLLVMIR(MlirModule, TheModule->getContext());
+    // TODO How does one erase an LLVM module??
+    delete TheModule;
+    TheModule = NewModule.release();
+  }
+}
+
+void defaultPipeline(llvm::Module *&TheModule) {
+  LLVM_DEBUG(llvm::dbgs() << "Pre-transform LLVM\n" << *TheModule << "\n");
+  mlir::DialectRegistry registry;
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerAllDialects(registry);
+  mlir::registerAllPasses();
+  mlir::registerAllExtensions(registry);
+  mlir::registerAllToLLVMIRTranslations(registry);
+  mlir::registerAllFromLLVMIRTranslations(registry);
+  registerAllGPUToLLVMIRTranslations(registry);
+  mlir::MLIRContext context(registry);
+  std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
+
+  auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
+  runDefaultPrePostMLIRPipelines(TheModule, MlirModule.get());
+
+  auto LabelToOp = buildLabelToOpMap(*TheModule, *MlirModule);
+  auto Applications = collectApplications(*TheModule);
+
+  using namespace mlir;
+
+  auto loc = MlirModule->getLoc();
+  auto transformModule = ModuleOp::create(loc);
+
+  importAllTransformerSequences(*TheModule, transformModule);
+
+  if (failed(mlir::verify(&**MlirModule)))
+    llvm::errs() << "Verification failed before transform\n";
+  if (failed(mlir::verify(transformModule)))
+    llvm::errs() << "Transform module verification failed before transform\n";
+
+  applyAll(Applications, *TheModule, LabelToOp, *MlirModule, transformModule);
+
+  if (failed(mlir::verify(transformModule)))
+    llvm::errs() << "Transform module verification failed after transform\n";
+  LLVM_DEBUG(llvm::dbgs() << "Transform module:\n" << transformModule << "\n");
+
+  if (failed(mlir::verify(&**MlirModule)))
+    llvm::errs() << "Verification failed\n";
+  LLVM_DEBUG(llvm::dbgs() << "Post-transform MLIR\n" << *MlirModule << "\n");
+
+  postProcessMlirModule(TheModule, MlirModule.get());
+
+  LLVM_DEBUG(llvm::dbgs() << "Post-transform LLVM\n" << *TheModule << "\n");
+}
+
+void gpuOptPipeline(llvm::Module *&TheModule) {
+  LLVM_DEBUG(llvm::dbgs() << "Pre-transform LLVM\n" << *TheModule << "\n");
+  mlir::DialectRegistry registry;
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerAllDialects(registry);
+  mlir::registerAllPasses();
+  mlir::registerAllExtensions(registry);
+  mlir::registerAllToLLVMIRTranslations(registry);
+  mlir::registerAllFromLLVMIRTranslations(registry);
+  registerAllGPUToLLVMIRTranslations(registry);
+  mlir::MLIRContext context(registry);
+  std::unique_ptr<llvm::Module> Cloned = llvm::CloneModule(*TheModule);
+
+  auto MlirModule = mlir::translateLLVMIRToModule(std::move(Cloned), &context);
+  runDefaultPrePostMLIRPipelines(TheModule, MlirModule.get());
+
+  // TODO run gpu-affine-opt
+
+  postProcessMlirModule(TheModule, MlirModule.get());
+
+  LLVM_DEBUG(llvm::dbgs() << "Post-transform LLVM\n" << *TheModule << "\n");
+}
+
+} // namespace
+
+void EmitAssemblyHelper::RunTransformer() {
+  llvm::StringSwitch<std::function<void(llvm::Module *&)>>(
+      ClTransformerPipeline)
+      .Case("gpu-opt", gpuOptPipeline)
+      .Default(defaultPipeline)(TheModule);
+}
+
 void EmitAssemblyHelper::emitAssembly(BackendAction Action,
                                       std::unique_ptr<raw_pwrite_stream> OS,
                                       BackendConsumer *BC) {
@@ -1246,7 +2105,14 @@ void EmitAssemblyHelper::emitAssembly(BackendAction Action,
   cl::PrintOptionValues();
 
   std::unique_ptr<llvm::ToolOutputFile> ThinLinkOS, DwoOS;
-  RunOptimizationPipeline(Action, OS, ThinLinkOS, BC);
+  if (ClTransformerEnable || shouldEmitMLIR) {
+    LLVM_DEBUG(llvm::dbgs() << "Enabling MLIR transformer\n");
+    RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, true);
+    RunTransformer();
+    RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, true, false);
+  } else {
+    RunOptimizationPipeline(Action, OS, ThinLinkOS, BC, false, false);
+  }
   RunCodegenPipeline(Action, OS, DwoOS);
 
   if (ThinLinkOS)
@@ -1384,7 +2250,7 @@ void clang::emitBackendOutput(CompilerInstance &CI, StringRef TDesc,
                       .moveInto(CombinedIndex)) {
       logAllUnhandledErrors(std::move(E), errs(),
                             "Error loading index file '" +
-                            CGOpts.ThinLTOIndexFile + "': ");
+                                CGOpts.ThinLTOIndexFile + "': ");
       return;
     }
 
@@ -1412,6 +2278,9 @@ void clang::emitBackendOutput(CompilerInstance &CI, StringRef TDesc,
 
   EmitAssemblyHelper AsmHelper(CI, M, VFS);
   AsmHelper.emitAssembly(Action, std::move(OS), BC);
+  // AsmHelper may or may not consume the original module M, so we need to
+  // update it just in case.
+  M = AsmHelper.getTheModule();
 
   // Verify clang's TargetInfo DataLayout against the LLVM TargetMachine's
   // DataLayout.

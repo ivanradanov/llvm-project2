@@ -62,6 +62,21 @@ bool nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(MemRefType type) {
   return isSharedMemoryAddressSpace(memorySpace);
 }
 
+bool nvgpu::NVGPUDialect::isGlobalMemoryAddressSpace(Attribute memorySpace) {
+  if (!memorySpace)
+    return false;
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(memorySpace))
+    return intAttr.getInt() == NVGPUDialect::kGlobaldMemoryAddressSpace;
+  if (auto gpuAttr = llvm::dyn_cast<gpu::AddressSpaceAttr>(memorySpace))
+    return gpuAttr.getValue() == gpu::AddressSpace::Global;
+  return false;
+}
+
+bool nvgpu::NVGPUDialect::hasGlobalMemoryAddressSpace(MemRefType type) {
+  Attribute memorySpace = type.getMemorySpace();
+  return isGlobalMemoryAddressSpace(memorySpace);
+}
+
 //===----------------------------------------------------------------------===//
 // NVGPU_DeviceAsyncCopyOp
 //===----------------------------------------------------------------------===//

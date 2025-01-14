@@ -647,6 +647,12 @@ LogicalResult ModuleImport::convertGlobals() {
   return success();
 }
 
+LogicalResult ModuleImport::initializeTriple() {
+  mlirModule->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
+                      builder.getStringAttr(llvmModule->getTargetTriple()));
+  return success();
+}
+
 LogicalResult ModuleImport::convertDataLayout() {
   Location loc = mlirModule.getLoc();
   DataLayoutImporter dataLayoutImporter(context, llvmModule->getDataLayout());
@@ -659,6 +665,8 @@ LogicalResult ModuleImport::convertDataLayout() {
 
   mlirModule->setAttr(DLTIDialect::kDataLayoutAttrName,
                       dataLayoutImporter.getDataLayout());
+  mlirModule->setAttr(LLVM::LLVMDialect::getDataLayoutAttrName(),
+                      builder.getStringAttr(llvmModule->getDataLayoutStr()));
   return success();
 }
 
@@ -2345,6 +2353,8 @@ mlir::translateLLVMIRToModule(std::unique_ptr<llvm::Module> llvmModule,
   ModuleImport moduleImport(module.get(), std::move(llvmModule),
                             emitExpensiveWarnings, dropDICompositeTypeElements);
   if (failed(moduleImport.initializeImportInterface()))
+    return {};
+  if (failed(moduleImport.initializeTriple()))
     return {};
   if (failed(moduleImport.convertDataLayout()))
     return {};

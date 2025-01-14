@@ -14,15 +14,25 @@
 #include "mlir/Dialect/GPU/IR/CompilationInterfaces.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Target/LLVMIR/Dialect/GPU/GPUToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 using namespace mlir;
 
@@ -382,18 +392,6 @@ llvm::LaunchKernel::createKernelLaunch(mlir::gpu::LaunchFuncOp op,
   // Create the argument array.
   Value *argArray = createKernelArgArray(op);
 
-  // Default JIT optimization level.
-  llvm::Constant *optV = llvm::ConstantInt::get(i32Ty, 0);
-  // Check if there's an optimization level embedded in the object.
-  DictionaryAttr objectProps = object.getProperties();
-  mlir::Attribute optAttr;
-  if (objectProps && (optAttr = objectProps.get("O"))) {
-    auto optLevel = dyn_cast<IntegerAttr>(optAttr);
-    if (!optLevel)
-      return op.emitError("the optimization level must be an integer");
-    optV = llvm::ConstantInt::get(i32Ty, optLevel.getValue());
-  }
-
   // Load the kernel module.
   StringRef moduleName = op.getKernelModuleName().getValue();
   std::string binaryIdentifier = getBinaryIdentifier(moduleName);
@@ -401,31 +399,106 @@ llvm::LaunchKernel::createKernelLaunch(mlir::gpu::LaunchFuncOp op,
   if (!binary)
     return op.emitError() << "Couldn't find the binary: " << binaryIdentifier;
 
-  auto binaryVar = dyn_cast<llvm::GlobalVariable>(binary);
-  if (!binaryVar)
-    return op.emitError() << "Binary is not a global variable: "
-                          << binaryIdentifier;
-  llvm::Constant *binaryInit = binaryVar->getInitializer();
-  auto binaryDataSeq =
-      dyn_cast_if_present<llvm::ConstantDataSequential>(binaryInit);
-  if (!binaryDataSeq)
-    return op.emitError() << "Couldn't find binary data array: "
-                          << binaryIdentifier;
-  llvm::Constant *binarySize =
-      llvm::ConstantInt::get(i64Ty, binaryDataSeq->getNumElements() *
-                                        binaryDataSeq->getElementByteSize());
+  std::string ctorName =
+      std::string("__mlir_gpu_module_ctor_") + binaryIdentifier;
+  std::string dtorName =
+      std::string("__mlir_gpu_module_dtor_") + binaryIdentifier;
+  std::string moduleHandleName =
+      std::string("__mlir_gpu_module_handle_") + binaryIdentifier;
 
-  Value *moduleObject =
-      object.getFormat() == gpu::CompilationTarget::Assembly
-          ? builder.CreateCall(getModuleLoadJITFn(), {binary, optV})
-          : builder.CreateCall(getModuleLoadFn(), {binary, binarySize});
+  BasicBlock *insertBlock = builder.GetInsertBlock();
+  auto insertPoint = builder.GetInsertPoint();
 
-  // Load the kernel function.
-  Value *moduleFunction = builder.CreateCall(
-      getModuleFunctionFn(),
-      {moduleObject,
-       getOrCreateFunctionName(moduleName, op.getKernelName().getValue())});
+  GlobalVariable *moduleHandleGlobal = module.getNamedGlobal(moduleHandleName);
+  if (!moduleHandleGlobal) {
+    moduleHandleGlobal = new GlobalVariable(
+        builder.getPtrTy(), /*isConstant=*/false,
+        GlobalVariable::PrivateLinkage, UndefValue::get(builder.getPtrTy()),
+        moduleHandleName);
+    module.insertGlobalVariable(moduleHandleGlobal);
+  }
+  Function *ctor = module.getFunction(ctorName);
+  if (!ctor) {
+    ctor = Function::Create(
+        FunctionType::get(builder.getVoidTy(), /*isVarArg=*/false),
+        GlobalVariable::PrivateLinkage, ctorName, &module);
+    BasicBlock::Create(ctor->getContext(), "entry", ctor);
+    builder.SetInsertPointPastAllocas(ctor);
+    // Default JIT optimization level.
+    llvm::Constant *optV = llvm::ConstantInt::get(i32Ty, 0);
+    // Check if there's an optimization level embedded in the object.
+    DictionaryAttr objectProps = object.getProperties();
+    mlir::Attribute optAttr;
+    if (objectProps && (optAttr = objectProps.get("O"))) {
+      auto optLevel = dyn_cast<IntegerAttr>(optAttr);
+      if (!optLevel)
+        return op.emitError("the optimization level must be an integer");
+      optV = llvm::ConstantInt::get(i32Ty, optLevel.getValue());
+    }
 
+    auto binaryVar = dyn_cast<llvm::GlobalVariable>(binary);
+    if (!binaryVar)
+      return op.emitError()
+             << "Binary is not a global variable: " << binaryIdentifier;
+    llvm::Constant *binaryInit = binaryVar->getInitializer();
+    auto binaryDataSeq =
+        dyn_cast_if_present<llvm::ConstantDataSequential>(binaryInit);
+    if (!binaryDataSeq)
+      return op.emitError()
+             << "Couldn't find binary data array: " << binaryIdentifier;
+    llvm::Constant *binarySize =
+        llvm::ConstantInt::get(i64Ty, binaryDataSeq->getNumElements() *
+                                          binaryDataSeq->getElementByteSize());
+
+    Value *moduleObject =
+        object.getFormat() == gpu::CompilationTarget::Assembly
+            ? builder.CreateCall(getModuleLoadJITFn(), {binary, optV})
+            : builder.CreateCall(getModuleLoadFn(), {binary, binarySize});
+
+    builder.CreateStore(moduleObject, moduleHandleGlobal);
+    builder.CreateRetVoid();
+    Function *dtor = Function::Create(
+        FunctionType::get(builder.getVoidTy(), /*isVarArg=*/false),
+        GlobalVariable::PrivateLinkage, dtorName, &module);
+    BasicBlock::Create(dtor->getContext(), "entry", dtor);
+    builder.SetInsertPointPastAllocas(dtor);
+    moduleObject = builder.CreateLoad(builder.getPtrTy(), moduleHandleGlobal);
+    // Unload the kernel module.
+    builder.CreateCall(getModuleUnloadFn(), {moduleObject});
+    builder.CreateRetVoid();
+
+    appendToGlobalCtors(module, ctor, 101);
+    appendToGlobalDtors(module, dtor, 101);
+  }
+  std::string functionHandleName = std::string("__mlir_gpu_function_handle_") +
+                                   binaryIdentifier +
+                                   op.getKernelName().getValue().str();
+  GlobalVariable *functionHandleGlobal =
+      module.getNamedGlobal(functionHandleName);
+
+  if (!functionHandleGlobal) {
+    functionHandleGlobal = new GlobalVariable(
+        builder.getPtrTy(), /*isConstant=*/false,
+        GlobalVariable::PrivateLinkage, UndefValue::get(builder.getPtrTy()),
+        functionHandleName);
+    module.insertGlobalVariable(functionHandleGlobal);
+    builder.SetInsertPoint(ctor->getEntryBlock().getTerminator());
+    Value *moduleObject =
+        builder.CreateLoad(builder.getPtrTy(), moduleHandleGlobal);
+    builder.SetInsertPoint(ctor->getEntryBlock().getTerminator());
+
+    // Load the kernel function.
+    Value *moduleFunction = builder.CreateCall(
+        getModuleFunctionFn(),
+        {moduleObject,
+         getOrCreateFunctionName(moduleName, op.getKernelName().getValue())});
+    builder.CreateStore(moduleFunction, functionHandleGlobal);
+  }
+
+  builder.SetInsertPoint(insertBlock, insertPoint);
+  builder.SetInsertPoint(insertBlock, insertPoint);
+  Value *moduleFunction =
+      builder.CreateLoad(builder.getPtrTy(), functionHandleGlobal);
   // Get the stream to use for execution. If there's no async object then create
   // a stream to make a synchronous kernel launch.
   Value *stream = nullptr;
@@ -464,9 +537,6 @@ llvm::LaunchKernel::createKernelLaunch(mlir::gpu::LaunchFuncOp op,
     builder.CreateCall(getStreamSyncFn(), {stream});
     builder.CreateCall(getStreamDestroyFn(), {stream});
   }
-
-  // Unload the kernel module.
-  builder.CreateCall(getModuleUnloadFn(), {moduleObject});
 
   return success();
 }

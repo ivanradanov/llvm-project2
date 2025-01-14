@@ -3,6 +3,7 @@
  * Copyright 2013-2014 Ecole Normale Superieure
  * Copyright 2014      INRIA Rocquencourt
  * Copyright 2016-2017 Sven Verdoolaege
+ * Copyright 2022      Cerebras Systems
  *
  * Use of this software is governed by the MIT license
  *
@@ -11,6 +12,7 @@
  * 91893 Orsay, France 
  * and Inria Paris - Rocquencourt, Domaine de Voluceau - Rocquencourt,
  * B.P. 105 - 78153 Le Chesnay, France
+ * and Cerebras Systems, 1237 E Arques Ave, Sunnyvale, CA, USA
  */
 
 #include <isl_map_private.h>
@@ -335,6 +337,37 @@ __isl_give isl_union_set *isl_union_set_align_params(
 	__isl_take isl_union_set *uset, __isl_take isl_space *model)
 {
 	return isl_union_map_align_params(uset, model);
+}
+
+/* This is a wrapper around isl_union_map_project_out for use
+ * by isl_union_map_drop_unused_params.
+ *
+ * In particular, this function is only called on parameters
+ * that are not involved in the description of "umap".
+ * Dropping those parameters is therefore equivalent
+ * to projecting them out.
+ */
+static __isl_give isl_union_map *isl_union_map_drop_dims(
+	__isl_take isl_union_map *umap,
+	enum isl_dim_type type, unsigned first, unsigned n)
+{
+	return isl_union_map_project_out(umap, type, first, n);
+}
+
+#undef TYPE
+#define TYPE	isl_union_map
+#include "isl_check_named_params_templ.c"
+#include "isl_drop_unused_params_templ.c"
+
+/* Drop all parameters not referenced by "uset".
+ */
+__isl_give isl_union_set *isl_union_set_drop_unused_params(
+	__isl_take isl_union_set *uset)
+{
+	isl_union_map *umap;
+
+	umap = isl_union_map_drop_unused_params(uset_to_umap(uset));
+	return uset_from_umap(umap);
 }
 
 __isl_give isl_union_map *isl_union_map_union(__isl_take isl_union_map *umap1,
@@ -1525,6 +1558,33 @@ __isl_give isl_union_map *isl_union_map_intersect_domain_factor_domain(
 	return gen_bin_op(umap, factor, &control);
 }
 
+static isl_space *
+isl_space_range_get_nested_range(__isl_take isl_space *space) {
+	return isl_space_range(isl_space_unwrap(isl_space_range(space)));
+}
+
+static isl_map *isl_map_take_first(__isl_take isl_map *map1,
+								   __isl_take isl_map *map2) {
+	return map1;
+}
+
+/* Intersect each map in "umap" in a space A -> (B -> C)
+ * with the set in space C and
+ */
+__isl_give isl_union_map *isl_union_map_intersect_range_wrapped_and_unwrapped(
+	__isl_take isl_union_map *umap, __isl_take isl_union_set *uset) {
+	struct isl_bin_op_control control = {
+		.filter = &isl_map_range_is_wrapping,
+		.match_space = &isl_space_range_get_nested_range,
+		.fn_map = &isl_map_take_first,
+	};
+
+	isl_union_map *wrapped = gen_bin_op(isl_union_map_copy(umap),
+										isl_union_set_copy(uset), &control);
+	isl_union_map *non_wrapped = isl_union_map_intersect_range(umap, uset);
+	return isl_union_map_union(wrapped, non_wrapped);
+}
+
 /* Intersect each map in "umap" in a space [A -> B] -> C
  * with the corresponding map in "factor" in the space B -> C and
  * collect the results.
@@ -2265,6 +2325,125 @@ static __isl_give isl_map *universe(__isl_take isl_map *map)
 	return isl_map_universe(space);
 }
 
+/// { [[] -> [i0, i1]] -> [A[o0] -> S[o2, o3]] : ... }
+/// to
+/// { [[] -> [i0, i1]] -> [A[o0, o1] -> S[o2, o3]] : ... }
+static isl_map *map_add_array_dims(isl_map *map, void *user) {
+	int n_to_add = (int)user;
+
+	isl_space *rspace = isl_space_range(isl_map_get_space(map));
+	if (!isl_space_is_wrapping(rspace)) {
+		isl_space_free(rspace);
+		return map;
+	}
+
+	rspace = isl_space_unwrap(rspace);
+
+	isl_space *array_space = isl_space_domain(isl_space_copy(rspace));
+	isl_id *array_id = isl_space_get_tuple_id(array_space, isl_dim_set);
+	isl_size n_eq = isl_space_dim(array_space, isl_dim_set);
+	isl_space *array_range = isl_space_set_tuple_id(
+		isl_space_add_dims(isl_space_copy(array_space), isl_dim_set, n_to_add),
+		isl_dim_set, array_id);
+	isl_space *array_domain = array_space;
+	isl_space *array_map_space =
+		isl_space_map_from_domain_and_range(array_domain, array_range);
+	isl_map *array_map =
+		isl_map_from_basic_map(isl_basic_map_equal(array_map_space, n_eq));
+
+	isl_space *stmt_space = isl_space_range(isl_space_copy(rspace));
+	isl_space *stmt_range = isl_space_copy(stmt_space);
+	isl_space *stmt_domain = stmt_space;
+	isl_space *stmt_map_space =
+		isl_space_map_from_domain_and_range(stmt_domain, stmt_range);
+	isl_map *stmt_map = isl_map_identity(stmt_map_space);
+
+	ISL_DEBUG(fprintf(stderr, "ADD_ARRAY_DIMS\n"));
+	ISL_DEBUG(isl_map_dump(array_map));
+	ISL_DEBUG(isl_map_dump(stmt_map));
+	isl_map *combined = isl_map_product(array_map, stmt_map);
+	ISL_DEBUG(isl_map_dump(combined));
+	isl_map *added = isl_map_apply_range(map, combined);
+	ISL_DEBUG(isl_map_dump(added));
+	return added;
+}
+__isl_give isl_union_map *
+isl_union_map_add_array_dims(__isl_take isl_union_map *umap, int n) {
+	struct isl_un_op_control control = {
+		.fn_map2 = &map_add_array_dims,
+		.fn_map2_user = (void *)n,
+	};
+	return un_op(umap, &control);
+}
+
+static isl_bool isl_map_range_is_not_wrapping_user(__isl_keep isl_map *map,
+												   void *user) {
+	return !isl_map_range_is_wrapping(map);
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_not_wrapping(__isl_take isl_union_map *umap) {
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_not_wrapping_user,
+	};
+	return un_op(umap, &control);
+}
+
+static isl_bool isl_map_range_is_wrapping_user(__isl_keep isl_map *map,
+											   void *user) {
+	return isl_map_range_is_wrapping(map);
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping(__isl_take isl_union_map *umap) {
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_wrapping_user,
+	};
+	return un_op(umap, &control);
+}
+
+static isl_bool isl_map_range_is_wrapping_with_range_space_id(
+	__isl_keep isl_map *map, void *user)
+{
+	isl_id *id = user;
+	return isl_map_range_is_wrapping(map) &&
+		   id == isl_space_get_tuple_id(
+					 isl_space_unwrap(isl_space_range(isl_map_get_space(map))),
+					 isl_dim_out);
+}
+
+static isl_bool isl_map_range_is_wrapping_with_range_space(
+	__isl_keep isl_map *map, void *user)
+{
+	isl_space *space = user;
+	return isl_map_range_is_wrapping(map) &&
+		   isl_space_is_equal(space,
+			   isl_space_range(
+				   isl_space_unwrap(isl_space_range(isl_map_get_space(map)))));
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping_with_range_space_id(
+	__isl_take isl_union_map *umap, isl_id *id)
+{
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_wrapping_with_range_space_id,
+		.filter_user = id,
+	};
+	return un_op(umap, &control);
+}
+
+__isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping_with_range_space(
+	__isl_take isl_union_map *umap, isl_space *space)
+{
+	struct isl_un_op_control control = {
+		.filter = &isl_map_range_is_wrapping_with_range_space,
+		.filter_user = space,
+	};
+	return un_op(umap, &control);
+}
+
 __isl_give isl_union_map *isl_union_map_universe(__isl_take isl_union_map *umap)
 {
 	struct isl_un_op_control control = {
@@ -2282,6 +2461,21 @@ __isl_give isl_union_map *isl_union_map_reverse(__isl_take isl_union_map *umap)
 {
 	struct isl_un_op_control control = {
 		.fn_map = &isl_map_reverse,
+	};
+	return un_op(umap, &control);
+}
+
+/* Given a union map, take the maps of the form (A -> B) -> C and
+ * return the union of the corresponding maps (B -> A) -> C.
+ */
+__isl_give isl_union_map *isl_union_map_domain_reverse(
+	__isl_take isl_union_map *umap)
+{
+	struct isl_un_op_drop_user_data data = { &isl_map_domain_is_wrapping };
+	struct isl_un_op_control control = {
+		.filter = &un_op_filter_drop_user,
+		.filter_user = &data,
+		.fn_map = &isl_map_domain_reverse,
 	};
 	return un_op(umap, &control);
 }

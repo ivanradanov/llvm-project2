@@ -107,8 +107,8 @@ using AddIOpConversion =
                                 AttrConvertOverflowToArith>;
 using AndIOpConversion =
     VectorConvertToArithPattern<arith::AndIOp, LLVM::AndOp>;
-using BitcastOpConversion =
-    VectorConvertToArithPattern<arith::BitcastOp, LLVM::BitcastOp>;
+// using BitcastOpConversion =
+//     VectorConvertToArithPattern<arith::BitcastOp, LLVM::BitcastOp>;
 // using DivFOpConversion =
 //     VectorConvertToArithPattern<arith::DivFOp, LLVM::FDivOp,
 //                                arith::AttrConvertFastMathToLLVM>;
@@ -193,6 +193,18 @@ using TruncIOpConversion =
 using XOrIOpConversion =
     VectorConvertToArithPattern<arith::XOrIOp, LLVM::XOrOp>;
 
+struct ConstantOpConversion : public OpRewritePattern<LLVM::ConstantOp> {
+  using OpRewritePattern<LLVM::ConstantOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ConstantOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op.getResult().getType().isInteger())
+      return failure();
+    return oneToOneRewrite(op, arith::ConstantIntOp::getOperationName(),
+                           op->getOperands(), op->getAttrs(), rewriter);
+  }
+};
+
 void mlir::arith::populateLLVMToArithConversionPatterns(
     RewritePatternSet &patterns) {
   // clang-format off
@@ -201,8 +213,8 @@ void mlir::arith::populateLLVMToArithConversionPatterns(
     AddIOpConversion,
     AndIOpConversion,
     //AddUIExtendedOpConversion,
-    BitcastOpConversion,
-    //ConstantOpConversion,
+    //BitcastOpConversion,
+    ConstantOpConversion,
     //CmpFOpConversion,
     CmpIOpConversion,
     //DivFOpConversion,

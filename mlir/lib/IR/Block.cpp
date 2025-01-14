@@ -12,6 +12,7 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 
 using namespace mlir;
 
@@ -150,6 +151,10 @@ void Block::recomputeOpOrder() {
 /// Return a range containing the types of the arguments for this block.
 auto Block::getArgumentTypes() -> ValueTypeRange<BlockArgListType> {
   return ValueTypeRange<BlockArgListType>(getArguments());
+}
+SmallVector<Location> Block::getArgumentLocs() {
+  return llvm::map_to_vector(getArguments(),
+                             [&](auto v) { return v.getLoc(); });
 }
 
 BlockArgument Block::addArgument(Type type, Location loc) {

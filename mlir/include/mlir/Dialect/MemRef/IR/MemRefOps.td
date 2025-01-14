@@ -138,6 +138,31 @@ class AllocLikeOp<string mnemonic,
 }
 
 //===----------------------------------------------------------------------===//
+// AtAddrOp
+//===----------------------------------------------------------------------===//
+
+def AtAddrOp : MemRef_Op<"ataddr", [Pure]> {
+  let summary =
+      "Construct a c-style memref at an addr";
+  let description = [{
+  }];
+  let arguments = (ins AnyType:$addr);
+  let results = (outs AnyRankedOrUnrankedMemRef:$dest);
+  let builders = [
+    OpBuilder<(ins "Value":$source), [{
+      return build($_builder, $_state,
+        TypeRange(MemRefType::get({ShapedType::kDynamic}, $_builder.getI8Type())),
+        ValueRange(source));
+    }]>,
+    OpBuilder<(ins "Value":$source, "Type":$dstType), [{
+      return build($_builder, $_state,
+        TypeRange(dstType),
+        ValueRange(source));
+    }]>
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // AssumeAlignmentOp
 //===----------------------------------------------------------------------===//
 

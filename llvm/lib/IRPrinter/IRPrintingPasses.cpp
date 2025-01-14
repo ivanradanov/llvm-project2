@@ -13,16 +13,29 @@
 #include "llvm/IRPrinter/IRPrintingPasses.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/ModuleSummaryAnalysis.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PrintPasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace llvm;
 
 extern cl::opt<bool> WriteNewDbgInfoFormat;
+
+namespace llvm {
+cl::opt<bool> EmitMLIR("emit-mlir", cl::Hidden, cl::init(false),
+                       cl::desc("Whether to emit mlir instead of llvm"));
+}
+
+// TODO quick hack - this should actually check if we are post-merge, this
+// currently works for cuda/hip if the host is x86
+static bool transformerIsTargetOffloadingModule(llvm::Module *M) {
+  return !llvm::Triple(M->getTargetTriple()).isX86();
+}
 
 PrintModulePass::PrintModulePass() : OS(dbgs()) {}
 PrintModulePass::PrintModulePass(raw_ostream &OS, const std::string &Banner,
@@ -41,6 +54,20 @@ PreservedAnalyses PrintModulePass::run(Module &M, ModuleAnalysisManager &AM) {
   // update test output.
   if (WriteNewDbgInfoFormat)
     M.removeDebugIntrinsicDeclarations();
+
+  // TODO Whether to print this should be an option to the pass which is set in
+  // BackendUtil.cpp
+  if (EmitMLIR || transformerIsTargetOffloadingModule(&M)) {
+    if (auto MlirGlobal = dyn_cast_or_null<GlobalVariable>(
+            M.getNamedValue("__clang_mlir_output"))) {
+      if (auto Arr = dyn_cast_or_null<ConstantDataSequential>(
+              MlirGlobal->getInitializer())) {
+        StringRef Str = Arr->getAsString();
+        OS.write(Str.data(), Arr->getAsString().size());
+        return PreservedAnalyses::all();
+      }
+    }
+  }
 
   if (llvm::isFunctionInPrintList("*")) {
     if (!Banner.empty())

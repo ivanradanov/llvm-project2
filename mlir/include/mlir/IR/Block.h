@@ -89,6 +89,8 @@ public:
   /// Return a range containing the types of the arguments for this block.
   ValueTypeRange<BlockArgListType> getArgumentTypes();
 
+  SmallVector<Location> getArgumentLocs();
+
   using args_iterator = BlockArgListType::iterator;
   using reverse_args_iterator = BlockArgListType::reverse_iterator;
   args_iterator args_begin() { return getArguments().begin(); }

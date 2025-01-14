@@ -173,6 +173,9 @@ class Parser : public CodeCompletionHandler {
   // used as type traits.
   llvm::SmallDenseMap<IdentifierInfo *, tok::TokenKind> RevertibleTypeTraits;
 
+  std::unique_ptr<PragmaHandler> TransformApplyHandler;
+  std::unique_ptr<PragmaHandler> TransformImportHandler;
+  std::unique_ptr<PragmaHandler> TransformLabelHandler;
   std::unique_ptr<PragmaHandler> AlignHandler;
   std::unique_ptr<PragmaHandler> GCCVisibilityHandler;
   std::unique_ptr<PragmaHandler> OptionsHandler;
@@ -791,6 +794,24 @@ private:
                                SourceLocation PragmaLocation);
   bool HandlePragmaMSOptimize(StringRef PragmaName,
                               SourceLocation PragmaLocation);
+
+  StmtResult ParsePragmaTransformApply(StmtVector &Stmts,
+                                       ParsedStmtContext StmtCtx,
+                                       ParsedAttributes &Attrs);
+
+  StmtResult ParsePragmaTransformImport(StmtVector &Stmts,
+                                        ParsedStmtContext StmtCtx,
+                                        SourceLocation *TrailingElseLoc,
+                                        ParsedAttributes &Attrs);
+
+  StmtResult ParsePragmaTransformLabel(StmtVector &Stmts,
+                                       ParsedStmtContext StmtCtx,
+                                       SourceLocation *TrailingElseLoc,
+                                       ParsedAttributes &Attrs);
+
+  /// Handle the annotation token produced for
+  /// #pragma align...
+  void HandlePragmaTransformLabel();
 
   /// Handle the annotation token produced for
   /// #pragma align...

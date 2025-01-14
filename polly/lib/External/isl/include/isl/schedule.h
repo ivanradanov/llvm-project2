@@ -66,10 +66,28 @@ __isl_export
 __isl_give isl_schedule_constraints *isl_schedule_constraints_set_coincidence(
 	__isl_take isl_schedule_constraints *sc,
 	__isl_take isl_union_map *coincidence);
-__isl_export
-__isl_give isl_schedule_constraints *isl_schedule_constraints_set_proximity(
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_anti_proximity(
+    __isl_take isl_schedule_constraints *sc,
+    __isl_take isl_union_map *anti_proximity);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_live_range_maximal_span(
 	__isl_take isl_schedule_constraints *sc,
-	__isl_take isl_union_map *proximity);
+	__isl_take isl_union_map *live_range_span);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_live_range_span(
+	__isl_take isl_schedule_constraints *sc,
+	__isl_take isl_union_map *live_range_span);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_array_sizes(
+	__isl_take isl_schedule_constraints *sc,
+	__isl_take isl_union_map *array_sizes);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_caches(__isl_take isl_schedule_constraints *sc,
+									int n_cache, const int *cache_size);
+__isl_export __isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_proximity(__isl_take isl_schedule_constraints *sc,
+									   __isl_take isl_union_map *proximity);
 __isl_export
 __isl_give isl_schedule_constraints *
 isl_schedule_constraints_set_conditional_validity(
@@ -90,8 +108,10 @@ __isl_give isl_set *isl_schedule_constraints_get_context(
 __isl_export
 __isl_give isl_union_map *isl_schedule_constraints_get_validity(
 	__isl_keep isl_schedule_constraints *sc);
-__isl_export
-__isl_give isl_union_map *isl_schedule_constraints_get_coincidence(
+__isl_export __isl_give isl_union_map *
+isl_schedule_constraints_get_live_range_span(
+	__isl_keep isl_schedule_constraints *sc);
+__isl_export __isl_give isl_union_map *isl_schedule_constraints_get_coincidence(
 	__isl_keep isl_schedule_constraints *sc);
 __isl_export
 __isl_give isl_union_map *isl_schedule_constraints_get_proximity(
@@ -102,6 +122,14 @@ __isl_give isl_union_map *isl_schedule_constraints_get_conditional_validity(
 __isl_export
 __isl_give isl_union_map *
 isl_schedule_constraints_get_conditional_validity_condition(
+	__isl_keep isl_schedule_constraints *sc);
+
+__isl_export __isl_give int
+isl_schedule_constraints_get_n_cache(__isl_keep isl_schedule_constraints *sc);
+__isl_export __isl_give int
+isl_schedule_constraints_get_cache_size(__isl_keep isl_schedule_constraints *sc,
+										int i);
+__isl_export __isl_give isl_union_map *isl_schedule_constraints_get_array_size(
 	__isl_keep isl_schedule_constraints *sc);
 
 __isl_give isl_schedule_constraints *isl_schedule_constraints_apply(

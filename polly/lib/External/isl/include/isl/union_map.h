@@ -45,9 +45,22 @@ __isl_give isl_union_map *isl_union_map_reset_user(
 int isl_union_map_find_dim_by_name(__isl_keep isl_union_map *umap,
 	enum isl_dim_type type, const char *name);
 
+__isl_export __isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping_with_range_space_id(
+	__isl_take isl_union_map *umap, isl_id *id);
+__isl_export __isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping_with_range_space(
+	__isl_take isl_union_map *umap, isl_space *space);
+__isl_export __isl_give isl_union_map *
+isl_union_map_add_array_dims(__isl_take isl_union_map *umap, int n);
+__isl_export __isl_give isl_union_map *
+isl_union_map_filter_range_is_not_wrapping(__isl_take isl_union_map *umap);
+__isl_export __isl_give isl_union_map *
+isl_union_map_filter_range_is_wrapping(__isl_take isl_union_map *umap);
 __isl_export
 __isl_give isl_union_map *isl_union_map_universe(
 	__isl_take isl_union_map *umap);
+__isl_export
 __isl_give isl_set *isl_union_map_params(__isl_take isl_union_map *umap);
 __isl_export
 __isl_give isl_union_set *isl_union_map_domain(__isl_take isl_union_map *umap);
@@ -166,6 +179,9 @@ __isl_give isl_union_map *isl_union_map_intersect_range_space(
 	__isl_take isl_union_map *umap, __isl_take isl_space *space);
 __isl_give isl_union_map *isl_union_map_intersect_range(
 	__isl_take isl_union_map *umap, __isl_take isl_union_set *uset);
+__isl_export __isl_give isl_union_map *
+isl_union_map_intersect_range_wrapped_and_unwrapped(
+	__isl_take isl_union_map *umap, __isl_take isl_union_set *uset);
 __isl_export
 __isl_give isl_union_map *isl_union_map_intersect_domain_factor_domain(
 	__isl_take isl_union_map *umap, __isl_take isl_union_map *factor);
@@ -226,6 +242,9 @@ __isl_give isl_union_map *isl_union_map_preimage_range_union_pw_multi_aff(
 __isl_export
 __isl_give isl_union_map *isl_union_map_reverse(__isl_take isl_union_map *umap);
 __isl_export
+__isl_give isl_union_map *isl_union_map_domain_reverse(
+	__isl_take isl_union_map *umap);
+__isl_export
 __isl_give isl_union_map *isl_union_map_range_reverse(
 	__isl_take isl_union_map *umap);
 __isl_export
@@ -253,6 +272,9 @@ __isl_give isl_union_map *isl_union_map_project_out(
 	enum isl_dim_type type, unsigned first, unsigned n);
 __isl_export
 __isl_give isl_union_map *isl_union_map_project_out_all_params(
+	__isl_take isl_union_map *umap);
+__isl_export
+__isl_give isl_union_map *isl_union_map_drop_unused_params(
 	__isl_take isl_union_map *umap);
 __isl_give isl_union_map *isl_union_map_remove_divs(
 	__isl_take isl_union_map *bmap);

@@ -383,6 +383,9 @@ NVPTXSerializer::compileToBinary(const std::string &ptxCode) {
     else
       useFatbin32 = true;
   }
+#define DEBUG_TYPE "serialize-to-binary-ptxas-verbose"
+  LLVM_DEBUG(ptxasArgs.push_back("--verbose"));
+#undef DEBUG_TYPE
 
   // Create the `fatbinary` args.
   StringRef chip = getTarget().getChip();
@@ -441,6 +444,17 @@ NVPTXSerializer::compileToBinary(const std::string &ptxCode) {
                                 /*MemoryLimit=*/0,
                                 /*ErrMsg=*/&message))
     return emitLogError("`ptxas`");
+
+#define DEBUG_TYPE "serialize-to-binary-ptxas-verbose"
+  LLVM_DEBUG({
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> toolStderr =
+        llvm::MemoryBuffer::getFile(logFile->first);
+    if (toolStderr)
+      emitRemark(loc) << "ptxas statistics:\n"
+                      << toolStderr->get()->getBuffer();
+  });
+#undef DEBUG_TYPE
+
 #define DEBUG_TYPE "dump-sass"
   LLVM_DEBUG({
     std::optional<std::string> nvdisasm = findTool("nvdisasm");

@@ -13,10 +13,12 @@
  * CS 42112, 75589 Paris Cedex 12, France
  */
 
+#include "isl/printer.h"
 #include <isl/id.h>
-#include <isl/val.h>
-#include <isl/space.h>
+#include <isl/id_to_id.h>
 #include <isl/map.h>
+#include <isl/space.h>
+#include <isl/val.h>
 #include <isl_schedule_band.h>
 #include <isl_schedule_private.h>
 
@@ -98,7 +100,8 @@ __isl_give isl_schedule_tree *isl_schedule_tree_dup(
 		break;
 	case isl_schedule_node_domain:
 		dup->domain = isl_union_set_copy(tree->domain);
-		if (!dup->domain)
+		dup->expanded_arrays = isl_union_set_copy(tree->expanded_arrays);
+		if (!dup->domain || (tree->expanded_arrays && !dup->expanded_arrays))
 			return isl_schedule_tree_free(dup);
 		break;
 	case isl_schedule_node_expansion:
@@ -1036,6 +1039,37 @@ isl_bool isl_schedule_tree_band_member_get_coincident(
 	return isl_schedule_band_member_get_coincident(tree->band, pos);
 }
 
+isl_id_to_id *isl_schedule_tree_band_member_get_array_expansion(
+	__isl_keep isl_schedule_tree *tree, int pos) {
+	if (!tree)
+		return NULL;
+
+	if (tree->type != isl_schedule_node_band)
+		isl_die(isl_schedule_tree_get_ctx(tree), isl_error_invalid,
+				"not a band node", return NULL);
+
+	return isl_schedule_band_member_get_array_expansion(tree->band, pos);
+}
+
+__isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_array_expansion(
+	__isl_take isl_schedule_tree *tree, int pos,
+	__isl_take isl_id_to_id *array_expansion) {
+	if (!tree)
+		return NULL;
+	if (tree->type != isl_schedule_node_band)
+		isl_die(isl_schedule_tree_get_ctx(tree), isl_error_invalid,
+				"not a band node", return isl_schedule_tree_free(tree));
+	tree = isl_schedule_tree_cow(tree);
+	if (!tree)
+		return NULL;
+
+	tree->band = isl_schedule_band_member_set_array_expansion(tree->band, pos,
+															  array_expansion);
+	if (!tree->band)
+		return isl_schedule_tree_free(tree);
+	return tree;
+}
+
 /* Mark the given band member as being coincident or not
  * according to "coincident".
  */
@@ -1661,7 +1695,8 @@ __isl_give isl_schedule_tree *isl_schedule_tree_first_schedule_descendant(
 }
 
 static __isl_give isl_union_map *subtree_schedule_extend(
-	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *outer);
+	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *outer,
+	isl_bool stop);
 
 /* Extend the schedule map "outer" with the subtree schedule
  * of the (single) child of "tree", if any.
@@ -1684,7 +1719,7 @@ static __isl_give isl_union_map *subtree_schedule_extend_child(
 	child = isl_schedule_tree_get_child(tree, 0);
 	if (!child)
 		return isl_union_map_free(outer);
-	res = subtree_schedule_extend(child, outer);
+	res = subtree_schedule_extend(child, outer, 0);
 	isl_schedule_tree_free(child);
 	return res;
 }
@@ -1729,7 +1764,8 @@ static __isl_give isl_space *extract_space_from_filter_child(
  * to ensure that all pieces have the same range dimension.
  */
 static __isl_give isl_union_map *subtree_schedule_extend_from_children(
-	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *outer)
+	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *outer,
+	isl_bool stop)
 {
 	int i;
 	isl_size n;
@@ -1789,7 +1825,8 @@ static __isl_give isl_union_map *subtree_schedule_extend_from_children(
 		umap_i = isl_union_map_from_union_pw_multi_aff(upma);
 		umap_i = isl_union_map_flat_range_product(
 					    isl_union_map_copy(outer), umap_i);
-		umap_i = subtree_schedule_extend_child(child, umap_i);
+		if (!stop)
+			umap_i = subtree_schedule_extend_child(child, umap_i);
 		isl_schedule_tree_free(child);
 
 		empty = isl_union_map_is_empty(umap_i);
@@ -1830,7 +1867,8 @@ static __isl_give isl_union_map *subtree_schedule_extend_from_children(
  * by applying the expansion to the domain of the schedule map.
  */
 static __isl_give isl_union_map *subtree_schedule_extend(
-	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *outer)
+	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *outer,
+	isl_bool stop)
 {
 	isl_multi_union_pw_aff *mupa;
 	isl_union_map *umap;
@@ -1851,41 +1889,55 @@ static __isl_give isl_union_map *subtree_schedule_extend(
 	case isl_schedule_node_context:
 	case isl_schedule_node_guard:
 	case isl_schedule_node_mark:
-		return subtree_schedule_extend_child(tree, outer);
+		if (!stop)
+			return subtree_schedule_extend_child(tree, outer);
+		umap = outer;
+		break;
 	case isl_schedule_node_band:
 		n = isl_schedule_tree_band_n_member(tree);
-		if (n < 0)
+		if (n < 0) {
 			return isl_union_map_free(outer);
-		if (n == 0)
-			return subtree_schedule_extend_child(tree, outer);
-		mupa = isl_schedule_band_get_partial_schedule(tree->band);
-		umap = isl_union_map_from_multi_union_pw_aff(mupa);
-		outer = isl_union_map_flat_range_product(outer, umap);
-		umap = subtree_schedule_extend_child(tree, outer);
+		} else if (n == 0) {
+			if (!stop)
+				return subtree_schedule_extend_child(tree, outer);
+			umap = outer;
+		} else {
+			mupa = isl_schedule_band_get_partial_schedule(tree->band);
+			umap = isl_union_map_from_multi_union_pw_aff(mupa);
+			umap = isl_union_map_flat_range_product(outer, umap);
+			if (!stop)
+				umap = subtree_schedule_extend_child(tree, umap);
+		}
 		break;
 	case isl_schedule_node_domain:
 		domain = isl_schedule_tree_domain_get_domain(tree);
 		umap = isl_union_map_from_domain(domain);
-		outer = isl_union_map_flat_range_product(outer, umap);
-		umap = subtree_schedule_extend_child(tree, outer);
+		umap = isl_union_map_flat_range_product(outer, umap);
+		if (!stop)
+			umap = subtree_schedule_extend_child(tree, umap);
 		break;
 	case isl_schedule_node_expansion:
 		umap = isl_schedule_tree_expansion_get_expansion(tree);
-		outer = isl_union_map_apply_domain(outer, umap);
-		umap = subtree_schedule_extend_child(tree, outer);
+		umap = isl_union_map_apply_domain(outer, umap);
+		if (!stop)
+			umap = subtree_schedule_extend_child(tree, umap);
 		break;
 	case isl_schedule_node_filter:
 		domain = isl_schedule_tree_filter_get_filter(tree);
 		umap = isl_union_map_from_domain(domain);
-		outer = isl_union_map_flat_range_product(outer, umap);
-		umap = subtree_schedule_extend_child(tree, outer);
+		umap = isl_union_map_flat_range_product(outer, umap);
+		if (!stop)
+			umap = subtree_schedule_extend_child(tree, umap);
 		break;
 	case isl_schedule_node_leaf:
-		isl_die(isl_schedule_tree_get_ctx(tree), isl_error_internal,
-			"leaf node should be handled by caller", return NULL);
+		if (!stop)
+			isl_die(isl_schedule_tree_get_ctx(tree), isl_error_internal,
+				"leaf node should be handled by caller", return NULL);
+		umap = outer;
+		break;
 	case isl_schedule_node_set:
 	case isl_schedule_node_sequence:
-		umap = subtree_schedule_extend_from_children(tree, outer);
+		umap = subtree_schedule_extend_from_children(tree, outer, stop);
 		break;
 	}
 
@@ -2023,7 +2075,13 @@ __isl_give isl_union_map *isl_schedule_tree_get_subtree_schedule_union_map(
 
 	domain = initial_domain(tree);
 	umap = isl_union_map_from_domain(domain);
-	return subtree_schedule_extend(tree, umap);
+	return subtree_schedule_extend(tree, umap, 0);
+}
+
+__isl_give isl_union_map *isl_schedule_tree_extend_schedule_with_tree_schedule(
+	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *umap)
+{
+	return subtree_schedule_extend(tree, umap, 1);
 }
 
 /* Multiply the partial schedule of the band root node of "tree"
@@ -2670,6 +2728,25 @@ static isl_bool any_coincident(__isl_keep isl_schedule_band *band)
 	return isl_bool_false;
 }
 
+struct pae_data {
+	isl_schedule_band *band;
+	isl_printer **p;
+};
+isl_stat print_array_expansion(isl_id *id, isl_id *target_id, void *user) {
+	struct pae_data *data = user;
+
+	isl_printer *p = *data->p;
+
+	p = isl_printer_print_str(p, isl_id_get_name(id));
+	p = isl_printer_print_str(p, ": ");
+	p = isl_printer_print_int(p, (int)isl_id_get_user(target_id));
+	p = isl_printer_yaml_next(p);
+
+	(*data->p) = p;
+
+	return isl_stat_ok;
+}
+
 /* Print the band node "band" to "p".
  *
  * The permutable and coincident properties are only printed if they
@@ -2714,6 +2791,36 @@ static __isl_give isl_printer *print_tree_band(__isl_take isl_printer *p,
 		for (i = 0; i < n; ++i) {
 			p = isl_printer_print_int(p,
 			    isl_schedule_band_member_get_coincident(band, i));
+			p = isl_printer_yaml_next(p);
+		}
+		p = isl_printer_yaml_end_sequence(p);
+		p = isl_printer_set_yaml_style(p, style);
+	}
+	{
+		int i;
+		isl_size n;
+		int style;
+
+		p = isl_printer_yaml_next(p);
+		p = isl_printer_print_str(p, "array_expansion");
+		p = isl_printer_yaml_next(p);
+		style = isl_printer_get_yaml_style(p);
+		p = isl_printer_set_yaml_style(p, ISL_YAML_STYLE_FLOW);
+		p = isl_printer_yaml_start_sequence(p);
+		n = isl_schedule_band_n_member(band);
+		if (n < 0)
+			return isl_printer_free(p);
+		for (i = 0; i < n; ++i) {
+			if (!band->array_expansion[i]) {
+				p = isl_printer_print_str(p, "none");
+				continue;
+			}
+			p = isl_printer_yaml_start_sequence(p);
+			struct pae_data data = {band, &p};
+			if (isl_id_to_id_foreach(band->array_expansion[i],
+									 print_array_expansion, &data) < 0)
+				return NULL;
+			p = isl_printer_yaml_end_sequence(p);
 			p = isl_printer_yaml_next(p);
 		}
 		p = isl_printer_yaml_end_sequence(p);

@@ -8,14 +8,15 @@
  * Ecole Normale Superieure, 45 rue d'Ulm, 75230 Paris, France
  */
 
-#include <isl_schedule_constraints.h>
-#include <isl/schedule.h>
-#include <isl/space.h>
-#include <isl/set.h>
+#include "isl/ctx.h"
 #include <isl/map.h>
-#include <isl/union_set.h>
-#include <isl/union_map.h>
+#include <isl/schedule.h>
+#include <isl/set.h>
+#include <isl/space.h>
 #include <isl/stream.h>
+#include <isl/union_map.h>
+#include <isl/union_set.h>
+#include <isl_schedule_constraints.h>
 
 /* The constraints that need to be satisfied by a schedule on "domain".
  *
@@ -43,6 +44,10 @@ struct isl_schedule_constraints {
 	isl_set *context;
 
 	isl_union_map *constraint[isl_edge_last + 1];
+
+	int n_cache;
+	int cache_size[ISL_MAX_CACHES];
+	isl_union_map *array_size;
 };
 
 __isl_give isl_schedule_constraints *isl_schedule_constraints_copy(
@@ -67,6 +72,12 @@ __isl_give isl_schedule_constraints *isl_schedule_constraints_copy(
 		if (!sc_copy->constraint[i])
 			return isl_schedule_constraints_free(sc_copy);
 	}
+
+	sc_copy->n_cache = sc->n_cache;
+	for (int i = 0; i < sc->n_cache; i++)
+		sc_copy->cache_size[i] = sc->cache_size[i];
+
+	sc_copy->array_size = isl_union_map_copy(sc->array_size);
 
 	return sc_copy;
 }
@@ -219,6 +230,52 @@ __isl_give isl_schedule_constraints *isl_schedule_constraints_set_coincidence(
 						coincidence);
 }
 
+/* Replace the anti_proximity constraints of "sc" by "anti_proximity".
+ */
+__isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_anti_proximity(
+    __isl_take isl_schedule_constraints *sc,
+    __isl_take isl_union_map *anti_proximity) {
+  return isl_schedule_constraints_set(sc, isl_edge_anti_proximity,
+                                      anti_proximity);
+}
+
+/* Replace the live_range_span constraints of "sc" by "live_range_span".
+ */
+__isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_live_range_maximal_span(
+	__isl_take isl_schedule_constraints *sc,
+	__isl_take isl_union_map *live_range_span) {
+	return isl_schedule_constraints_set(sc, isl_edge_live_range_maximal_span,
+										live_range_span);
+}
+
+__isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_live_range_span(
+    __isl_take isl_schedule_constraints *sc,
+    __isl_take isl_union_map *live_range_span) {
+  return isl_schedule_constraints_set(sc, isl_edge_live_range_span,
+                                      live_range_span);
+}
+
+__isl_give isl_schedule_constraints *
+isl_schedule_constraints_set_caches(__isl_take isl_schedule_constraints *sc,
+									int n_cache, const int *cache_size) {
+	isl_assert(isl_schedule_constraints_get_ctx(sc), n_cache <= ISL_MAX_CACHES,
+			   return NULL;);
+	sc->n_cache = n_cache;
+	for (int i = 0; i < sc->n_cache; i++)
+		sc->cache_size[i] = cache_size[i];
+	return sc;
+}
+
+__isl_give isl_schedule_constraints *isl_schedule_constraints_set_array_sizes(
+	__isl_take isl_schedule_constraints *sc,
+	__isl_take isl_union_map *array_sizes) {
+	sc->array_size = array_sizes;
+	return sc;
+}
+
 /* Replace the proximity constraints of "sc" by "proximity".
  */
 __isl_give isl_schedule_constraints *isl_schedule_constraints_set_proximity(
@@ -308,6 +365,11 @@ __isl_give isl_union_map *isl_schedule_constraints_get_validity(
 	return isl_schedule_constraints_get(sc, isl_edge_validity);
 }
 
+__isl_give isl_union_map *isl_schedule_constraints_get_live_range_span(
+	__isl_keep isl_schedule_constraints *sc) {
+	return isl_schedule_constraints_get(sc, isl_edge_live_range_span);
+}
+
 /* Return the coincidence constraints of "sc".
  */
 __isl_give isl_union_map *isl_schedule_constraints_get_coincidence(
@@ -330,6 +392,22 @@ __isl_give isl_union_map *isl_schedule_constraints_get_conditional_validity(
 	__isl_keep isl_schedule_constraints *sc)
 {
 	return isl_schedule_constraints_get(sc, isl_edge_conditional_validity);
+}
+
+__isl_give int
+isl_schedule_constraints_get_n_cache(__isl_keep isl_schedule_constraints *sc) {
+	return sc->n_cache;
+}
+
+__isl_give int
+isl_schedule_constraints_get_cache_size(__isl_keep isl_schedule_constraints *sc,
+										int i) {
+	return sc->cache_size[i];
+}
+
+__isl_give isl_union_map *isl_schedule_constraints_get_array_size(
+	__isl_keep isl_schedule_constraints *sc) {
+	return isl_union_map_copy(sc->array_size);
 }
 
 /* Return the conditions for the conditional validity constraints of "sc".
@@ -467,6 +545,10 @@ enum isl_sc_key {
 	isl_sc_key_condition = isl_edge_condition,
 	isl_sc_key_conditional_validity = isl_edge_conditional_validity,
 	isl_sc_key_proximity = isl_edge_proximity,
+	isl_sc_key_anti_proximity = isl_edge_anti_proximity,
+	isl_sc_key_live_range_span = isl_edge_live_range_span,
+	isl_sc_key_live_range_maximal_span = isl_edge_live_range_maximal_span,
+	isl_sc_key_array_size,
 	isl_sc_key_domain,
 	isl_sc_key_context,
 	isl_sc_key_end
@@ -481,6 +563,10 @@ static char *key_str[] = {
 	[isl_sc_key_condition] = "condition",
 	[isl_sc_key_conditional_validity] = "conditional_validity",
 	[isl_sc_key_proximity] = "proximity",
+	[isl_sc_key_anti_proximity] = "anti_proximity",
+	[isl_sc_key_live_range_span] = "live_range_span",
+	[isl_sc_key_live_range_maximal_span] = "live_range_maximal_span",
+	[isl_sc_key_array_size] = "array_sizes",
 	[isl_sc_key_domain] = "domain",
 	[isl_sc_key_context] = "context",
 };
@@ -541,11 +627,10 @@ __isl_give isl_printer *isl_printer_print_schedule_constraints(
 	if (!universe)
 		p = print_yaml_field_set(p, key_str[isl_sc_key_context],
 						sc->context);
-	p = print_constraint(p, sc, isl_edge_validity);
-	p = print_constraint(p, sc, isl_edge_proximity);
-	p = print_constraint(p, sc, isl_edge_coincidence);
-	p = print_constraint(p, sc, isl_edge_condition);
-	p = print_constraint(p, sc, isl_edge_conditional_validity);
+	for (int i = isl_edge_first; i <= isl_edge_last; i++)
+		p = print_constraint(p, sc, i);
+	p = print_yaml_field_union_set(p, key_str[isl_sc_key_array_size],
+								   sc->array_size);
 	p = isl_printer_yaml_end_mapping(p);
 
 	return p;

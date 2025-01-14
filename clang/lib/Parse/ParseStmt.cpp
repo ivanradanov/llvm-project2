@@ -11,11 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTConsumer.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/PrettyDeclStackTrace.h"
 #include "clang/Basic/Attributes.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TokenKinds.h"
+#include "clang/Lex/Token.h"
 #include "clang/Parse/LoopHint.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
@@ -28,6 +31,8 @@
 #include "clang/Sema/SemaOpenMP.h"
 #include "clang/Sema/TypoCorrection.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include <optional>
 
 using namespace clang;
@@ -530,6 +535,17 @@ Retry:
     ProhibitAttributes(CXX11Attrs);
     ProhibitAttributes(GNUAttrs);
     return ParsePragmaLoopHint(Stmts, StmtCtx, TrailingElseLoc, CXX11Attrs);
+
+  case tok::annot_pragma_transform_label:
+    return ParsePragmaTransformLabel(Stmts, StmtCtx, TrailingElseLoc,
+                                     CXX11Attrs);
+
+  case tok::annot_pragma_transform_import:
+    return ParsePragmaTransformImport(Stmts, StmtCtx, TrailingElseLoc,
+                                      CXX11Attrs);
+
+  case tok::annot_pragma_transform_apply:
+    llvm_unreachable("apply unexpected here");
 
   case tok::annot_pragma_dump:
     HandlePragmaDump();
@@ -1263,7 +1279,12 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
       continue;
 
     StmtResult R;
-    if (Tok.isNot(tok::kw___extension__)) {
+    if (Tok.is(tok::annot_pragma_transform_apply)) {
+      ParsedAttributes Attrs(AttrFactory);
+      R = ParsePragmaTransformApply(Stmts, SubStmtCtx, Attrs);
+      MaybeDestroyTemplateIds();
+      R = Actions.ActOnAttributedStmt(Attrs, R.get());
+    } else if (Tok.isNot(tok::kw___extension__)) {
       R = ParseStatementOrDeclaration(Stmts, SubStmtCtx);
     } else {
       // __extension__ can start declarations and it can also be a unary
@@ -2554,6 +2575,103 @@ StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts,
   // See PR46336.
   if (Attrs.Range.getBegin().isInvalid())
     Attrs.Range.setBegin(StartLoc);
+
+  return S;
+}
+
+StmtResult Parser::ParsePragmaTransformApply(StmtVector &Stmts,
+                                             ParsedStmtContext StmtCtx,
+                                             ParsedAttributes &Attrs) {
+  assert(Tok.is(tok::annot_pragma_transform_apply));
+  PragmaTransformApplyInfo &TAI =
+      *reinterpret_cast<PragmaTransformApplyInfo *>(Tok.getAnnotationValue());
+  std::string Str;
+  llvm::raw_string_ostream OS(Str);
+  OS << TAI.Func.getIdentifierInfo()->getName() << '\0';
+  for (auto Arg : TAI.Args) {
+    OS << Arg.getIdentifierInfo()->getName() << '\0';
+  }
+  ConsumeAnnotationToken();
+  assert(Tok.is(tok::eod));
+  ConsumeAnyToken();
+  SourceLocation SL;
+  StmtResult S =
+      StringLiteral::Create(Actions.getASTContext(), Str,
+                            StringLiteralKind::Unevaluated, false, {}, SL);
+
+  ParsedAttributes TempAttrs(AttrFactory);
+  ArgsUnion *Args = nullptr;
+  unsigned NumArgs = 0;
+  SourceRange Range;
+  IdentifierInfo *ScopeName = nullptr;
+  SourceLocation ScopeLoc;
+  TempAttrs.addNew(TAI.TransformApply.getIdentifierInfo(), Range, ScopeName,
+                   ScopeLoc, Args, NumArgs, ParsedAttr::Form::Pragma());
+  Attrs.takeAllFrom(TempAttrs);
+  return S;
+}
+
+StmtResult Parser::ParsePragmaTransformImport(StmtVector &Stmts,
+                                              ParsedStmtContext StmtCtx,
+                                              SourceLocation *TrailingElseLoc,
+                                              ParsedAttributes &Attrs) {
+  assert(Tok.is(tok::annot_pragma_transform_import));
+  ParsedAttributes TempAttrs(AttrFactory);
+
+  PragmaTransformLabelInfo &TLI =
+      *reinterpret_cast<PragmaTransformLabelInfo *>(Tok.getAnnotationValue());
+  ConsumeAnnotationToken();
+
+  MaybeParseCXX11Attributes(Attrs);
+
+  ArgsUnion *Args = nullptr;
+  unsigned NumArgs = 0;
+  SourceRange Range;
+  IdentifierInfo *ScopeName = nullptr;
+  SourceLocation ScopeLoc;
+
+  TempAttrs.addNew(TLI.TransformLabel.getIdentifierInfo(), Range, ScopeName,
+                   ScopeLoc, Args, NumArgs, ParsedAttr::Form::Pragma());
+
+  ParsedAttributes EmptyDeclSpecAttrs(AttrFactory);
+  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
+      Stmts, StmtCtx, TrailingElseLoc, Attrs, EmptyDeclSpecAttrs);
+
+  Attrs.takeAllFrom(TempAttrs);
+
+  return S;
+}
+
+StmtResult Parser::ParsePragmaTransformLabel(StmtVector &Stmts,
+                                             ParsedStmtContext StmtCtx,
+                                             SourceLocation *TrailingElseLoc,
+                                             ParsedAttributes &Attrs) {
+  assert(Tok.is(tok::annot_pragma_transform_label));
+  ParsedAttributes TempAttrs(AttrFactory);
+
+  PragmaTransformLabelInfo &TLI =
+      *reinterpret_cast<PragmaTransformLabelInfo *>(Tok.getAnnotationValue());
+  ConsumeAnnotationToken();
+  ConsumeAnyToken();
+
+  MaybeParseCXX11Attributes(Attrs);
+
+  IdentifierLoc *Arg = IdentifierLoc::create(Actions.Context, Tok.getLocation(),
+                                             TLI.Identfier.getIdentifierInfo());
+  ArgsUnion Args[] = {Arg};
+  unsigned NumArgs = 1;
+  SourceRange Range;
+  IdentifierInfo *ScopeName = nullptr;
+  SourceLocation ScopeLoc;
+
+  TempAttrs.addNew(TLI.TransformLabel.getIdentifierInfo(), Range, ScopeName,
+                   ScopeLoc, Args, NumArgs, ParsedAttr::Form::Pragma());
+
+  ParsedAttributes EmptyDeclSpecAttrs(AttrFactory);
+  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
+      Stmts, StmtCtx, TrailingElseLoc, Attrs, EmptyDeclSpecAttrs);
+
+  Attrs.takeAllFrom(TempAttrs);
 
   return S;
 }

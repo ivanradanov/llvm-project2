@@ -71,6 +71,22 @@ static Attr *handleSuppressAttr(Sema &S, Stmt *St, const ParsedAttr &A,
       S.Context, A, DiagnosticIdentifiers.data(), DiagnosticIdentifiers.size());
 }
 
+static Attr *handleTransformApply(Sema &S, Stmt *St, const ParsedAttr &A,
+                                  SourceRange) {
+  return ::new (S.Context) TransformApplyAttr(S.Context, A);
+}
+
+static Attr *handleTransformImport(Sema &S, Stmt *St, const ParsedAttr &A,
+                                   SourceRange) {
+  return ::new (S.Context) TransformImportAttr(S.Context, A);
+}
+
+static Attr *handleTransformLabel(Sema &S, Stmt *St, const ParsedAttr &A,
+                                  SourceRange) {
+  return ::new (S.Context)
+      TransformLabelAttr(S.Context, A, A.getArgAsIdent(0)->Ident->getName());
+}
+
 static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
                                 SourceRange) {
   IdentifierLoc *PragmaNameLoc = A.getArgAsIdent(0);
@@ -685,6 +701,12 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleNoConvergentAttr(S, St, A, Range);
   case ParsedAttr::AT_Annotate:
     return S.CreateAnnotationAttr(A);
+  case ParsedAttr::AT_TransformLabel:
+    return handleTransformLabel(S, St, A, Range);
+  case ParsedAttr::AT_TransformImport:
+    return handleTransformImport(S, St, A, Range);
+  case ParsedAttr::AT_TransformApply:
+    return handleTransformApply(S, St, A, Range);
   default:
     if (Attr *AT = nullptr; A.getInfo().handleStmtAttribute(S, St, A, AT) !=
                             ParsedAttrInfo::NotHandled) {

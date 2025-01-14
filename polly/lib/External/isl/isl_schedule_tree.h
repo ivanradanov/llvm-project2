@@ -1,10 +1,11 @@
 #ifndef ISL_SCHEDLUE_TREE_H
 #define ISL_SCHEDLUE_TREE_H
 
-#include <isl_schedule_band.h>
+#include <isl/id_to_id.h>
 #include <isl/schedule.h>
 #include <isl/set.h>
 #include <isl/union_set.h>
+#include <isl_schedule_band.h>
 
 struct isl_schedule_tree;
 typedef struct isl_schedule_tree isl_schedule_tree;
@@ -59,7 +60,10 @@ struct isl_schedule_tree {
 	union {
 		isl_schedule_band *band;
 		isl_set *context;
-		isl_union_set *domain;
+		struct {
+			isl_union_set *domain;
+			isl_union_set *expanded_arrays;
+		};
 		struct {
 			isl_union_pw_multi_aff *contraction;
 			isl_union_map *expansion;
@@ -177,11 +181,18 @@ __isl_give isl_schedule_tree *isl_schedule_tree_first_schedule_descendant(
 	__isl_take isl_schedule_tree *tree, __isl_keep isl_schedule_tree *leaf);
 __isl_give isl_union_map *isl_schedule_tree_get_subtree_schedule_union_map(
 	__isl_keep isl_schedule_tree *tree);
+__isl_give isl_union_map *isl_schedule_tree_extend_schedule_with_tree_schedule(
+	__isl_keep isl_schedule_tree *tree, __isl_take isl_union_map *umap);
 
 isl_size isl_schedule_tree_band_n_member(__isl_keep isl_schedule_tree *tree);
 
 isl_bool isl_schedule_tree_band_member_get_coincident(
 	__isl_keep isl_schedule_tree *tree, int pos);
+isl_id_to_id *isl_schedule_tree_band_member_get_array_expansion(
+	__isl_keep isl_schedule_tree *tree, int pos);
+__isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_array_expansion(
+	__isl_take isl_schedule_tree *tree, int pos,
+	__isl_take isl_id_to_id *array_expansion);
 __isl_give isl_schedule_tree *isl_schedule_tree_band_member_set_coincident(
 	__isl_take isl_schedule_tree *tree, int pos, int coincident);
 isl_bool isl_schedule_tree_band_get_permutable(

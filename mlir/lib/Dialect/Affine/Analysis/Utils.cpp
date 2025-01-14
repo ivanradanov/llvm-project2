@@ -1092,34 +1092,12 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
       }
     }
   }
-  // We'll first associate the dims and symbols of the access map to the dims
-  // and symbols resp. of cst. This will change below once cst is
-  // fully constructed out.
-  cst = FlatAffineValueConstraints(numDims, numSymbols, 0, operands);
 
-  // Add equality constraints.
-  // Add inequalities for loop lower/upper bounds.
-  for (unsigned i = 0; i < numDims + numSymbols; ++i) {
-    auto operand = operands[i];
-    if (auto affineFor = getForInductionVarOwner(operand)) {
-      // Note that cst can now have more dimensions than accessMap if the
-      // bounds expressions involve outer loops or other symbols.
-      // TODO: rewrite this to use getInstIndexSet; this way
-      // conditionals will be handled when the latter supports it.
-      if (failed(cst.addAffineForOpDomain(affineFor)))
-        return failure();
-    } else if (auto parallelOp = getAffineParallelInductionVarOwner(operand)) {
-      if (failed(cst.addAffineParallelOpDomain(parallelOp)))
-        return failure();
-    } else if (isValidSymbol(operand)) {
-      // Check if the symbol is a constant.
-      Value symbol = operand;
-      if (auto constVal = getConstantIntValue(symbol))
-        cst.addBound(BoundType::EQ, symbol, constVal.value());
-    } else {
-      LLVM_DEBUG(llvm::dbgs() << "unknown affine dimensional value");
-      return failure();
-    }
+  SmallVector<Operation *, 4> affineOps;
+  getEnclosingAffineOps(*op, &affineOps);
+  if (failed(getIndexSet(affineOps, &cst))) {
+    LLVM_DEBUG(llvm::dbgs() << "getIndexSet on " << *op << "failed.\n");
+    return failure();
   }
 
   // Add lower/upper bounds on loop IVs using bounds from 'sliceState'.

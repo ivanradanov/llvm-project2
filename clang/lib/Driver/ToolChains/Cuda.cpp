@@ -16,9 +16,11 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/InputInfo.h"
 #include "clang/Driver/Options.h"
+#include "clang/Driver/Types.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/llvm-config.h" // for LLVM_HOST_TRIPLE
 #include "llvm/Option/ArgList.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -491,8 +493,20 @@ void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
   if (Relocatable)
     CmdArgs.push_back("-c");
 
+  ArgStringList CpCmdArgs;
+  ArgStringList *TheCmdArgs = &CmdArgs;
   const char *Exec;
-  if (Arg *A = Args.getLastArg(options::OPT_ptxas_path_EQ))
+  if (!getenv("DISABLE_EMIT_MLIR")) {
+    Exec = Args.MakeArgString("/bin/cp");
+    if (Inputs.size() != 1) {
+      llvm::errs() << "Multiple inputs to ptxas not supported\n";
+      abort();
+    }
+    for (const auto &II : Inputs)
+      CpCmdArgs.push_back(Args.MakeArgString(II.getFilename()));
+    CpCmdArgs.push_back(Args.MakeArgString(OutputFileName));
+    TheCmdArgs = &CpCmdArgs;
+  } else if (Arg *A = Args.getLastArg(options::OPT_ptxas_path_EQ))
     Exec = A->getValue();
   else
     Exec = Args.MakeArgString(TC.GetProgramPath("ptxas"));
@@ -500,7 +514,7 @@ void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
       JA, *this,
       ResponseFileSupport{ResponseFileSupport::RF_Full, llvm::sys::WEM_UTF8,
                           "--options-file"},
-      Exec, CmdArgs, Inputs, Output));
+      Exec, *TheCmdArgs, Inputs, Output));
 }
 
 static bool shouldIncludePTX(const ArgList &Args, StringRef InputArch) {
@@ -542,6 +556,7 @@ void NVPTX::FatBinary::ConstructJob(Compilation &C, const JobAction &JA,
   if (mustEmitDebugInfo(Args) == EmitSameDebugInfoAsHost)
     CmdArgs.push_back("-g");
 
+  SmallVector<const InputInfo *> ObjInputs;
   for (const auto &II : Inputs) {
     auto *A = II.getAction();
     assert(A->getInputs().size() == 1 &&
@@ -554,6 +569,8 @@ void NVPTX::FatBinary::ConstructJob(Compilation &C, const JobAction &JA,
     if (II.getType() == types::TY_PP_Asm &&
         !shouldIncludePTX(Args, gpu_arch_str))
       continue;
+    if (II.getType() == types::TY_Object)
+      ObjInputs.push_back(&II);
     // We need to pass an Arch of the form "sm_XX" for cubin files and
     // "compute_XX" for ptx.
     const char *Arch = (II.getType() == types::TY_PP_Asm)
@@ -567,12 +584,27 @@ void NVPTX::FatBinary::ConstructJob(Compilation &C, const JobAction &JA,
   for (const auto &A : Args.getAllArgValues(options::OPT_Xcuda_fatbinary))
     CmdArgs.push_back(Args.MakeArgString(A));
 
-  const char *Exec = Args.MakeArgString(TC.GetProgramPath("fatbinary"));
+  ArgStringList CpCmdArgs;
+  ArgStringList *TheCmdArgs = &CmdArgs;
+  const char *Exec;
+  if (!getenv("DISABLE_EMIT_MLIR")) {
+    Exec = Args.MakeArgString("/bin/cp");
+    if (ObjInputs.size() != 1) {
+      llvm::errs() << "Multiple inputs to fatbinary not supported\n";
+      abort();
+    }
+    for (const auto &II : ObjInputs)
+      CpCmdArgs.push_back(Args.MakeArgString(II->getFilename()));
+    CpCmdArgs.push_back(Args.MakeArgString(Output.getFilename()));
+    TheCmdArgs = &CpCmdArgs;
+  } else {
+    Exec = Args.MakeArgString(TC.GetProgramPath("fatbinary"));
+  }
   C.addCommand(std::make_unique<Command>(
       JA, *this,
       ResponseFileSupport{ResponseFileSupport::RF_Full, llvm::sys::WEM_UTF8,
                           "--options-file"},
-      Exec, CmdArgs, Inputs, Output));
+      Exec, *TheCmdArgs, Inputs, Output));
 }
 
 void NVPTX::Linker::ConstructJob(Compilation &C, const JobAction &JA,

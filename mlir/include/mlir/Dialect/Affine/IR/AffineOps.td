@@ -13,6 +13,7 @@
 #ifndef AFFINE_OPS
 #define AFFINE_OPS
 
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/Dialect/Arith/IR/ArithBase.td"
 include "mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -34,6 +35,18 @@ class Affine_Op<string mnemonic, list<Trait> traits = []> :
 // Require regions to have affine.yield.
 def ImplicitAffineTerminator
     : SingleBlockImplicitTerminator<"AffineYieldOp">;
+
+def AffineScopeOp : Affine_Op<"scope", [
+      AffineScope,
+      ImplicitAffineTerminator,
+      AutomaticAllocationScope,
+      RecursiveMemoryEffects,
+    ]>,
+    Arguments<(ins Variadic<AnyType>:$operands)>,
+    Results<(outs Variadic<AnyType>:$results)> {
+  let summary = "Inline affine scope";
+  let regions = (region SizedRegion<1>:$region);
+}
 
 def AffineApplyOp : Affine_Op<"apply", [Pure]> {
   let summary = "affine apply operation";
@@ -331,6 +344,17 @@ def AffineForOp : Affine_Op<"for",
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
   let hasRegionVerifier = 1;
+}
+
+def AffineStoreVar : Affine_Op<"store_var", [Pure]> {
+  let arguments = (ins Variadic<AnyType>:$variables,
+                       Builtin_StringAttr:$type);
+  let summary = "Fake store an SSA value for conversion to ISL";
+}
+
+def AffineBarrierOp : Affine_Op<"barrier"> {
+  let arguments = (ins Variadic<Index>:$indices);
+  let summary = "barrier for parallel loops";
 }
 
 def AffineIfOp : Affine_Op<"if",
