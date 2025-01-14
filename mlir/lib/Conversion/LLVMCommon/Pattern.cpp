@@ -359,11 +359,13 @@ LogicalResult LLVM::detail::oneToOneRewrite(
   if constexpr (convertIntegerAttrs) {
     for (auto attr : newOp->getAttrs().vec())
       if (auto ia = dyn_cast<IntegerAttr>(attr.getValue()))
-        if (rewriter.getIndexType() == ia.getType())
+        if (rewriter.getIndexType() == ia.getType()) {
+          auto val = ia.getValue();
+          val = val.sextOrTrunc(typeConverter.getIndexTypeBitwidth());
           newOp->setAttr(
               attr.getName(),
-              IntegerAttr::get(typeConverter.convertType(ia.getType()),
-                               ia.getValue()));
+              IntegerAttr::get(typeConverter.convertType(ia.getType()), val));
+        }
   }
 
   setNativeProperties(newOp, overflowFlags);
