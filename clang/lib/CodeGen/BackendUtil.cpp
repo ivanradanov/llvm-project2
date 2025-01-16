@@ -1705,7 +1705,8 @@ void applyAll(
     builder.setInsertionPointToStart(&transformModule.getBodyRegion().front());
     transform::NamedSequenceOp seq = builder.create<transform::NamedSequenceOp>(
         loc, "__mlir_transformer" + std::to_string(i++),
-        TypeAttr::get(mlir::FunctionType::get(&context, seqTypes, TypeRange{})),
+        mlir::TypeAttr::get(
+            mlir::FunctionType::get(&context, seqTypes, TypeRange{})),
         nullptr, nullptr, nullptr);
     seq.setVisibility(mlir::SymbolTable::Visibility::Private);
     builder.createBlock(&seq.getBody(), {}, seqTypes,
@@ -1762,9 +1763,9 @@ LogicalResult mergeDeviceIntoHost(mlir::ModuleOp hostModule,
   DataLayoutSpecInterface dataLayout = {};
   // Set index type size to 32 bits
   {
-    llvm::DenseMap<TypeAttr, DataLayoutEntryInterface> typeEntries;
+    llvm::DenseMap<mlir::TypeAttr, mlir::DataLayoutEntryInterface> typeEntries;
     auto type = IndexType::get(ctx);
-    auto key = TypeAttr::get(type);
+    auto key = mlir::TypeAttr::get(type);
     uint64_t size = 32;
     auto params = IntegerAttr::get(mlir::IntegerType::get(ctx, 64), size);
     typeEntries.try_emplace(key, DataLayoutEntryAttr::get(type, params));
