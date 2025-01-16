@@ -125,6 +125,8 @@ private:
       StringEnvar("HYDRA_DEVICE_LLVM_MODULE_POST_LINK_DUMP");
   StringEnvar postLinkLLVMIRModuleReplace =
       StringEnvar("HYDRA_DEVICE_LLVM_MODULE_POST_LINK_REPLACE");
+  StringEnvar postOptLLVMIRModuleDump =
+      StringEnvar("HYDRA_DEVICE_LLVM_MODULE_POST_OPT_DUMP");
 };
 } // namespace LLVM
 } // namespace mlir

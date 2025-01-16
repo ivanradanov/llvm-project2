@@ -275,6 +275,19 @@ std::optional<SmallVector<char, 0>> ModuleToObject::run() {
   if (failed(optimizeModule(*llvmModule, optLevel)))
     return std::nullopt;
 
+  if (postOptLLVMIRModuleDump.isPresent()) {
+    std::error_code EC;
+    llvm::raw_fd_stream FD(postOptLLVMIRModuleDump.get(), EC);
+    if (EC) {
+      getOperation().emitError()
+          << EC.message()
+          << " Could not open %s to write the post-opt IR module\n"
+          << postOptLLVMIRModuleDump.get().c_str() << "\n";
+      return {};
+    }
+    llvmModule->print(FD, nullptr);
+  }
+
   // Return the serialized object.
   return moduleToObject(*llvmModule);
 }
