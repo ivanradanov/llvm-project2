@@ -12,6 +12,8 @@
 #include "mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Affine/Transforms/Transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -1420,6 +1422,16 @@ struct GPUAffineOptPass : impl::GPUAffineOptPassBase<GPUAffineOptPass> {
         return;
       }
     };
+    auto unrollLoops = [&](Operation *op) {
+      bool changed;
+      do {
+        changed = op->walk([&](affine::AffineForOp forOp) {
+                      if (affine::loopUnrollFull(forOp).succeeded())
+                        return WalkResult::interrupt();
+                      return WalkResult::advance();
+                    }).wasInterrupted();
+      } while (changed);
+    };
     op->walk([&](mlir::gpu::GPUModuleOp gpuModule) {
       const mlir::DataLayoutAnalysis dl(gpuModule);
       gpuModule->walk([&](mlir::LLVM::LLVMFuncOp func) {
@@ -1438,6 +1450,9 @@ struct GPUAffineOptPass : impl::GPUAffineOptPassBase<GPUAffineOptPass> {
           if (!getenv("GPU_AFFINE_OPT_ROUNDTRIP"))
             mlir::gpu::affine_opt::transform(func);
           LLVM_DEBUG(DBGS << "After opt:\n" << func << "\n");
+          if (!getenv("GPU_AFFINE_OPT_DISABLE_UNROLL_LOOPS"))
+            unrollLoops(func);
+          LLVM_DEBUG(DBGS << "After unroll loops:\n" << func << "\n");
           sharedMemrefAllocaToGlobal(func);
           LLVM_DEBUG(DBGS << "After shmem to alloca:\n" << func << "\n");
           (void)gpuify(func);
