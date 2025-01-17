@@ -859,7 +859,18 @@ public:
     llvm_unreachable("unimplemented");
   }
   Value createOpUnary(__isl_take isl_ast_expr *Expr) {
-    llvm_unreachable("unimplemented");
+    assert(isl_ast_expr_get_op_type(Expr) == isl_ast_op_minus &&
+           "Unsupported unary operation");
+
+    Type MaxType = getType(Expr);
+    assert(MaxType.isInteger() &&
+           "Unary expressions can only be created for integer types");
+
+    Value V = create(isl_ast_expr_get_op_arg(Expr, 0));
+
+    isl_ast_expr_free(Expr);
+    return b.create<arith::SubIOp>(
+        loc, b.create<arith::ConstantIntOp>(loc, 0, MaxType), V);
   }
   Value createOpAccess(__isl_take isl_ast_expr *Expr) {
     llvm_unreachable("unimplemented");
