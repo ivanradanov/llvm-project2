@@ -97,6 +97,7 @@ else()
     kmp_lock.cpp
     kmp_sched.cpp
     kmp_collapse.cpp
+    kmp_ompx.cpp
   )
   if(WIN32)
     # Windows specific files

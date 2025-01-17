@@ -58,20 +58,18 @@ enum {
   ompx_dim_z = 2,
 };
 
-// TODO: The following implementation is for host fallback. We need to disable
-// generation of host fallback in kernel language mode.
+// TODO: Disabling these function definitions to move them to kmp_ompx.cpp
+//       to be able to import them as linkable symbols via Fortran module.
 #pragma omp begin declare variant match(device = {kind(cpu)})
 
 /// ompx_{thread,block}_{id,dim}
 ///{
-#define _TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(NAME, VALUE)                     \
-  static inline int ompx_##NAME(int Dim) { return VALUE; }
-
-_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(thread_id,
-                                      omp_get_ancestor_thread_num(Dim + 1))
-_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(block_dim, omp_get_team_size(Dim + 1))
-_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(block_id, 0)
-_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(grid_dim, 1)
+#define _TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(NAME) \
+  int ompx_##NAME(int Dim);
+_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(thread_id)
+_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(block_dim)
+_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(block_id)
+_TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C(grid_dim)
 #undef _TGT_KERNEL_LANGUAGE_HOST_IMPL_GRID_C
 ///}
 

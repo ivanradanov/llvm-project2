@@ -5,18 +5,10 @@ contains
   subroutine sub1()
     use omp_lib
     integer :: tmp
-    tmp = ompx_thread_id_x()
-    tmp = ompx_thread_id_y()
-    tmp = ompx_thread_id_z()
-    tmp = ompx_block_id_x()
-    tmp = ompx_block_id_y()
-    tmp = ompx_block_id_z()
-    tmp = ompx_block_dim_x()
-    tmp = ompx_block_dim_y()
-    tmp = ompx_block_dim_z()
-    tmp = ompx_grid_dim_x()
-    tmp = ompx_grid_dim_y()
-    tmp = ompx_grid_dim_z()
+    tmp = ompx_thread_id(0)
+    tmp = ompx_block_id(0)
+    tmp = ompx_block_dim(0)
+    tmp = ompx_grid_dim(0)
   end subroutine sub1
 
   subroutine host()

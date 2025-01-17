@@ -21,6 +21,7 @@ VERSION {
         #
         omp_*;     # Standard OpenMP functions.
         OMP_*;     # Standard OpenMP symbols.
+        ompx_*;    # Experimental OpenMP API routines
 
         #
         # OMPT API

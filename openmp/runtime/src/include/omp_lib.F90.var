@@ -40,6 +40,7 @@
         integer, parameter, public :: omp_alloctrait_val_kind = c_intptr_t
         integer, parameter, public :: omp_interop_kind = c_intptr_t
         integer, parameter, public :: omp_interop_fr_kind = omp_integer_kind
+        integer, parameter, public :: ompx_dim_kind = c_int
 
         type omp_alloctrait
           integer(kind=omp_alloctrait_key_kind) key
@@ -88,6 +89,7 @@
         public :: omp_pause_resource_kind
         public :: omp_depend_kind
         public :: omp_event_handle_kind
+        public :: ompx_dim_kind
 
         integer (kind=omp_integer_kind), parameter, public :: openmp_version    = @LIBOMP_OMP_YEAR_MONTH@
         integer (kind=omp_integer_kind), parameter, public :: kmp_version_major = @LIBOMP_VERSION_MAJOR@
@@ -203,6 +205,10 @@
         integer (kind=omp_interop_fr_kind), parameter, public :: omp_ifr_last = 7
 
         integer (kind=omp_interop_kind), parameter, public :: omp_interop_none = 0
+
+        integer (kind=ompx_dim_kind), parameter, public :: ompx_dim_x = 0
+        integer (kind=ompx_dim_kind), parameter, public :: ompx_dim_y = 1
+        integer (kind=ompx_dim_kind), parameter, public :: ompx_dim_z = 2
 
         interface
 
@@ -957,20 +963,18 @@
             logical (kind=omp_logical_kind) kmp_get_cancellation_status
           end function kmp_get_cancellation_status
 
-          #define _TGT_KERNEL_LANGUAGE_DECL(NAME) \
-              function ompx_##NAME() bind(c) ;\
-                use omp_lib_kinds ;\
-                integer (kind=omp_integer_kind) ompx_##NAME ;\
-              end function ompx_##NAME
-          #define _TGT_KERNEL_LANGUAGE_DECL_3(NAME) \
-              _TGT_KERNEL_LANGUAGE_DECL(NAME##_x) ;\
-              _TGT_KERNEL_LANGUAGE_DECL(NAME##_y) ;\
-              _TGT_KERNEL_LANGUAGE_DECL(NAME##_z)
-
-          _TGT_KERNEL_LANGUAGE_DECL_3(thread_id)
-          _TGT_KERNEL_LANGUAGE_DECL_3(block_dim)
-          _TGT_KERNEL_LANGUAGE_DECL_3(block_id)
-          _TGT_KERNEL_LANGUAGE_DECL_3(grid_dim)
+          #define _TGT_KERNEL_LANGUAGE(name) \
+              function ompx_##name(dim) bind(c) ;\
+                use omp_lib_kinds ; \
+                use iso_c_binding; \
+                integer (kind=ompx_dim_kind), value :: dim; \
+                integer (kind=omp_integer_kind) ompx_##name ;\
+              end function ompx_##name
+          _TGT_KERNEL_LANGUAGE(thread_id)
+          _TGT_KERNEL_LANGUAGE(block_dim)
+          _TGT_KERNEL_LANGUAGE(block_id)
+          _TGT_KERNEL_LANGUAGE(grid_dim)
+          #undef _TGT_KERNEL_LANGUAGE
 
         end interface
 
@@ -1094,13 +1098,11 @@
         public :: kmp_set_warnings_off
         public :: kmp_get_cancellation_status
 
-        #define _TGT_KERNEL_LANGUAGE_PUBLIC_3(NAME) \
-            public :: ompx_##NAME##_x ;\
-            public :: ompx_##NAME##_y ;\
-            public :: ompx_##NAME##_z
-        _TGT_KERNEL_LANGUAGE_PUBLIC_3(thread_id)
-        _TGT_KERNEL_LANGUAGE_PUBLIC_3(block_dim)
-        _TGT_KERNEL_LANGUAGE_PUBLIC_3(block_id)
-        _TGT_KERNEL_LANGUAGE_PUBLIC_3(grid_dim)
+        #define _TGT_KERNEL_LANGUAGE_PUBLIC(name) public :: ompx_##name
+        _TGT_KERNEL_LANGUAGE_PUBLIC(thread_id)
+        _TGT_KERNEL_LANGUAGE_PUBLIC(block_dim)
+        _TGT_KERNEL_LANGUAGE_PUBLIC(block_id)
+        _TGT_KERNEL_LANGUAGE_PUBLIC(grid_dim)
+        #undef _TGT_KERNEL_LANGUAGE_PUBLIC
 
       end module omp_lib
