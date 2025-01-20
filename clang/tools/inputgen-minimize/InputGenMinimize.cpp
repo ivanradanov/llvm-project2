@@ -570,7 +570,7 @@ public:
   }
 
   bool TraverseDecl(Decl *D) {
-    if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+    if (FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D)) {
       if (FD->hasAttr<InputGenEntryAttr>()) {
         if (Done) {
           llvm::errs() << "Multiple inputgen entry points found, ignoring "
@@ -984,16 +984,44 @@ int main(int argc, const char **argv) {
   llvm::InitializeAllAsmPrinters();
   llvm::InitializeAllAsmParsers();
 
-  auto ExpectedParser =
-      CommonOptionsParser::create(argc, argv, InputGenMinimizeCat);
-  if (!ExpectedParser) {
-    llvm::errs() << ExpectedParser.takeError();
+  static llvm::cl::opt<std::string> BuildPath(
+      "p", llvm::cl::desc("Build path"), llvm::cl::Required,
+      llvm::cl::cat(InputGenMinimizeCat),
+      llvm::cl::sub(llvm::cl::SubCommand::getAll()));
+  llvm::cl::ResetAllOptionOccurrences();
+
+  llvm::cl::HideUnrelatedOptions(InputGenMinimizeCat);
+
+  std::string ErrorMessage;
+  llvm::raw_string_ostream OS(ErrorMessage);
+  if (!llvm::cl::ParseCommandLineOptions(argc, argv, "InputGenMinimize", &OS)) {
+    auto Err = llvm::make_error<llvm::StringError>(
+        ErrorMessage, llvm::inconvertibleErrorCode());
+    if (Err) {
+      llvm::report_fatal_error(
+          Twine(
+              "CommonOptionsParser: failed to parse command-line arguments. ") +
+          llvm::toString(std::move(Err)));
+    }
+  }
+
+  if (BuildPath.empty()) {
+    llvm::errs() << "Build path needs to be specified.\n";
     return 1;
   }
-  CommonOptionsParser &OptionsParser = ExpectedParser.get();
 
-  ClangTool Tool(OptionsParser.getCompilations(),
-                 OptionsParser.getSourcePathList());
+  std::unique_ptr<CompilationDatabase> Compilations =
+      CompilationDatabase::autoDetectFromDirectory(BuildPath, ErrorMessage);
+  if (!Compilations) {
+    llvm::errs() << "Error while trying to load a compilation database:\n"
+                 << ErrorMessage << "Running without flags.\n";
+    return 1;
+  }
+
+  auto Files = Compilations->getAllFiles();
+  for (auto F : Files)
+    llvm::errs() << F << "\n";
+  ClangTool Tool(*Compilations, Files);
 
   MinimizeActionFactory MinimizeFactory;
   std::unique_ptr<FrontendActionFactory> FrontendFactory;
