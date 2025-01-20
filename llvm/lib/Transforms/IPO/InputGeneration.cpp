@@ -107,6 +107,11 @@ static cl::opt<IGInstrumentationModeTy>
                                      clEnumValN(IG_Generate, "generate", ""),
                                      clEnumValN(IG_Replay, "replay", "")));
 
+static cl::opt<std::string>
+    ClEntryPoint("input-gen-entry-point",
+                 cl::desc("Entry point identification (via name or #)."),
+                 cl::Hidden, cl::init("main"));
+
 static cl::opt<bool>
     ClPruneModule("input-gen-prune-module",
                   cl::desc("Prune unneeded functions from module."), cl::Hidden,
@@ -634,13 +639,18 @@ void createProfileFileNameVar(Module &M, Triple &TT,
 
 bool InputGenInstrumenter::instrumentClEntryPoint(Module &M) {
   Function *EntryPoint = nullptr;
-  for (auto &F : M) {
-    if (F.hasFnAttribute(llvm::Attribute::InputGenEntry)) {
-      if (EntryPoint)
-        llvm::errs() << "Multiple inputgen entry points found, ignoring "
-                     << EntryPoint->getName() << "\n";
-      // TODO support multiple entry points
-      EntryPoint = &F;
+  if (ClEntryPoint.getNumOccurrences() > 0) {
+    llvm::errs() << "Entyr point opt specified, ignoring attributes\n";
+    EntryPoint = M.getFunction(ClEntryPoint);
+  } else {
+    for (auto &F : M) {
+      if (F.hasFnAttribute(llvm::Attribute::InputGenEntry)) {
+        if (EntryPoint)
+          llvm::errs() << "Multiple inputgen entry points found, ignoring "
+                       << EntryPoint->getName() << "\n";
+        // TODO support multiple entry points
+        EntryPoint = &F;
+      }
     }
   }
   // FIXME in record mode, we still need to instrument _everything_, just
